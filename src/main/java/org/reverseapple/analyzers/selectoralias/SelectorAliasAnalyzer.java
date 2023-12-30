@@ -5,6 +5,7 @@ import ghidra.app.services.AbstractAnalyzer;
 import ghidra.app.services.AnalysisPriority;
 import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.importer.MessageLog;
+import ghidra.app.util.opinion.MachoLoader;
 import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.listing.Program;
 import ghidra.util.exception.CancelledException;
@@ -15,13 +16,17 @@ public class SelectorAliasAnalyzer extends AbstractAnalyzer {
     public final static String NAME = "Selector Alias Concretization";
     public final static String DESCRIPTION = "Test";
 
-
     protected SelectorAliasAnalyzer(String name, String description, AnalyzerType type) {
         super(name, description, type);
 
         setDefaultEnablement(false);
         setPriority(AnalysisPriority.LOW_PRIORITY);
         setSupportsOneTimeAnalysis();
+    }
+
+    @Override
+    public boolean canAnalyze(Program program) {
+        return program.getExecutableFormat().equals(MachoLoader.MACH_O_NAME);
     }
 
     @Override
