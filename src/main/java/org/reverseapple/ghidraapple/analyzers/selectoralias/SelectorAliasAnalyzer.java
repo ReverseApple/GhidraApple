@@ -15,13 +15,13 @@ import org.reverseapple.ghidraapple.utils.MachOCpuID;
 
 public class SelectorAliasAnalyzer extends AbstractAnalyzer {
 
-    public final static String NAME = "Selector Alias Concretization";
+    public final static String NAME = "Objective-C Selector Alias Concretization";
     public final static String DESCRIPTION = "Test";
 
-    protected SelectorAliasAnalyzer(String name, String description, AnalyzerType type) {
-        super(name, description, type);
+    public SelectorAliasAnalyzer() {
+        super(NAME, DESCRIPTION, AnalyzerType.FUNCTION_ANALYZER);
 
-        setDefaultEnablement(false);
+        setDefaultEnablement(true);
         setPriority(AnalysisPriority.LOW_PRIORITY);
         setSupportsOneTimeAnalysis();
     }
