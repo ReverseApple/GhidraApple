@@ -9,8 +9,8 @@ import ghidra.program.model.listing.Program;
 
 @PluginInfo(
         status = PluginStatus.RELEASED,
-        packageName = "GhidraObjC",
-        category = "Objective-C",
+        packageName = "GhidraApple",
+        category = "test category",
         shortDescription = "short desc",
         description = "long desc"
 )
@@ -25,7 +25,6 @@ public class GhidraApplePlugin extends ProgramPlugin {
     @Override
     public void init() {
         super.init();
-
     }
 
 
