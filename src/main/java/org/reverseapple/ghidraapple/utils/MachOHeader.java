@@ -13,7 +13,6 @@ public class MachOHeader {
 
     static final int MAGIC = 0xFEEDFACF;
 
-    public final int version;
     public final int cputype;
     public final int cpusubtype;
     public final int filetype;
@@ -41,7 +40,6 @@ public class MachOHeader {
         // Skip the magic.
         buf.position(4);
 
-        this.version = buf.getInt();
         this.cputype = buf.getInt();
         this.cpusubtype = buf.getInt();
         this.filetype = buf.getInt();
