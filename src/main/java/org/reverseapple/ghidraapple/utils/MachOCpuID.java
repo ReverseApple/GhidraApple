@@ -1,4 +1,4 @@
-package org.reverseapple.utils;
+package org.reverseapple.ghidraapple.utils;
 
 import ghidra.program.model.lang.Language;
 import ghidra.program.model.listing.Program;

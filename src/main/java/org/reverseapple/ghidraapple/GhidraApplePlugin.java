@@ -1,4 +1,4 @@
-package org.reverseapple;
+package org.reverseapple.ghidraapple;
 
 
 import ghidra.app.plugin.ProgramPlugin;
@@ -14,11 +14,11 @@ import ghidra.program.model.listing.Program;
         shortDescription = "short desc",
         description = "long desc"
 )
-public class GhidraObjCPlugin extends ProgramPlugin {
+public class GhidraApplePlugin extends ProgramPlugin {
 
     Program program;
 
-    public GhidraObjCPlugin(PluginTool tool) {
+    public GhidraApplePlugin(PluginTool tool) {
         super(tool);
     }
 

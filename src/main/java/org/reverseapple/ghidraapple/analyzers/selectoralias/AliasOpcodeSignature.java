@@ -1,9 +1,8 @@
-package org.reverseapple.analyzers.selectoralias;
+package org.reverseapple.ghidraapple.analyzers.selectoralias;
 
-import ghidra.framework.Architecture;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.MemoryAccessException;
-import org.reverseapple.utils.MachOCpuID;
+import org.reverseapple.ghidraapple.utils.MachOCpuID;
 
 public class AliasOpcodeSignature {
 

@@ -1,4 +1,4 @@
-package org.reverseapple.analyzers.selectoralias;
+package org.reverseapple.ghidraapple.analyzers.selectoralias;
 
 import ghidra.app.plugin.core.analysis.AnalysisOptionsUpdater;
 import ghidra.app.services.AbstractAnalyzer;
