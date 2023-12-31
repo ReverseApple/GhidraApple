@@ -38,6 +38,9 @@ public class MachOHeader {
         ByteBuffer buf = ByteBuffer.wrap(headerBytes);
         buf.order(ByteOrder.LITTLE_ENDIAN);
 
+        // Skip the magic.
+        buf.position(4);
+
         this.version = buf.getInt();
         this.cputype = buf.getInt();
         this.cpusubtype = buf.getInt();
