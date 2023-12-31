@@ -29,7 +29,7 @@ public enum MachOCpuID {
             return AARCH64;
         }
 
-        String bitness = lang.getLanguageID().toString().split(";")[2];
+        String bitness = lang.getLanguageID().toString().split(":")[2];
 
         switch (processor) {
             case "PowerPC" -> {
