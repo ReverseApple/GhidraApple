@@ -7,6 +7,9 @@ import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.importer.MessageLog;
 import ghidra.app.util.opinion.MachoLoader;
 import ghidra.program.model.address.AddressSetView;
+import ghidra.program.model.listing.Function;
+import ghidra.program.model.listing.Instruction;
+import ghidra.program.model.listing.InstructionIterator;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.MemoryAccessException;
 import ghidra.util.exception.CancelledException;
@@ -26,6 +29,34 @@ public class SelectorAliasAnalyzer extends AbstractAnalyzer {
         setDefaultEnablement(true);
         setPriority(AnalysisPriority.LOW_PRIORITY);
         setSupportsOneTimeAnalysis();
+    }
+
+    private boolean functionMatchesOpcodeSignature(Function function) {
+
+        InstructionIterator instructions = function
+                .getProgram()
+                .getListing()
+                .getInstructions(function.getBody(), true);
+
+        int pos = 0;
+
+        while (instructions.hasNext()) {
+            Instruction current = instructions.next();
+
+            if (current.getMnemonicString().toLowerCase().equals(opcodeSignature[pos])) {
+                pos++;
+
+                // if we are at the end of the opcode signature...
+                if (pos == opcodeSignature.length) {
+                    // return true if we do not have more and false otherwise.
+                    return !instructions.hasNext();
+                }
+            } else {
+                break;
+            }
+        }
+
+        return false;
     }
 
     @Override
@@ -50,6 +81,8 @@ public class SelectorAliasAnalyzer extends AbstractAnalyzer {
 
     @Override
     public boolean added(Program program, AddressSetView set, TaskMonitor monitor, MessageLog log) throws CancelledException {
+
+
         return false;
     }
 
