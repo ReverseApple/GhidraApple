@@ -22,8 +22,7 @@ public class AliasOpcodeSignature {
             "ldr"
     };
 
-    public static String[] getInstructionSignature(Program program) throws MemoryAccessException {
-        MachOCpuID cpu = MachOCpuID.getCPU(program);
+    public static String[] getInstructionSignature(MachOCpuID cpu) {
 
         if (cpu == MachOCpuID.AARCH64) {
             return AARCH64;

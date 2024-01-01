@@ -18,6 +18,8 @@ public class SelectorAliasAnalyzer extends AbstractAnalyzer {
     public final static String NAME = "Objective-C Selector Alias Concretization";
     public final static String DESCRIPTION = "Test";
 
+    String[] opcodeSignature;
+
     public SelectorAliasAnalyzer() {
         super(NAME, DESCRIPTION, AnalyzerType.FUNCTION_ANALYZER);
 
@@ -33,6 +35,7 @@ public class SelectorAliasAnalyzer extends AbstractAnalyzer {
         if (program.getExecutableFormat().equals(MachoLoader.MACH_O_NAME)) {
             try {
                 MachOCpuID cpuArch = MachOCpuID.getCPU(program);
+                opcodeSignature = AliasOpcodeSignature.getInstructionSignature(cpuArch);
 
                 if (cpuArch == MachOCpuID.AARCH64 || cpuArch == MachOCpuID.AARCH64E)
                     return true;
