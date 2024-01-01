@@ -27,6 +27,4 @@ public class GhidraApplePlugin extends ProgramPlugin {
         super.init();
     }
 
-
-
 }

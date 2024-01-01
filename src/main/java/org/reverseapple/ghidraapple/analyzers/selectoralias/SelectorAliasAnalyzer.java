@@ -6,15 +6,16 @@ import ghidra.app.services.AnalysisPriority;
 import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.importer.MessageLog;
 import ghidra.app.util.opinion.MachoLoader;
+import ghidra.program.model.address.Address;
+import ghidra.program.model.address.AddressIterator;
 import ghidra.program.model.address.AddressSetView;
-import ghidra.program.model.listing.Function;
-import ghidra.program.model.listing.Instruction;
-import ghidra.program.model.listing.InstructionIterator;
-import ghidra.program.model.listing.Program;
+import ghidra.program.model.listing.*;
 import ghidra.program.model.mem.MemoryAccessException;
 import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
 import org.reverseapple.ghidraapple.utils.MachOCpuID;
+
+import java.util.ArrayList;
 
 public class SelectorAliasAnalyzer extends AbstractAnalyzer {
 
@@ -23,8 +24,12 @@ public class SelectorAliasAnalyzer extends AbstractAnalyzer {
 
     String[] opcodeSignature;
 
+    ArrayList<Function> selectorAliases;
+
     public SelectorAliasAnalyzer() {
         super(NAME, DESCRIPTION, AnalyzerType.FUNCTION_ANALYZER);
+
+        selectorAliases = new ArrayList<>();
 
         setDefaultEnablement(true);
         setPriority(AnalysisPriority.LOW_PRIORITY);
@@ -82,6 +87,22 @@ public class SelectorAliasAnalyzer extends AbstractAnalyzer {
     @Override
     public boolean added(Program program, AddressSetView set, TaskMonitor monitor, MessageLog log) throws CancelledException {
 
+        AddressIterator addresses = set.getAddresses(true);
+
+        while (addresses.hasNext()) {
+
+            if (monitor.isCancelled())
+                throw new CancelledException();
+
+            Address fxAddress = addresses.next();
+            Function function = program.getFunctionManager().getFunctionAt(fxAddress);
+
+            if (functionMatchesOpcodeSignature(function)) {
+                this.selectorAliases.add(function);
+            }
+
+            // todo: analyze here...
+        }
 
         return false;
     }
