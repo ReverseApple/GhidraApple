@@ -108,6 +108,12 @@ public class SelectorAliasAnalyzer extends AbstractAnalyzer {
     }
 
     @Override
+    public void analysisEnded(Program program) {
+        super.analysisEnded(program);
+        selectorAliases.clear();
+    }
+
+    @Override
     public AnalysisOptionsUpdater getOptionsUpdater() {
         return super.getOptionsUpdater();
     }
