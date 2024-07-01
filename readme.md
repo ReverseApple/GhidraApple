@@ -9,3 +9,5 @@ Better Apple binary analysis for Ghidra.
   - [ ] Class association analysis
   - [ ] Decompiler representation improvement.
 - [ ] `NSConcreteStackBlock` insights
+
+(this is a WIP list)
