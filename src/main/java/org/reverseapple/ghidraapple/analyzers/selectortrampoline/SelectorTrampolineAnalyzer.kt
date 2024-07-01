@@ -14,7 +14,10 @@ import ghidra.program.model.listing.Instruction
 import ghidra.program.model.listing.InstructionIterator
 import ghidra.program.model.listing.Program
 import ghidra.program.model.mem.MemoryAccessException
+import ghidra.program.model.symbol.RefType
+import ghidra.program.model.symbol.Reference
 import ghidra.program.model.symbol.SourceType
+import ghidra.program.model.symbol.SymbolType
 import ghidra.util.exception.CancelledException
 import ghidra.util.task.TaskMonitor
 import org.reverseapple.ghidraapple.utils.MachOCpuID
@@ -28,12 +31,12 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
 
     private lateinit var cpuId: MachOCpuID
     private lateinit var opcodeSignature: Array<String>
+    private lateinit var program: Program
     private val selectorTrampolines = ArrayList<ObjCTrampoline>()
 
     init {
         setDefaultEnablement(true)
-        setPriority(AnalysisPriority.DATA_ANALYSIS.before().before());
-        setSupportsOneTimeAnalysis()
+        setPriority(AnalysisPriority.DATA_ANALYSIS.before().before())
     }
 
     private fun functionMatchesOpcodeSignature(function: Function): Boolean {
@@ -89,6 +92,7 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
     @Throws(CancelledException::class)
     override fun added(program: Program, set: AddressSetView, monitor: TaskMonitor, log: MessageLog): Boolean {
 //        val addresses = set.addressRanges.map{ range-> range.maxAddress }
+        this.program = program
         val addresses = set.getAddresses(true).toList()
 
 
@@ -118,6 +122,9 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
         // Step 2: analyze class implementors.
 //        analyzeTrampolineClassImplementors(monitor)
 
+        // step 3: copy XREFs
+        copyXRefData(monitor)
+
         return true
     }
 
@@ -128,7 +135,48 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
         TODO()
     }
 
-    fun renameTrampolines(monitor: TaskMonitor) {
+    private fun copyXRefData(monitor: TaskMonitor) {
+        // On stubs where a SINGLE concrete implementation exists under the same name,
+        //  copy the references to the stub, to the identified concrete implementation.
+
+        monitor.message = "Copying stub refs to real implementations..."
+        monitor.maximum = selectorTrampolines.size.toLong()
+        monitor.progress = 0
+
+        for (trampoline in selectorTrampolines) {
+            val selName = trampoline.getSelectorString()
+
+            if (selName == null) {
+                println("WARNING: ${trampoline.function.body.minAddress} has null selector.")
+                // need to jump here.
+                monitor.progress += 1
+                continue
+            }
+
+            val symbols = program.symbolTable.getSymbols(selName).filter { symbol->
+                symbol.symbolType == SymbolType.FUNCTION && trampoline.function.symbol != symbol
+            }
+
+            if (symbols.size == 1) {
+                val addr = trampoline.function.body.minAddress
+                program.referenceManager.getReferencesTo(addr).forEach { reference ->
+
+                    program.referenceManager.addMemoryReference(
+                        reference.fromAddress,
+                        symbols[0].address,
+                        RefType.UNCONDITIONAL_CALL,
+                        SourceType.ANALYSIS,
+                        0
+                    )
+                }
+            }
+
+            monitor.progress += 1
+        }
+
+    }
+
+    private fun renameTrampolines(monitor: TaskMonitor) {
         monitor.message = "Renaming Obj-C Trampolines..."
         monitor.maximum = selectorTrampolines.size.toLong()
         monitor.progress = 0
