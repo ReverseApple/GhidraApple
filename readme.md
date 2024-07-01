@@ -4,5 +4,8 @@ Better Apple binary analysis for Ghidra.
 
 ## Todo
 
-- [ ] Objective-C Selector Alias Function Analysis
+- [ ] Objective-C Selector Trampoline Analysis
+  - [x] Renaming
+  - [ ] Class association analysis
+  - [ ] Decompiler representation improvement.
 - [ ] `NSConcreteStackBlock` insights
