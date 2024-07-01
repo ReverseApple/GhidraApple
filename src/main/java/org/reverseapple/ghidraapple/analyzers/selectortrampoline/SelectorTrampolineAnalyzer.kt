@@ -32,7 +32,7 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
 
     init {
         setDefaultEnablement(true)
-        priority = AnalysisPriority.LOW_PRIORITY
+        setPriority(AnalysisPriority.DATA_ANALYSIS.before().before());
         setSupportsOneTimeAnalysis()
     }
 
@@ -88,20 +88,23 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
 
     @Throws(CancelledException::class)
     override fun added(program: Program, set: AddressSetView, monitor: TaskMonitor, log: MessageLog): Boolean {
-        val addresses: AddressIterator = set.getAddresses(true)
+//        val addresses = set.addressRanges.map{ range-> range.maxAddress }
+        val addresses = set.getAddresses(true).toList()
+
+
+        println("ADDED ${addresses.size} ADDRESSES")
 
         // Find (and store) functions that match the trampoline instruction signature for the current CPU.
 
         monitor.message = "Identifying trampoline functions..."
-        monitor.maximum = addresses.count().toLong()
+        monitor.maximum = addresses.size.toLong()
 
-        while (addresses.hasNext()) {
+        for (address in addresses) {
             if (monitor.isCancelled) throw CancelledException()
 
-            val fxAddress: Address = addresses.next()
-            program.functionManager.getFunctionAt(fxAddress)?.let { function ->
+            program.functionManager.getFunctionAt(address)?.let { function ->
                 if (functionMatchesOpcodeSignature(function)) {
-                    println("Function ${function.name} complies with trampoline pattern.")
+                    println("Trampoline detected: ${function.name}")
                     selectorTrampolines.add(ObjCTrampoline(function, cpuId))
                 }
             }
@@ -113,16 +116,16 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
         renameTrampolines(monitor)
 
         // Step 2: analyze class implementors.
-        analyzeTrampolineClassImplementors(monitor)
+//        analyzeTrampolineClassImplementors(monitor)
 
-        return false
+        return true
     }
 
     fun analyzeTrampolineClassImplementors(monitor: TaskMonitor) {
         monitor.message = "Recovering implementors..."
         monitor.maximum = selectorTrampolines.size.toLong()
         monitor.progress = 0
-
+        TODO()
     }
 
     fun renameTrampolines(monitor: TaskMonitor) {
@@ -143,7 +146,4 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
         selectorTrampolines.clear()
     }
 
-    override fun getOptionsUpdater(): AnalysisOptionsUpdater? {
-        return super.getOptionsUpdater()
-    }
 }

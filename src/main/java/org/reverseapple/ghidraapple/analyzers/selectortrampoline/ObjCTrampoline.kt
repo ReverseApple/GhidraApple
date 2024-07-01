@@ -26,16 +26,16 @@ class ObjCTrampoline(val function: Function, val cpuId: MachOCpuID) {
 
         return when (cpuId) {
             MachOCpuID.AARCH64 -> {
-                if (instructions[1].mnemonicString != "LDR")
+                if (instructions[1].mnemonicString != "ldr")
                     return null
 
                 // second parameter of second instruction.
-                val refs = instructions[1].getOperandReferences(1)
+                val refs = instructions[1].getOperandReferences(0)
 
                 if (refs.size != 1)
                     return null
 
-                return Memory.readMemString(function.program, refs[0].toAddress)
+                return function.program.listing.getDefinedDataAt(refs[0].toAddress).value.toString()
             }
             MachOCpuID.AARCH64E -> {
                 TODO()
