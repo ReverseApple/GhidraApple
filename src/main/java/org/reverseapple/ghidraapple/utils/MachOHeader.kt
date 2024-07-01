@@ -1,52 +1,50 @@
-package org.reverseapple.ghidraapple.utils;
+package org.reverseapple.ghidraapple.utils
 
-import ghidra.program.model.address.Address;
-import ghidra.program.model.listing.Program;
-import ghidra.program.model.mem.Memory;
-import ghidra.program.model.mem.MemoryAccessException;
-import ghidra.program.model.mem.MemoryBlock;
+import ghidra.program.model.address.Address
+import ghidra.program.model.listing.Program
+import ghidra.program.model.mem.Memory
+import ghidra.program.model.mem.MemoryBlock
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
+class MachOHeader(program: Program) {
 
-public class MachOHeader {
+    val cputype: Int
+    val cpusubtype: Int
+    val filetype: Int
+    val ncmds: Int
+    val sizeofcmds: Int
+    val flags: Int
+    val reserved: Int
 
-    static final int MAGIC = 0xFEEDFACF;
+    init {
+        val memory: Memory = program.memory
 
-    public final int cputype;
-    public final int cpusubtype;
-    public final int filetype;
-    public final int ncmds;
-    public final int sizeofcmds;
-    public final int flags;
-    public final int reserved;
+        val text: MemoryBlock = memory.getBlock("__TEXT")
+            ?: throw IllegalArgumentException("Block '__TEXT' not found in memory")
 
-    public MachOHeader(Program program) throws MemoryAccessException {
-        Memory memory = program.getMemory();
-        MemoryBlock text = memory.getBlock("__TEXT");
+        val start: Address = text.start
 
-        if (text == null) {
-            throw new IllegalArgumentException("Block '__TEXT' not found in memory");
+        val headerBytes = ByteArray(32)
+        text.getBytes(start, headerBytes)
+
+        val buf: ByteBuffer = ByteBuffer.wrap(headerBytes).apply {
+            order(ByteOrder.LITTLE_ENDIAN)
+
+            // Skip the magic.
+            position(4)
         }
 
-        Address start = text.getStart();
-
-        byte[] headerBytes = new byte[32];
-        text.getBytes(start, headerBytes);
-
-        ByteBuffer buf = ByteBuffer.wrap(headerBytes);
-        buf.order(ByteOrder.LITTLE_ENDIAN);
-
-        // Skip the magic.
-        buf.position(4);
-
-        this.cputype = buf.getInt();
-        this.cpusubtype = buf.getInt();
-        this.filetype = buf.getInt();
-        this.ncmds = buf.getInt();
-        this.sizeofcmds = buf.getInt();
-        this.flags = buf.getInt();
-        this.reserved = buf.getInt();
+        cputype = buf.int
+        cpusubtype = buf.int
+        filetype = buf.int
+        ncmds = buf.int
+        sizeofcmds = buf.int
+        flags = buf.int
+        reserved = buf.int
     }
 
+    companion object {
+        const val MAGIC = 0xFEEDFACF
+    }
 }

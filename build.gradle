@@ -1,4 +1,6 @@
-// Builds a Ghidra Extension for a given Ghidra installation.
+plugins {
+    id 'org.jetbrains.kotlin.jvm'
+}// Builds a Ghidra Extension for a given Ghidra installation.
 //
 // An absolute path to the Ghidra installation directory must be supplied either by setting the 
 // GHIDRA_INSTALL_DIR environment variable or Gradle project property:
@@ -29,5 +31,14 @@ if (ghidraInstallDir) {
 }
 else {
     throw new GradleException("GHIDRA_INSTALL_DIR is not defined!")
+}
+repositories {
+    mavenCentral()
+}
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
+}
+kotlin {
+    jvmToolchain(17)
 }
 //----------------------END "DO NOT MODIFY" SECTION-------------------------------
