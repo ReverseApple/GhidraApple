@@ -4,11 +4,7 @@ package org.reverseapple.ghidraapple.analyzers.selectortrampoline
 import ghidra.program.model.listing.Function
 import ghidra.program.model.listing.Instruction
 import ghidra.program.model.listing.InstructionIterator
-import ghidra.program.model.symbol.Reference
-import ghidra.program.model.symbol.Symbol
-
 import org.reverseapple.ghidraapple.utils.MachOCpuID
-import org.reverseapple.ghidraapple.utils.Memory
 
 class ObjCTrampoline(val function: Function, val cpuId: MachOCpuID) {
 
