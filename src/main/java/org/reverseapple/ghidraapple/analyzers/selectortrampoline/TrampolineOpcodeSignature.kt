@@ -22,11 +22,11 @@ class TrampolineOpcodeSignature {
             "braa"
         )
 
-        fun getInstructionSignature(cpu: MachOCpuID): Array<String> {
+        fun getInstructionSignature(cpu: MachOCpuID): Array<String>? {
             return when (cpu) {
                 MachOCpuID.AARCH64 -> AARCH64
                 MachOCpuID.AARCH64E -> AARCH64E
-                else -> throw IllegalArgumentException("Unsupported CPU: $cpu")
+                else -> null
             }
         }
     }

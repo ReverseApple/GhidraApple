@@ -92,8 +92,14 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
                 val cpuArch = MachOCpuID.getCPU(program)
 
                 if (cpuArch != null) {
-                    opcodeSignature = TrampolineOpcodeSignature.getInstructionSignature(cpuArch)
                     cpuId = cpuArch
+
+                    val sig = TrampolineOpcodeSignature.getInstructionSignature(cpuArch)
+                    if (sig != null) {
+                        opcodeSignature = sig
+                    } else {
+                        return false
+                    }
                 } else {
                     return false;
                 }
