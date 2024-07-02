@@ -1,12 +1,15 @@
-package org.reverseapple.ghidraapple.analyzers.selectortrampoline
+package lol.fairplay.ghidraapple.analysis.selectortrampoline
 
 
+import ghidra.program.database.symbol.FunctionSymbol
 import ghidra.program.model.listing.Function
-import ghidra.program.model.listing.Instruction
 import ghidra.program.model.listing.InstructionIterator
-import org.reverseapple.ghidraapple.utils.MachOCpuID
+import ghidra.program.model.symbol.SymbolType
+import lol.fairplay.ghidraapple.common.MachOCpuID
 
 class ObjCTrampoline(val function: Function, val cpuId: MachOCpuID) {
+
+    private val program = function.program
 
     fun getSelectorString(): String? {
 
@@ -15,10 +18,7 @@ class ObjCTrampoline(val function: Function, val cpuId: MachOCpuID) {
             .listing
             .getInstructions(function.body, true)
 
-        val instructions = mutableListOf<Instruction>()
-        while (instrIter.hasNext()) {
-            instructions.add(instrIter.next())
-        }
+        val instructions = instrIter.toList()
 
         return when (cpuId) {
             MachOCpuID.AARCH64,
@@ -32,11 +32,25 @@ class ObjCTrampoline(val function: Function, val cpuId: MachOCpuID) {
                 if (refs.size != 1)
                     return null
 
-                return function.program.listing.getDefinedDataAt(refs[0].toAddress).value.toString()
+                return program.listing.getDefinedDataAt(refs[0].toAddress).value.toString()
             }
             else -> null
         }
 
+    }
+
+    fun findActualImplementation(): FunctionSymbol? {
+        val selectorString = getSelectorString() ?: return null
+
+        val symbols = program.symbolTable.getSymbols(selectorString).filter { symbol->
+            symbol.symbolType == SymbolType.FUNCTION && function.symbol != symbol
+        }
+
+        if (symbols.size == 1) {
+            return symbols[0] as FunctionSymbol
+        }
+
+        return null
     }
 
     fun resolveClasses(): Array<String> {

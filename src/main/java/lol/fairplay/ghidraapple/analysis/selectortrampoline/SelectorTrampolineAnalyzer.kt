@@ -1,4 +1,4 @@
-package org.reverseapple.ghidraapple.analyzers.selectortrampoline
+package lol.fairplay.ghidraapple.analysis.selectortrampoline
 
 import ghidra.app.services.AbstractAnalyzer
 import ghidra.app.services.AnalysisPriority
@@ -16,10 +16,9 @@ import ghidra.program.model.listing.Program
 import ghidra.program.model.mem.MemoryAccessException
 import ghidra.program.model.symbol.RefType
 import ghidra.program.model.symbol.SourceType
-import ghidra.program.model.symbol.SymbolType
 import ghidra.util.exception.CancelledException
 import ghidra.util.task.TaskMonitor
-import org.reverseapple.ghidraapple.utils.MachOCpuID
+import lol.fairplay.ghidraapple.common.MachOCpuID
 
 class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTION_ANALYZER) {
 
@@ -49,7 +48,7 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
             OptionType.BOOLEAN_TYPE,
             shouldMoveSelRefs,
             null,
-            null
+            "Analyze references to Objective-C trampolines and copy them to the corresponding *actual* method."
         )
     }
 
@@ -118,7 +117,6 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
         this.program = program
         val addresses = set.getAddresses(true).toList()
 
-
         println("ADDED ${addresses.size} ADDRESSES")
 
         // Find (and store) functions that match the trampoline instruction signature for the current CPU.
@@ -129,6 +127,7 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
 
         // Step 2: analyze class implementors.
         //  analyzeTrampolineClassImplementors(monitor)
+
         if (shouldMoveSelRefs) {
             copyXRefData(monitor)
         }
@@ -174,31 +173,25 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
         monitor.progress = 0
 
         for (trampoline in selectorTrampolines) {
-            val selName = trampoline.getSelectorString()
 
-            if (selName == null) {
-                println("WARNING: ${trampoline.function.body.minAddress} has null selector.")
-                // need to jump here.
+            val actualImplementation = trampoline.findActualImplementation()
+
+            if (actualImplementation == null) {
                 monitor.progress += 1
                 continue
             }
 
-            val symbols = program.symbolTable.getSymbols(selName).filter { symbol->
-                symbol.symbolType == SymbolType.FUNCTION && trampoline.function.symbol != symbol
-            }
+            val tAddress = trampoline.function.symbol.address
 
-            if (symbols.size == 1) {
-                val addr = trampoline.function.body.minAddress
-                program.referenceManager.getReferencesTo(addr).forEach { reference ->
-                    // Create call reference from calling function to the actual impl.
-                    program.referenceManager.addMemoryReference(
-                        reference.fromAddress,
-                        symbols[0].address,
-                        RefType.UNCONDITIONAL_CALL,
-                        SourceType.ANALYSIS,
-                        0
-                    )
-                }
+            program.referenceManager.getReferencesTo(tAddress).forEach { reference ->
+                // Create call reference from calling function to the actual impl.
+                program.referenceManager.addMemoryReference(
+                    reference.fromAddress,
+                    actualImplementation.address,
+                    RefType.UNCONDITIONAL_CALL,
+                    SourceType.ANALYSIS,
+                    0
+                )
             }
 
             monitor.progress += 1

@@ -1,4 +1,4 @@
-package org.reverseapple.ghidraapple.utils
+package lol.fairplay.ghidraapple.common
 
 import ghidra.program.model.lang.Language
 import ghidra.program.model.listing.Program
