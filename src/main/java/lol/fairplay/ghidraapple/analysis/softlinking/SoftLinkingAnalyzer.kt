@@ -22,7 +22,7 @@ class SoftLinkingAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, TYPE) {
         return program!!.executableFormat == MachoLoader.MACH_O_NAME
     }
 
-    override fun added(prog: Program, set: AddressSetView?, monitor: TaskMonitor?, log: MessageLog?): Boolean {
+    override fun added(prog: Program, set: AddressSetView, monitor: TaskMonitor, log: MessageLog): Boolean {
         program = prog
 
         TODO()
