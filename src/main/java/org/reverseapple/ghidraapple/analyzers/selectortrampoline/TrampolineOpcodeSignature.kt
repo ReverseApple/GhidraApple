@@ -18,10 +18,10 @@ class TrampolineOpcodeSignature {
             "ldr",
             "adrp",
             "add",
-            "ldr"
+            "ldr",
+            "braa"
         )
 
-        @JvmStatic
         fun getInstructionSignature(cpu: MachOCpuID): Array<String> {
             return when (cpu) {
                 MachOCpuID.AARCH64 -> AARCH64

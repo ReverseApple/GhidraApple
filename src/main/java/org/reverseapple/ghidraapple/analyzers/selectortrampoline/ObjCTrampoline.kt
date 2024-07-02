@@ -21,7 +21,8 @@ class ObjCTrampoline(val function: Function, val cpuId: MachOCpuID) {
         }
 
         return when (cpuId) {
-            MachOCpuID.AARCH64 -> {
+            MachOCpuID.AARCH64,
+            MachOCpuID.AARCH64E -> {
                 if (instructions[1].mnemonicString != "ldr")
                     return null
 
@@ -32,9 +33,6 @@ class ObjCTrampoline(val function: Function, val cpuId: MachOCpuID) {
                     return null
 
                 return function.program.listing.getDefinedDataAt(refs[0].toAddress).value.toString()
-            }
-            MachOCpuID.AARCH64E -> {
-                TODO()
             }
             else -> null
         }
