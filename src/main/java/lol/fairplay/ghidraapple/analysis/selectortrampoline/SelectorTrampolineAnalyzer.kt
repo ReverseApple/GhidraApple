@@ -130,11 +130,7 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
         // Find (and store) functions that match the trampoline instruction signature for the current CPU.
         findTrampolines(monitor, addresses, program)
 
-        // Step 1: rename trampolines.
         renameTrampolines(monitor)
-
-        // Step 2: analyze class implementors.
-        //  analyzeTrampolineClassImplementors(monitor)
 
         if (shouldMoveSelRefs) {
             copyXRefData(monitor)
