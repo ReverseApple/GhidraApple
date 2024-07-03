@@ -25,8 +25,10 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
     companion object {
         const val NAME = "Analyze Objective-C Selector Trampolines"
         const val DESCRIPTION = "Identify and rename Objective-C trampoline procedures."
-
         const val OPT_SHOULD_COPY_REFS = "Copy Trampoline References to Actual Implementations"
+
+        const val TRAMPOLINE_TAG = "OBJC_TRAMPOLINE"
+        const val TRAMPOLINE_TAG_DESC = "Objective-C Selector Trampoline Function"
     }
 
     private lateinit var cpuId: MachOCpuID
@@ -115,6 +117,12 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
     @Throws(CancelledException::class)
     override fun added(program: Program, set: AddressSetView, monitor: TaskMonitor, log: MessageLog): Boolean {
         this.program = program
+
+        program.functionManager.functionTagManager.createFunctionTag(
+            TRAMPOLINE_TAG,
+            TRAMPOLINE_TAG_DESC
+        )
+
         val addresses = set.getAddresses(true).toList()
 
         println("ADDED ${addresses.size} ADDRESSES")
@@ -140,6 +148,7 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
         addresses: List<Address>,
         program: Program
     ) {
+
         monitor.message = "Identifying trampoline functions..."
         monitor.maximum = addresses.size.toLong()
 
@@ -150,18 +159,12 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
                 if (functionMatchesOpcodeSignature(function)) {
                     println("Trampoline detected: ${function.name}")
                     selectorTrampolines.add(ObjCTrampoline(function, cpuId))
+                    function.addTag(TRAMPOLINE_TAG)
                 }
             }
 
             monitor.progress += 1
         }
-    }
-
-    fun analyzeTrampolineClassImplementors(monitor: TaskMonitor) {
-        monitor.message = "Recovering implementors..."
-        monitor.maximum = selectorTrampolines.size.toLong()
-        monitor.progress = 0
-        TODO()
     }
 
     private fun copyXRefData(monitor: TaskMonitor) {
