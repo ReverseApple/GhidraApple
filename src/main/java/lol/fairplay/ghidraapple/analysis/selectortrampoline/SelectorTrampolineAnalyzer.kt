@@ -23,9 +23,10 @@ import lol.fairplay.ghidraapple.common.MachOCpuID
 class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTION_ANALYZER) {
 
     companion object {
-        const val NAME = "Analyze Objective-C Selector Trampolines"
+        const val NAME = "Objective-C Selector Trampoline Analysis"
         const val DESCRIPTION = "Identify and rename Objective-C trampoline procedures."
         const val OPT_SHOULD_COPY_REFS = "Copy Trampoline References to Actual Implementations"
+        val PRIORITY = AnalysisPriority.DATA_ANALYSIS.before().before()
 
         const val TRAMPOLINE_TAG = "OBJC_TRAMPOLINE"
         const val TRAMPOLINE_TAG_DESC = "Objective-C Selector Trampoline Function"
@@ -40,7 +41,7 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
 
     init {
         setDefaultEnablement(true)
-        setPriority(AnalysisPriority.DATA_ANALYSIS.before().before())
+        setPriority(PRIORITY)
     }
 
     override fun registerOptions(options: Options?, program: Program?) {
