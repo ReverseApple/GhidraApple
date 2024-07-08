@@ -5,7 +5,7 @@ import ghidra.program.database.symbol.FunctionSymbol
 import ghidra.program.model.listing.Function
 import ghidra.program.model.listing.InstructionIterator
 import ghidra.program.model.symbol.SymbolType
-import lol.fairplay.ghidraapple.common.MachOCpuID
+import lol.fairplay.ghidraapple.core.common.MachOCpuID
 
 class ObjCTrampoline(val function: Function, val cpuId: MachOCpuID) {
 

@@ -18,7 +18,7 @@ import ghidra.program.model.symbol.RefType
 import ghidra.program.model.symbol.SourceType
 import ghidra.util.exception.CancelledException
 import ghidra.util.task.TaskMonitor
-import lol.fairplay.ghidraapple.common.MachOCpuID
+import lol.fairplay.ghidraapple.core.common.MachOCpuID
 
 class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTION_ANALYZER) {
 

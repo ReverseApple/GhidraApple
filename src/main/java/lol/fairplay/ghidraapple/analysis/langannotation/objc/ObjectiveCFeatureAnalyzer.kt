@@ -1,4 +1,4 @@
-package lol.fairplay.ghidraapple.analysis.langannotation
+package lol.fairplay.ghidraapple.analysis.langannotation.objc
 
 import ghidra.app.services.AbstractAnalyzer
 import ghidra.app.services.AnalysisPriority
@@ -9,7 +9,7 @@ import ghidra.program.model.listing.Function
 import ghidra.program.model.listing.Program
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.analysis.selectortrampoline.SelectorTrampolineAnalyzer
-import lol.fairplay.ghidraapple.common.MachOCpuID
+import lol.fairplay.ghidraapple.core.common.MachOCpuID
 
 
 class ObjectiveCFeatureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTION_ANALYZER) {
