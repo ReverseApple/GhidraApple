@@ -34,8 +34,9 @@ open class ClangNodeVisitor {
 
     fun genericVisit(node: ClangNode) {
         depth++
-        for (i in 0..<node.numChildren()) {
-            visit(node.Child(i))
+        val children = getChildrenList(node)
+        for (c in children) {
+            visit(c)
         }
         depth--
     }
