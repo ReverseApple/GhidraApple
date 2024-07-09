@@ -1,6 +1,6 @@
 package lol.fairplay.ghidraapple.analysis.selectortrampoline
 
-import lol.fairplay.ghidraapple.common.MachOCpuID
+import lol.fairplay.ghidraapple.core.common.MachOCpuID
 
 class TrampolineOpcodeSignature {
 

@@ -1,4 +1,4 @@
-package lol.fairplay.ghidraapple.common
+package lol.fairplay.ghidraapple.core.common
 
 import ghidra.program.model.lang.Language
 import ghidra.program.model.listing.Program
