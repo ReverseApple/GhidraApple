@@ -1,4 +1,4 @@
-package lol.fairplay.ghidraapple.analysis.langannotation
+package lol.fairplay.ghidraapple.core.decompiler
 
 import ghidra.app.decompiler.DecompInterface
 import ghidra.app.decompiler.DecompileResults

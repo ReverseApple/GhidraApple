@@ -2,10 +2,16 @@ package lol.fairplay.ghidraapple.core.decompiler
 
 import ghidra.app.decompiler.*
 
-class ClangNodeVisitor {
+open class ClangNodeVisitor {
+
+    var depth = 0
 
     fun visit(node: ClangNode) {
         when (node) {
+            // these occur the most, so I'm placing them at the top.
+            is ClangBreak -> visitBreak(node)
+            is ClangSyntaxToken -> visitSyntaxToken(node)
+
             is ClangVariableDecl -> visitVariableDecl(node)
             is ClangStatement -> visitStatement(node)
             is ClangFuncProto -> visitFuncProto(node)
@@ -19,74 +25,78 @@ class ClangNodeVisitor {
             is ClangOpToken -> visitOpToken(node)
             is ClangVariableToken -> visitVariableToken(node)
             is ClangFuncNameToken -> visitFuncNameToken(node)
-            is ClangBreak -> visitBreak(node)
-            is ClangSyntaxToken -> visitSyntaxToken(node)
+            else -> {
+                if (node is ClangTokenGroup)
+                    genericVisit(node)
+            }
         }
     }
 
-    private fun genericVisit(node: ClangNode) {
+    fun genericVisit(node: ClangNode) {
+        depth++
         for (i in 0..<node.numChildren()) {
             visit(node.Child(i))
         }
+        depth--
     }
 
-    fun visitVariableDecl(node: ClangVariableDecl) {
+    open fun visitVariableDecl(node: ClangVariableDecl) {
         genericVisit(node)
     }
 
-    fun visitStatement(node: ClangStatement) {
+    open fun visitStatement(node: ClangStatement) {
         genericVisit(node)
     }
 
-    fun visitFuncProto(node: ClangFuncProto) {
+    open fun visitFuncProto(node: ClangFuncProto) {
         genericVisit(node)
     }
 
-    fun visitReturnType(node: ClangReturnType) {
+    open fun visitReturnType(node: ClangReturnType) {
         genericVisit(node)
     }
 
-    fun visitFunction(node: ClangFunction) {
+    open fun visitFunction(node: ClangFunction) {
         genericVisit(node)
     }
 
-    fun visitCaseToken(node: ClangCaseToken) {
+    open fun visitCaseToken(node: ClangCaseToken) {
         genericVisit(node)
     }
 
-    fun visitTypeToken(node: ClangTypeToken) {
+    open fun visitTypeToken(node: ClangTypeToken) {
         genericVisit(node)
     }
 
-    fun visitLabelToken(node: ClangLabelToken) {
+    open fun visitLabelToken(node: ClangLabelToken) {
         genericVisit(node)
     }
 
-    fun visitCommentToken(node: ClangCommentToken) {
+    open fun visitCommentToken(node: ClangCommentToken) {
         genericVisit(node)
     }
 
-    fun visitFieldToken(node: ClangFieldToken) {
+    open fun visitFieldToken(node: ClangFieldToken) {
         genericVisit(node)
     }
 
-    fun visitOpToken(node: ClangOpToken) {
+    open fun visitOpToken(node: ClangOpToken) {
         genericVisit(node)
     }
 
-    fun visitVariableToken(node: ClangVariableToken) {
+    open fun visitVariableToken(node: ClangVariableToken) {
         genericVisit(node)
     }
 
-    fun visitFuncNameToken(node: ClangFuncNameToken) {
+    open fun visitFuncNameToken(node: ClangFuncNameToken) {
         genericVisit(node)
     }
 
-    fun visitBreak(node: ClangBreak) {
+    open fun visitBreak(node: ClangBreak) {
         genericVisit(node)
     }
 
-    fun visitSyntaxToken(node: ClangSyntaxToken) {
+    open fun visitSyntaxToken(node: ClangSyntaxToken) {
         genericVisit(node)
     }
 }

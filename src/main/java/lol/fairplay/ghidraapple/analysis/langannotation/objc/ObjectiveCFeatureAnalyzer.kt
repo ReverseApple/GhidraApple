@@ -60,8 +60,6 @@ class ObjectiveCFeatureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerTy
             }
         }
 
-
-
         TODO()
     }
 

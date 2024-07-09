@@ -4,6 +4,7 @@ import ghidra.program.model.address.Address
 import ghidra.program.model.listing.Function
 import ghidra.program.model.listing.Program
 import ghidra.program.model.pcode.PcodeOp
+import lol.fairplay.ghidraapple.core.decompiler.DecompiledFunctionProvider
 
 class FnCall(program: Program, address: Address) {
 
