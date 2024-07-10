@@ -9,13 +9,12 @@ import ghidra.framework.options.OptionType
 import ghidra.framework.options.Options
 import ghidra.program.model.address.Address
 import ghidra.program.model.address.AddressSetView
+import ghidra.program.model.listing.*
 import ghidra.program.model.listing.Function
-import ghidra.program.model.listing.Instruction
-import ghidra.program.model.listing.InstructionIterator
-import ghidra.program.model.listing.Program
 import ghidra.program.model.mem.MemoryAccessException
 import ghidra.program.model.symbol.RefType
 import ghidra.program.model.symbol.SourceType
+import ghidra.program.model.symbol.SymbolType
 import ghidra.util.exception.CancelledException
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.core.common.MachOCpuID
@@ -53,6 +52,7 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
             null,
             "Analyze references to Objective-C trampolines and copy them to the corresponding *actual* method."
         )
+
     }
 
     override fun optionsChanged(options: Options?, program: Program?) {
@@ -137,7 +137,36 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
             copyXRefData(monitor)
         }
 
+        // todo: eventually separate this from SelectorTrampolineAnalyzer
+        monitor.message = "Fixing Objective-C messaging function signatures..."
+        fixObjCRuntimeFunctionSig()
+
         return true
+    }
+
+    private fun fixObjCRuntimeFunctionSig() {
+        val names = listOf("_objc_retainAutoreleasedReturnValue", "_objc_autorelease")
+        val objc_id_datatype = "/_objc2_/ID"
+
+        val datatype = program.dataTypeManager.getDataType(objc_id_datatype)
+        val param = ParameterImpl("return_value", datatype, program.getRegister("x0"), program)
+
+        for (funcname in names) {
+            val fAddress = program.symbolTable.getSymbols(name).find {
+                it.symbolType == SymbolType.FUNCTION
+            } ?: continue
+
+            val function = program.functionManager.getFunctionAt(fAddress.address)
+            function.updateFunction(
+                null,
+                null,
+                listOf(param),
+                Function.FunctionUpdateType.DYNAMIC_STORAGE_FORMAL_PARAMS,
+                true,
+                SourceType.ANALYSIS
+            )
+        }
+
     }
 
     private fun findTrampolines(
