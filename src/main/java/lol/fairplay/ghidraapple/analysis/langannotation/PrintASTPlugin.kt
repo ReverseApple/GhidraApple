@@ -113,7 +113,7 @@ class PrintASTPlugin(tool: PluginTool) : ProgramPlugin(tool) {
     }
 
     private fun createActions() {
-        val action = object : DockingAction("My Action", name) {
+        val action = object : DockingAction("Print Function AST", name) {
             override fun actionPerformed(context: ActionContext?) {
                 if (currentProgram != null) {
                     val dec = DecompiledFunctionProvider(currentProgram)
