@@ -46,7 +46,7 @@ class AnnotateFunctionPlugin(tool: PluginTool) : ProgramPlugin(tool) {
             }
         }
 
-        action.menuBarData = MenuData(arrayOf("GhidraApple", "Annotate Function"))
+        action.menuBarData = MenuData(arrayOf("GhidraApple", "Annotate Obj-C"))
         tool?.addAction(action)
     }
 }

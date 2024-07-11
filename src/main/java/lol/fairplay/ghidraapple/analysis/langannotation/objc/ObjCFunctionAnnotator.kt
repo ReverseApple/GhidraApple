@@ -1,8 +1,12 @@
 package lol.fairplay.ghidraapple.analysis.langannotation.objc
 
-import ghidra.app.decompiler.*
+import ghidra.app.decompiler.ClangFuncNameToken
+import ghidra.app.decompiler.ClangNode
+import ghidra.app.decompiler.ClangOpToken
+import ghidra.app.decompiler.ClangVariableToken
+import ghidra.program.model.address.Address
+import ghidra.program.model.listing.CodeUnit
 import ghidra.program.model.listing.Function
-import ghidra.program.model.symbol.SymbolType
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.analysis.selectortrampoline.SelectorTrampolineAnalyzer
 import lol.fairplay.ghidraapple.core.decompiler.*
@@ -18,6 +22,12 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
 
     private fun isSelector(function: Function): Boolean {
         return function.tags.contains(TRAMPOLINE_TAG)
+    }
+
+    private fun setComment(address: Address, comment: String) {
+        val transaction = program.startTransaction("Set Comment")
+        program.listing.setComment(address, CodeUnit.PRE_COMMENT, comment)
+        program.endTransaction(transaction, true);
     }
 
     fun run() {
@@ -57,7 +67,7 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
                         if (isAssignment) {
                             tokens.rewind()
                             val assignment = parseAssignment(tokens) ?: throw Error("This should be impossible - 1")
-
+                            assert(assignment.first in objCState)
                         }
                     }
 
@@ -77,10 +87,10 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
                         }
                     }
 
-                    "_objc_release" -> {
-                        // precondition: call argument is the result of an objective-c call.
-                        // This will be when we apply the annotation.
-                    }
+//                    "_objc_release" -> {
+//                        // precondition: call argument is the result of an objective-c call.
+//
+//                    }
 
                     else -> {
                         if (isSelector(calledFunction)) {
@@ -95,10 +105,11 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
                                         val assignment =
                                             parseAssignment(tokens) ?: throw Error("This should be impossible - 3")
 
-                                        // Find the related _objc_retainAutoreleasedReturnValue statement...
-
+                                        //todo: Find the related _objc_retainAutoreleasedReturnValue statement...
 
                                         objCState[assignment.first] = it
+                                    } else {
+                                        setComment(statement.maxAddress.add(1), it.decompile(rootFunction, objCState))
                                     }
 
                                 }

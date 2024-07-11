@@ -13,8 +13,12 @@ fun getChildrenList(node: ClangNode): List<ClangNode> {
 }
 
 
-class TokenScanner(val nodes: List<ClangNode>) {
+class TokenScanner(var nodes: List<ClangNode>, val whitespace: Boolean = false) {
     private var index = 0
+
+    init {
+        nodes = nodes.filter{ !whitespace && it.toString().trim().isNotEmpty() }
+    }
 
     fun hasMore() = index < nodes.size
 
