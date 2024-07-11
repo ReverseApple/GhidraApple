@@ -1,10 +1,8 @@
 package lol.fairplay.ghidraapple.analysis.langannotation.objc
 
-import ghidra.app.decompiler.ClangFuncNameToken
-import ghidra.app.decompiler.ClangNode
-import ghidra.app.decompiler.ClangSyntaxToken
-import ghidra.app.decompiler.ClangVariableToken
+import ghidra.app.decompiler.*
 import ghidra.program.model.listing.Function
+import ghidra.program.model.symbol.SymbolType
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.analysis.selectortrampoline.SelectorTrampolineAnalyzer
 import lol.fairplay.ghidraapple.core.decompiler.*
@@ -15,7 +13,8 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
     private val decompiler = DecompiledFunctionProvider(function.program)
     private val program = function.program
 
-    val TRAMPOLINE_TAG = program.functionManager.functionTagManager.getFunctionTag(SelectorTrampolineAnalyzer.TRAMPOLINE_TAG)
+    val TRAMPOLINE_TAG =
+        program.functionManager.functionTagManager.getFunctionTag(SelectorTrampolineAnalyzer.TRAMPOLINE_TAG)
 
     private fun isSelector(function: Function): Boolean {
         return function.tags.contains(TRAMPOLINE_TAG)
@@ -27,7 +26,7 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
         //  or we can try to get a better implementation to upstream Ghidra.
 
         monitor.message = "Extracting function statements..."
-        val decompileResults = decompiler.getDecompiled(function)
+        val decompileResults = decompiler.getDecompiled(function, 60)
         val rootFunction = decompileResults.cCodeMarkup
 
         monitor.message = "Annotating Objective-C..."
@@ -40,16 +39,19 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
         for (statement in statements) {
             val tokens = TokenScanner(getChildrenList(statement))
 
-            val isAssignment = tokens.getNode<ClangSyntaxToken>().let { it != null && it.toString() == "=" }
+            val isAssignment = tokens.getNode<ClangOpToken>().let { it != null && it.toString() == "=" }
             val isFunctionCall = tokens.getNode<ClangFuncNameToken>() != null
 
             if (isFunctionCall) {
                 val functionNode = tokens.getNode<ClangFuncNameToken>()!!
                 val functionArgs = parseFunctionArgs(tokens)
 
-                val calledFunction = program.functionManager.getFunctionAt(functionNode.varnode.address)
+                val calledFunction = program.symbolTable.getSymbols(functionNode.toString()).map {
+                    program.functionManager.getFunctionAt(it.address)
+                }.find { it != null && (it.tags.contains(TRAMPOLINE_TAG) || it.name.startsWith("_objc_")) }!!
 
-                when (function.name) {
+
+                when (calledFunction.name) {
                     "_objc_retainAutoreleasedReturnValue" -> {
                         // precondition: call argument is the result of an objective-c call.
                         if (isAssignment) {
@@ -58,6 +60,7 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
 
                         }
                     }
+
                     "_objc_alloc" -> {
                         // precondition: call argument is an _OBJC_CLASS_$_
                         if (isAssignment) {
@@ -73,20 +76,27 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
                             objCState[assignment.first] = methodCall
                         }
                     }
+
                     "_objc_release" -> {
                         // precondition: call argument is the result of an objective-c call.
                         // This will be when we apply the annotation.
                     }
+
                     else -> {
                         if (isSelector(calledFunction)) {
                             if (!functionArgs.isNullOrEmpty()) {
-                                var methodCall = OCMethodCall.TryParseFromTrampolineCall(calledFunction.name, functionArgs)
+                                var methodCall =
+                                    OCMethodCall.TryParseFromTrampolineCall(calledFunction.name, functionArgs)
 
                                 methodCall?.let {
 
-                                    if(isAssignment) {
+                                    if (isAssignment) {
                                         tokens.rewind()
-                                        val assignment = parseAssignment(tokens) ?: throw Error("This should be impossible - 3")
+                                        val assignment =
+                                            parseAssignment(tokens) ?: throw Error("This should be impossible - 3")
+
+                                        // Find the related _objc_retainAutoreleasedReturnValue statement...
+
 
                                         objCState[assignment.first] = it
                                     }

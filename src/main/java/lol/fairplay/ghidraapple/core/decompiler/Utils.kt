@@ -1,9 +1,6 @@
 package lol.fairplay.ghidraapple.core.decompiler
 
-import ghidra.app.decompiler.ClangNode
-import ghidra.app.decompiler.ClangStatement
-import ghidra.app.decompiler.ClangSyntaxToken
-import ghidra.app.decompiler.ClangVariableToken
+import ghidra.app.decompiler.*
 import ghidra.program.model.pcode.Varnode
 
 
@@ -32,7 +29,7 @@ class TokenScanner(val nodes: List<ClangNode>) {
     }
 
     fun remaining(): List<ClangNode> {
-        val result = nodes.subList(index, nodes.size - 1)
+        val result = nodes.subList(index, nodes.size)
         index = nodes.size
         return result
     }
@@ -109,7 +106,7 @@ fun parseFunctionArgs(tokenScanner: TokenScanner): ArgumentList? {
 
     while (parenthesis > 0) {
         val node = tokenScanner.pop()
-        if(node is ClangSyntaxToken) {
+        if(node is ClangSyntaxToken || node is ClangOpToken) {
             when (node.toString()) {
                 "(" -> parenthesis++
                 ")" -> parenthesis--
@@ -138,7 +135,8 @@ fun parseFunctionArgs(tokenScanner: TokenScanner): ArgumentList? {
 fun parseAssignment(tokenScanner: TokenScanner): Assignment? {
     val target = tokenScanner.nextType<ClangVariableToken>() ?: return null
 
-    while(tokenScanner.nextType<ClangSyntaxToken>().toString() != "=");
+    while(tokenScanner.nextType<ClangOpToken>().toString() != "=");
+
     if (!tokenScanner.hasMore()) return null
 
     val value = tokenScanner.remaining()

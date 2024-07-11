@@ -15,7 +15,7 @@ class DecompiledFunctionProvider(program: Program) {
     }
 
     fun getDecompiled(function: Function, timeout: Int = 5): DecompileResults {
-        return ifc.decompileFunction(function, 5, null)
+        return ifc.decompileFunction(function, timeout, null)
     }
 
 }
