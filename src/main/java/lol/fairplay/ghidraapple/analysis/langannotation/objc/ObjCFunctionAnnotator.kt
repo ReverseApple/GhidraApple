@@ -13,6 +13,7 @@ import lol.fairplay.ghidraapple.core.decompiler.*
 
 
 class ObjCFunctionAnnotator(private val function: Function, private val monitor: TaskMonitor) {
+    // The main responsibility of this mechanism is finding out where to decompile and collecting auxiliary data.
 
     private val decompiler = DecompiledFunctionProvider(function.program)
     private val program = function.program
@@ -25,9 +26,7 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
     }
 
     private fun setComment(address: Address, comment: String) {
-        val transaction = program.startTransaction("Set Comment")
         program.listing.setComment(address, CodeUnit.PRE_COMMENT, comment)
-        program.endTransaction(transaction, true);
     }
 
     fun run() {
@@ -53,21 +52,28 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
             val isFunctionCall = tokens.getNode<ClangFuncNameToken>() != null
 
             if (isFunctionCall) {
-                val functionNode = tokens.getNode<ClangFuncNameToken>()!!
-                val functionArgs = parseFunctionArgs(tokens)
-
-                val calledFunction = program.symbolTable.getSymbols(functionNode.toString()).map {
-                    program.functionManager.getFunctionAt(it.address)
-                }.find { it != null && (it.tags.contains(TRAMPOLINE_TAG) || it.name.startsWith("_objc_")) }!!
-
+                val (functionArgs, calledFunction) = parseObjCRelatedFunctionCall(tokens) ?: return
 
                 when (calledFunction.name) {
+
                     "_objc_retainAutoreleasedReturnValue" -> {
                         // precondition: call argument is the result of an objective-c call.
                         if (isAssignment) {
                             tokens.rewind()
                             val assignment = parseAssignment(tokens) ?: throw Error("This should be impossible - 1")
                             assert(assignment.first in objCState)
+
+                            // todo: decompile related objc method here if `assignment.first` is not
+                            //  used in another objc context.
+
+        //                            // if and only if assignment.first is used once in another Objective-C context,
+        //                            //  we do not decompile the call.
+        //                            val usages = getUsage(rootFunction, assignment.first).toMutableList()
+        //                            usages.remove(assignment.first)
+        //
+        //                            if (usages.size == 1) {
+        //                                val usage =
+        //                            }
                         }
                     }
 
@@ -87,10 +93,10 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
                         }
                     }
 
-//                    "_objc_release" -> {
-//                        // precondition: call argument is the result of an objective-c call.
-//
-//                    }
+                    "_objc_release" -> {
+                        // precondition: call argument is the result of an objective-c call.
+
+                    }
 
                     else -> {
                         if (isSelector(calledFunction)) {
@@ -98,18 +104,38 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
                                 var methodCall =
                                     OCMethodCall.TryParseFromTrampolineCall(calledFunction.name, functionArgs)
 
-                                methodCall?.let {
+                                methodCall?.let { method ->
 
                                     if (isAssignment) {
                                         tokens.rewind()
-                                        val assignment =
+                                        val trampolineAssignment =
                                             parseAssignment(tokens) ?: throw Error("This should be impossible - 3")
 
-                                        //todo: Find the related _objc_retainAutoreleasedReturnValue statement...
+                                        // Find the related _objc_retainAutoreleasedReturnValue statement...
+                                        getUsage(rootFunction, trampolineAssignment.first).forEach {
 
-                                        objCState[assignment.first] = it
+                                            val stmtTokens = TokenScanner(getChildrenList(it.Parent()))
+
+                                            // Ensure there's a function call in this usage.
+                                            val funcNameToken = stmtTokens.getNode<ClangFuncNameToken>()
+
+                                            if (funcNameToken != null
+                                                && funcNameToken.toString() == "_objc_retainAutoreleasedReturnValue") {
+                                                val retvalAssignment = parseAssignment(stmtTokens)!!
+
+                                                objCState[retvalAssignment.first] = methodCall
+                                                return@let
+                                            }
+
+                                            // test on FUN_10006dcfc
+
+                                        }
+
                                     } else {
-                                        setComment(statement.maxAddress.add(1), it.decompile(rootFunction, objCState))
+                                        setComment(
+                                            statement.maxAddress.add(1),
+                                            method.decompile(rootFunction, objCState)
+                                        )
                                     }
 
                                 }
@@ -135,5 +161,15 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
 
             stmtStack.add(statement)
         }
+    }
+
+    private fun parseObjCRelatedFunctionCall(tokens: TokenScanner): Pair<ArgumentList?, Function>? {
+        val functionNode = tokens.getNode<ClangFuncNameToken>()!!
+        val functionArgs = parseFunctionArgs(tokens)
+
+        val calledFunction = program.symbolTable.getSymbols(functionNode.toString()).map {
+            program.functionManager.getFunctionAt(it.address)
+        }.find { it != null && (it.tags.contains(TRAMPOLINE_TAG) || it.name.startsWith("_objc_")) } ?: return null
+        return Pair(functionArgs, calledFunction)
     }
 }

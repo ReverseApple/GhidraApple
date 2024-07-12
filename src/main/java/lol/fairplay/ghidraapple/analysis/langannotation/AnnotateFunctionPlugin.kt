@@ -35,8 +35,12 @@ class AnnotateFunctionPlugin(tool: PluginTool) : ProgramPlugin(tool) {
                     val function = currentProgram.functionManager.getFunctionAt(currentLocation.address) ?: return
                     val task = object : Task("ObjC Annotation", false, true, false) {
                         override fun run(monitor: TaskMonitor?) {
+                            val transaction = currentProgram.startTransaction("Set Comment")
+
                             val functionAnnotator = ObjCFunctionAnnotator(function, monitor!!)
                             functionAnnotator.run()
+
+                            currentProgram.endTransaction(transaction, true);
                         }
                     }
 

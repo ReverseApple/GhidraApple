@@ -44,6 +44,12 @@ private fun fieldToString(field: Field, rootFunction: ClangTokenGroup, objCState
     }
 }
 
+private fun stringifySelectorArgument(token: ClangNode): String {
+    return when (token) {
+        else -> token.toString()
+    }
+}
+
 
 data class OCMessage(val names: List<String>, val parts: List<Field>?) {
 
@@ -82,6 +88,8 @@ data class OCMethodCall(
 
             if (isArm && !funcArgs.isNullOrEmpty()) {
                 // second argument does not appear to be meaningful on arm from what I've seen.
+                // edit: sometimes, it appears to be (recv, garbage, arg1,arg2,..., argN)
+                //  and other times, it's (arg1, recv, garbage, arg2, arg3, ..., argN)
                 funcArgs.removeAt(0)
             }
 
