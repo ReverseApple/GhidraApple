@@ -7,6 +7,7 @@ import ghidra.app.decompiler.ClangVariableToken
 import ghidra.program.model.address.Address
 import ghidra.program.model.listing.CodeUnit
 import ghidra.program.model.listing.Function
+import ghidra.program.model.symbol.SymbolType
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.analysis.selectortrampoline.SelectorTrampolineAnalyzer
 import lol.fairplay.ghidraapple.core.decompiler.*
@@ -18,6 +19,11 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
     private val decompiler = DecompiledFunctionProvider(function.program)
     private val program = function.program
 
+    val decompileResults = decompiler.getDecompiled(function, 60)
+    val stmtStack = ArrayDeque<ClangNode>()
+    val state = mutableMapOf<ClangVariableToken, List<ClangNode>?>()
+    val objCState = mutableMapOf<ClangVariableToken, OCMethodCall>()
+
     val TRAMPOLINE_TAG =
         program.functionManager.functionTagManager.getFunctionTag(SelectorTrampolineAnalyzer.TRAMPOLINE_TAG)
 
@@ -26,7 +32,9 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
     }
 
     private fun setComment(address: Address, comment: String) {
+        val transaction = program.startTransaction("Set Comment")
         program.listing.setComment(address, CodeUnit.PRE_COMMENT, comment)
+        program.endTransaction(transaction, true)
     }
 
     fun run() {
@@ -35,15 +43,10 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
         //  or we can try to get a better implementation to upstream Ghidra.
 
         monitor.message = "Extracting function statements..."
-        val decompileResults = decompiler.getDecompiled(function, 60)
         val rootFunction = decompileResults.cCodeMarkup
+        val statements = getStatements(rootFunction)
 
         monitor.message = "Annotating Objective-C..."
-        val statements = getStatements(rootFunction)
-        val stmtStack = ArrayDeque<ClangNode>()
-
-        val state = mutableMapOf<ClangVariableToken, List<ClangNode>?>()
-        val objCState = mutableMapOf<ClangVariableToken, OCMethodCall>()
 
         for (statement in statements) {
             val tokens = TokenScanner(getChildrenList(statement))
@@ -52,7 +55,7 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
             val isFunctionCall = tokens.getNode<ClangFuncNameToken>() != null
 
             if (isFunctionCall) {
-                val (functionArgs, calledFunction) = parseObjCRelatedFunctionCall(tokens) ?: return
+                val (functionArgs, calledFunction) = parseObjCRelatedFunctionCall(tokens) ?: continue
 
                 when (calledFunction.name) {
 
@@ -63,17 +66,39 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
                             val assignment = parseAssignment(tokens) ?: throw Error("This should be impossible - 1")
                             assert(assignment.first in objCState)
 
-                            // todo: decompile related objc method here if `assignment.first` is not
-                            //  used in another objc context.
+                            // if and only if assignment.first is used ONCE and ONLY in another Objective-C selector,
+                            //  we do not decompile the call.
+                            val usages = getUsage(rootFunction, assignment.first).toMutableList().filter {
+                                TokenScanner(getChildrenList(it.Parent())).getNode<ClangFuncNameToken>()?.toString() != "_objc_release"
+                            }
 
-        //                            // if and only if assignment.first is used once in another Objective-C context,
-        //                            //  we do not decompile the call.
-        //                            val usages = getUsage(rootFunction, assignment.first).toMutableList()
-        //                            usages.remove(assignment.first)
-        //
-        //                            if (usages.size == 1) {
-        //                                val usage =
-        //                            }
+                            if (usages.size == 1) {
+                                // test if it's used by another selector
+                                val usage = usages[0]
+                                val usageTokens = TokenScanner(getChildrenList(usage.Parent()))
+
+                                usageTokens.getNode<ClangFuncNameToken>()?.let{
+                                    val symbol = program.symbolTable.getSymbols(it.toString()).find {
+                                        it.symbolType == SymbolType.FUNCTION && isSelector(program.functionManager.getFunctionAt(it.address))
+                                    }
+                                    if (symbol == null) {
+                                        // if it's not another selector, decompile the method.
+                                        val decompiled = objCState[assignment.first]!!.decompile(rootFunction, objCState)
+                                        setComment(
+                                            statement.maxAddress.add(1),
+                                            "${assignment.first} = $decompiled"
+                                        )
+                                    }
+                                }
+                            } else {
+                                objCState[assignment.first]?.let {
+                                    val decompiled = it.decompile(rootFunction, objCState)
+                                    setComment(
+                                        statement.maxAddress.add(1),
+                                        "${assignment.first} = $decompiled"
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -85,7 +110,7 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
 
                             val message = OCMessage(listOf("alloc"), null)
                             val classVar = functionArgs!![0].find {
-                                it.toString().startsWith("_OBJC_CLASS_\$_")
+                                it.toString().startsWith("PTR__OBJC_CLASS_\$_")
                             }
 
                             val methodCall = OCMethodCall(Field.Tokens(listOf(classVar!!)), message)
@@ -95,7 +120,6 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
 
                     "_objc_release" -> {
                         // precondition: call argument is the result of an objective-c call.
-
                     }
 
                     else -> {

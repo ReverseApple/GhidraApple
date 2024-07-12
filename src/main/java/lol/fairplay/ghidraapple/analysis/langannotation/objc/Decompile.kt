@@ -4,6 +4,7 @@ import ghidra.app.decompiler.ClangNode
 import ghidra.app.decompiler.ClangTokenGroup
 import ghidra.app.decompiler.ClangVariableToken
 import lol.fairplay.ghidraapple.core.decompiler.ArgumentList
+import lol.fairplay.ghidraapple.core.decompiler.TokenScanner
 
 
 sealed class Field {
@@ -36,17 +37,25 @@ sealed class Field {
 
 }
 
-private fun fieldToString(field: Field, rootFunction: ClangTokenGroup, objCState: MutableMap<ClangVariableToken, OCMethodCall>): String {
+private fun stringifyField(field: Field, rootFunction: ClangTokenGroup, objCState: MutableMap<ClangVariableToken, OCMethodCall>): String {
     return when (field) {
-        is Field.Tokens -> field.data.joinToString()
-        is Field.MethodCall -> field.data.decompile(rootFunction, objCState)
-        is Field.Unknown -> Field.Unknown.toString()
-    }
-}
+        is Field.Tokens -> {
+            val scanner = TokenScanner(field.data)
+            val variableToken = scanner.getNode<ClangVariableToken>()
 
-private fun stringifySelectorArgument(token: ClangNode): String {
-    return when (token) {
-        else -> token.toString()
+            if (variableToken != null) {
+                if (variableToken in objCState)
+                    return objCState[variableToken]!!.decompile(rootFunction, objCState)
+                else /*if (variableToken.toString().startsWith("cf_")){
+
+                } else*/ if (scanner.getString(".") != null && field.data.size == 3) {
+                    return variableToken.toString()
+                }
+            }
+
+            return field.data.joinToString("")
+        }
+        else -> field.toString()
     }
 }
 
@@ -67,7 +76,9 @@ data class OCMessage(val names: List<String>, val parts: List<Field>?) {
         for (i in names.indices) {
             // todo: if a variable is an objective-c method call, and there is only one reference to that call (we are that reference),
             //  inline the call.
-            result.add("${names[i]}:${parts[i]}")
+
+            val stringArg = stringifyField(parts[i], rootFunction, objCState)
+            result.add("${names[i]}:${stringArg}")
         }
 
 
@@ -103,9 +114,9 @@ data class OCMethodCall(
     }
 
     fun decompile(rootFunction: ClangTokenGroup, objCState: MutableMap<ClangVariableToken, OCMethodCall>): String {
-        val receiver = fieldToString(recv, rootFunction, objCState)
         val message = message.decompile(rootFunction, objCState)
+        val recieverString = stringifyField(recv, rootFunction, objCState)
 
-        return "[$receiver $message]"
+        return "[$recieverString $message]"
     }
 }
