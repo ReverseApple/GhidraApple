@@ -9,6 +9,7 @@ import ghidra.program.model.listing.CodeUnit
 import ghidra.program.model.listing.Function
 import ghidra.program.model.symbol.SymbolType
 import ghidra.util.task.TaskMonitor
+
 import lol.fairplay.ghidraapple.analysis.selectortrampoline.SelectorTrampolineAnalyzer
 import lol.fairplay.ghidraapple.core.decompiler.*
 
@@ -38,7 +39,7 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
     }
 
     fun run() {
-        // TODO: this is a *really* dirty and (probably) naive implementation of this feature.
+        // FIXME: this is a *really* dirty and (probably) naive implementation of this feature.
         //  This is to be rewritten either when richer semantic analysis infrastructure exists,
         //  or we can try to get a better implementation to upstream Ghidra.
 
@@ -68,34 +69,50 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
 
                             // if and only if assignment.first is used ONCE and ONLY in another Objective-C selector,
                             //  we do not decompile the call.
-                            val usages = getUsage(rootFunction, assignment.first).toMutableList().filter {
-                                TokenScanner(getChildrenList(it.Parent())).getNode<ClangFuncNameToken>()?.toString() != "_objc_release"
-                            }
+                            val usedStatements = getUsage(rootFunction, assignment.first)
+                                .filter {
+                                    it != assignment.first
+                                }.map {
+                                    // map each usage to it's parent statement...
+                                    it.Parent()
+                                }.filter {
+                                    TokenScanner(getChildrenList(it)).getNode<ClangFuncNameToken>()
+                                        ?.toString() != "_objc_release"
+                                }.filterNotNull().toSet()
 
-                            if (usages.size == 1) {
+                            if (usedStatements.size == 1) {
                                 // test if it's used by another selector
-                                val usage = usages[0]
-                                val usageTokens = TokenScanner(getChildrenList(usage.Parent()))
+                                val usage = usedStatements.toList()[0]
+                                val usageTokens = TokenScanner(getChildrenList(usage))
 
-                                usageTokens.getNode<ClangFuncNameToken>()?.let{
+                                usageTokens.getNode<ClangFuncNameToken>()?.let {
                                     val symbol = program.symbolTable.getSymbols(it.toString()).find {
-                                        it.symbolType == SymbolType.FUNCTION && isSelector(program.functionManager.getFunctionAt(it.address))
+                                        it.symbolType == SymbolType.FUNCTION && isSelector(
+                                            program.functionManager.getFunctionAt(
+                                                it.address
+                                            )
+                                        )
                                     }
                                     if (symbol == null) {
                                         // if it's not another selector, decompile the method.
-                                        val decompiled = objCState[assignment.first]!!.decompile(rootFunction, objCState)
+                                        val decompiled = objCState[assignment.first]!!.decompile(
+                                            DecompileState(
+                                                rootFunction,
+                                                objCState
+                                            )
+                                        )
                                         setComment(
                                             statement.maxAddress.add(1),
-                                            "${assignment.first} = $decompiled"
+                                            "c1 ${assignment.first} = $decompiled"
                                         )
                                     }
                                 }
                             } else {
                                 objCState[assignment.first]?.let {
-                                    val decompiled = it.decompile(rootFunction, objCState)
+                                    val decompiled = it.decompile(DecompileState(rootFunction, objCState))
                                     setComment(
                                         statement.maxAddress.add(1),
-                                        "${assignment.first} = $decompiled"
+                                        "c2 ${assignment.first} = $decompiled"
                                     )
                                 }
                             }
@@ -105,6 +122,7 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
                     "_objc_alloc" -> {
                         // precondition: call argument is an _OBJC_CLASS_$_
                         if (isAssignment) {
+                            // synthesize an alloc method call object, and push it to the objc state.
                             tokens.rewind()
                             val assignment = parseAssignment(tokens) ?: throw Error("This should be impossible - 2")
 
@@ -125,11 +143,12 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
                     else -> {
                         if (isSelector(calledFunction)) {
                             if (!functionArgs.isNullOrEmpty()) {
-                                var methodCall =
+                                val methodCall =
                                     OCMethodCall.TryParseFromTrampolineCall(calledFunction.name, functionArgs)
 
-                                methodCall?.let { method ->
-
+                                methodCall.let { method ->
+                                    // if it's an assignment, find it's relevant RARV call and then push the method call
+                                    // to the objective-c state.
                                     if (isAssignment) {
                                         tokens.rewind()
                                         val trampolineAssignment =
@@ -144,39 +163,35 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
                                             val funcNameToken = stmtTokens.getNode<ClangFuncNameToken>()
 
                                             if (funcNameToken != null
-                                                && funcNameToken.toString() == "_objc_retainAutoreleasedReturnValue") {
+                                                && funcNameToken.toString() == "_objc_retainAutoreleasedReturnValue"
+                                            ) {
                                                 val retvalAssignment = parseAssignment(stmtTokens)!!
 
                                                 objCState[retvalAssignment.first] = methodCall
                                                 return@let
                                             }
-
                                             // test on FUN_10006dcfc
-
                                         }
-
                                     } else {
+                                        // If it's not an assignment, decompile the call on the spot.
                                         setComment(
                                             statement.maxAddress.add(1),
-                                            method.decompile(rootFunction, objCState)
+                                            "c3 " + method.decompile(DecompileState(rootFunction, objCState))
                                         )
                                     }
-
                                 }
                             }
                         }
                     }
                 }
-
-                // If it's also an assignment... do something?
-                if (isAssignment) {
-                    val assignmentTarget = tokens.getNode<ClangVariableToken>()!!
-
-                    val usage = getUsage(rootFunction, assignmentTarget).toMutableList()
-                    usage.remove(assignmentTarget)
-
-                }
-
+//                // If it's also an assignment... do something?
+//                if (isAssignment) {
+//                    val assignmentTarget = tokens.getNode<ClangVariableToken>()!!
+//
+//                    val usage = getUsage(rootFunction, assignmentTarget).toMutableList()
+//                    usage.remove(assignmentTarget)
+//
+//                }
             } else if (isAssignment) {
                 // update variable state mapping
                 val assignment = parseAssignment(tokens)!!
