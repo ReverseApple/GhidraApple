@@ -112,7 +112,7 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
                                     val decompiled = it.decompile(DecompileState(rootFunction, objCState))
                                     setComment(
                                         statement.maxAddress.add(1),
-                                        "c2 ${assignment.first} = $decompiled"
+                                        "${assignment.first} = $decompiled"
                                     )
                                 }
                             }
@@ -176,7 +176,7 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
                                         // If it's not an assignment, decompile the call on the spot.
                                         setComment(
                                             statement.maxAddress.add(1),
-                                            "c3 " + method.decompile(DecompileState(rootFunction, objCState))
+                                            method.decompile(DecompileState(rootFunction, objCState))
                                         )
                                     }
                                 }
@@ -184,14 +184,6 @@ class ObjCFunctionAnnotator(private val function: Function, private val monitor:
                         }
                     }
                 }
-//                // If it's also an assignment... do something?
-//                if (isAssignment) {
-//                    val assignmentTarget = tokens.getNode<ClangVariableToken>()!!
-//
-//                    val usage = getUsage(rootFunction, assignmentTarget).toMutableList()
-//                    usage.remove(assignmentTarget)
-//
-//                }
             } else if (isAssignment) {
                 // update variable state mapping
                 val assignment = parseAssignment(tokens)!!

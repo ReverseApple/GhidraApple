@@ -32,6 +32,8 @@ if (ghidraInstallDir) {
 else {
     throw new GradleException("GHIDRA_INSTALL_DIR is not defined!")
 }
+//----------------------END "DO NOT MODIFY" SECTION-------------------------------
+
 repositories {
     mavenCentral()
 }
@@ -41,4 +43,4 @@ dependencies {
 kotlin {
     jvmToolchain(17)
 }
-//----------------------END "DO NOT MODIFY" SECTION-------------------------------
+// build task name is "buildExtension"
