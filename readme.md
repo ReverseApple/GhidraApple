@@ -4,12 +4,14 @@ Better Apple binary analysis for Ghidra.
 
 ## Todo
 
-- [ ] Objective-C Selector Trampoline Analysis
-  - [x] Renaming
-  - [x] XREF-Copying
-  - [ ] Class association analysis
+- [ ] Objective-C
+  - [ ] Trampolines
+    - [x] Renaming
+    - [x] XREF-Copying
+    - [ ] Variable class analysis
   - [ ] Decompiler representation improvement.
-- [ ] `NSConcreteStackBlock` insights
+  - [x] ARC call fixups
+- [ ] `NSBlock` insights
 - [ ] Soft-linking (`dlopen`) analyzer
 
 (this is a WIP list)
