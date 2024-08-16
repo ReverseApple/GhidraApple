@@ -25,14 +25,11 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
 
     override fun added(program: Program, set: AddressSetView?, monitor: TaskMonitor?, log: MessageLog?): Boolean {
         val category = CategoryPath("/GA_OBJC")
-
         val objc_class_path = arrayOf("objc", "class_t")
 
         program.symbolTable.symbolIterator.filter {
             val slice = it.path.slice(0..1)
-
-            return@filter slice.containsAll(objc_class_path.toList())
-                    || it.name.startsWith("_OBJC_CLASS_\$_")
+            slice.containsAll(objc_class_path.toList()) || it.name.startsWith("_OBJC_CLASS_\$_")
         }.forEach {
 
             // keep this in, because some of them do have the prefix.
