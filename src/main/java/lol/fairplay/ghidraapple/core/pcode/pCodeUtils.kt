@@ -1,4 +1,4 @@
-package lol.fairplay.ghidraapple.analysis
+package lol.fairplay.ghidraapple.core.pcode
 
 import ghidra.program.model.address.Address
 import ghidra.program.model.data.DataType
