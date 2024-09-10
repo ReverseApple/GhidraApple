@@ -79,7 +79,7 @@ class ARCFixupInstallerAnalyzer() : AbstractAnalyzer(NAME, DESCRIPTION, Analyzer
                             <target name="_objc_loadWeakRetained"/>
                           <pcode>
                             <body><![CDATA[
-                                    x0 = *x1;
+                                    x0 = *x0;
                              ]]></body>
                           </pcode>
                         </callfixup>
