@@ -45,3 +45,23 @@ fun getConstantFromPcodeOp(pcodeOp: PcodeOp): Optional<Address> {
     }
 
 }
+
+fun getFunctionForPCodeCall(program: Program, pcodeOp: PcodeOp?): Optional<Function> {
+    if (pcodeOp != null && pcodeOp.opcode == PcodeOp.CALL) {
+        val target = pcodeOp.inputs.getOrNull(0) ?: return Optional.empty()
+        if (target.isAddress) {
+            return Optional.of(program.functionManager.getFunctionAt(target.address))
+        }
+    }
+    return Optional.empty()
+}
+
+fun ReferenceManager.setCallTarget(callsite: Address, targetFunction: Function, sourceType: SourceType) {
+    val ref = addMemoryReference(
+        callsite,
+        targetFunction.entryPoint,
+        ghidra.program.model.symbol.RefType.UNCONDITIONAL_CALL,
+        sourceType, 0)
+    setPrimary(ref, true)
+}
+
