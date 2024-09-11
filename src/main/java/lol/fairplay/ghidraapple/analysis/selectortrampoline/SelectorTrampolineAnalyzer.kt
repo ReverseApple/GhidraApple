@@ -1,23 +1,35 @@
 package lol.fairplay.ghidraapple.analysis.selectortrampoline
 
+import ghidra.app.decompiler.DecompInterface
+import ghidra.app.decompiler.DecompileOptions
+import ghidra.app.decompiler.DecompileResults
+import ghidra.app.decompiler.parallel.DecompileConfigurer
+import ghidra.app.decompiler.parallel.DecompilerCallback
+import ghidra.app.decompiler.parallel.ParallelDecompiler
 import ghidra.app.services.AbstractAnalyzer
 import ghidra.app.services.AnalysisPriority
 import ghidra.app.services.AnalyzerType
 import ghidra.app.util.importer.MessageLog
-import ghidra.app.util.opinion.MachoLoader
-import ghidra.framework.options.OptionType
-import ghidra.framework.options.Options
-import ghidra.program.model.address.Address
 import ghidra.program.model.address.AddressSetView
+import ghidra.program.model.lang.CompilerSpec
 import ghidra.program.model.listing.*
 import ghidra.program.model.listing.Function
-import ghidra.program.model.mem.MemoryAccessException
-import ghidra.program.model.symbol.RefType
+import ghidra.program.model.mem.MemoryBlock
+import ghidra.program.model.pcode.PcodeOp
 import ghidra.program.model.symbol.SourceType
-import ghidra.program.model.symbol.SymbolType
+import ghidra.util.Msg
 import ghidra.util.exception.CancelledException
 import ghidra.util.task.TaskMonitor
-import lol.fairplay.ghidraapple.core.common.MachOCpuID
+import lol.fairplay.ghidraapple.analysis.getConstantFromVarNode
+import lol.fairplay.ghidraapple.analysis.toDefaultAddressSpace
+import kotlin.Boolean
+import kotlin.Exception
+import kotlin.Pair
+import kotlin.String
+import kotlin.Throws
+import kotlin.apply
+import kotlin.jvm.optionals.getOrNull
+import kotlin.to
 
 class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTION_ANALYZER) {
 
@@ -29,221 +41,166 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
 
         const val TRAMPOLINE_TAG = "OBJC_TRAMPOLINE"
         const val TRAMPOLINE_TAG_DESC = "Objective-C Selector Trampoline Function"
+
+        const val STUB_NAMESPACE_NAME = "stub"
     }
-
-    private lateinit var cpuId: MachOCpuID
-    private lateinit var opcodeSignature: Array<String>
-    private lateinit var program: Program
-    private val selectorTrampolines = ArrayList<ObjCTrampoline>()
-
-    private var shouldMoveSelRefs = true
 
     init {
         setDefaultEnablement(true)
         setPriority(PRIORITY)
-    }
+        setSupportsOneTimeAnalysis()
 
-    override fun registerOptions(options: Options?, program: Program?) {
-
-        options?.registerOption(
-            OPT_SHOULD_COPY_REFS,
-            OptionType.BOOLEAN_TYPE,
-            shouldMoveSelRefs,
-            null,
-            "Analyze references to Objective-C trampolines and copy them to the corresponding *actual* method."
-        )
-
-    }
-
-    override fun optionsChanged(options: Options?, program: Program?) {
-        shouldMoveSelRefs = options?.getBoolean(OPT_SHOULD_COPY_REFS, shouldMoveSelRefs)!!
-    }
-
-    private fun functionMatchesOpcodeSignature(function: Function): Boolean {
-        val instructions: InstructionIterator = function
-            .program
-            .listing
-            .getInstructions(function.body, true)
-
-        var pos = 0
-
-        while (instructions.hasNext()) {
-            val current: Instruction = instructions.next()
-
-            if (current.mnemonicString.equals(opcodeSignature[pos], ignoreCase = true)) {
-                pos++
-                // if we are at the end of the opcode signature...
-                if (pos == opcodeSignature.size) {
-                    // return true if we do not have more and false otherwise.
-                    return !instructions.hasNext()
-                }
-            } else {
-                break
-            }
-
-        }
-
-        return false
-    }
-
-    override fun canAnalyze(program: Program): Boolean {
-        // todo: consider checking for presence of certain relevant Objective-C sections.
-
-        if (program.executableFormat == MachoLoader.MACH_O_NAME) {
-            return try {
-                val cpuArch = MachOCpuID.getCPU(program)
-
-                if (cpuArch != null) {
-                    cpuId = cpuArch
-
-                    val sig = TrampolineOpcodeSignature.getInstructionSignature(cpuArch)
-                    if (sig != null) {
-                        opcodeSignature = sig
-                    } else {
-                        return false
-                    }
-                } else {
-                    return false;
-                }
-
-                cpuArch == MachOCpuID.AARCH64 || cpuArch == MachOCpuID.AARCH64E
-            } catch (e: MemoryAccessException) {
-                false
-            }
-        }
-
-        return false
     }
 
     @Throws(CancelledException::class)
     override fun added(program: Program, set: AddressSetView, monitor: TaskMonitor, log: MessageLog): Boolean {
-        this.program = program
-
+        // Get all trampoline functions in the addressSet
         program.functionManager.functionTagManager.createFunctionTag(
             TRAMPOLINE_TAG,
             TRAMPOLINE_TAG_DESC
         )
 
-        val addresses = set.getAddresses(true).toList()
+        val trampolineFunctions = program.functionManager
+            .getFunctions(set, true)
+            .filter { isPlausibleTrampoline(it) }.toList()
 
-        println("ADDED ${addresses.size} ADDRESSES")
+        monitor.maximum = trampolineFunctions.size.toLong()
 
-        // Find (and store) functions that match the trampoline instruction signature for the current CPU.
-        findTrampolines(monitor, addresses, program)
+        val stubNamespace = program.symbolTable.getOrCreateNameSpace(
+            program.globalNamespace,
+            STUB_NAMESPACE_NAME,
+            SourceType.ANALYSIS)
 
-        renameTrampolines(monitor)
-
-        if (shouldMoveSelRefs) {
-            copyXRefData(monitor)
+        trampolineFunctions.forEach {
+            it.addTag(TRAMPOLINE_TAG)
+            it.symbol.setNamespace(stubNamespace)
         }
-
-        // todo: eventually separate this from SelectorTrampolineAnalyzer
-        monitor.message = "Fixing Objective-C messaging function signatures..."
-        fixObjCRuntimeFunctionSig()
-
+        findAllSelectors(program, trampolineFunctions, monitor, log).forEach {
+            (func, selector) -> applySelectorToFunction(func, selector) }
         return true
+
     }
 
-    private fun fixObjCRuntimeFunctionSig() {
-        val names = listOf("_objc_retainAutoreleasedReturnValue", "_objc_autorelease")
-        val objc_id_datatype = "/_objc2_/ID"
 
-        val datatype = program.dataTypeManager.getDataType(objc_id_datatype)
-        val param = ParameterImpl("return_value", datatype, program.getRegister("x0"), program)
 
-        for (funcname in names) {
-            val fAddress = program.symbolTable.getSymbols(name).find {
-                it.symbolType == SymbolType.FUNCTION
-            } ?: continue
+    /**
+     * Core of the trampoline analysis
+     */
+    private fun findAllSelectors(
+        program: Program, trampolineFunctions: List<Function>, monitor: TaskMonitor, log: MessageLog
+    ): List<Pair<Function, String?>> {
 
-            val function = program.functionManager.getFunctionAt(fAddress.address)
-            function.updateFunction(
-                null,
-                null,
-                listOf(param),
-                Function.FunctionUpdateType.DYNAMIC_STORAGE_FORMAL_PARAMS,
-                true,
-                SourceType.ANALYSIS
+//        trampolineFunctions.filter { it.symbol.source  }
+
+        val configurer = DecompileConfigurer { decompiler: DecompInterface ->
+            decompiler.simplificationStyle = "normalize"
+            decompiler.toggleSyntaxTree(true)
+            decompiler.toggleCCode(false)
+            decompiler.setOptions(
+                DecompileOptions().apply {
+                    this.isRespectReadOnly = true
+                }
             )
         }
 
-    }
+        val callback: DecompilerCallback<Pair<Function, String?>> = object : DecompilerCallback<Pair<Function, String?>>(program, configurer) {
+            @Throws(Exception::class)
+            override fun process(results: DecompileResults, m: TaskMonitor): Pair<Function, String?> {
+//                inspectFunction(program, results, monitor)
+                m.increment()
+                val callOp = results.highFunction.pcodeOps.iterator().asSequence()
+                    .singleOrNull { it.opcode == PcodeOp.CALLIND || it.opcode == PcodeOp.CALL }
+                if (callOp != null) {
+                    val selAddress = getConstantFromVarNode(callOp.inputs[2]).getOrNull()?.toDefaultAddressSpace(program)
+                    if (selAddress != null){
+                        val sel = program.listing.getDataAt(selAddress).value as? String
+                        if (sel != null){
+                            return results.function to sel
+                        }
+                    }
 
-    private fun findTrampolines(
-        monitor: TaskMonitor,
-        addresses: List<Address>,
-        program: Program
-    ) {
-
-        monitor.message = "Identifying trampoline functions..."
-        monitor.maximum = addresses.size.toLong()
-
-        for (address in addresses) {
-            if (monitor.isCancelled) throw CancelledException()
-
-            program.functionManager.getFunctionAt(address)?.let { function ->
-                if (functionMatchesOpcodeSignature(function)) {
-                    println("Trampoline detected: ${function.name}")
-                    selectorTrampolines.add(ObjCTrampoline(function, cpuId))
-                    function.addTag(TRAMPOLINE_TAG)
+                } else {
+                    log.appendMsg(
+                        this@SelectorTrampolineAnalyzer.name,
+                        "Could not determine CallOp for function ${results.function.name}"
+                    )
                 }
+                return results.function to null
+
             }
-
-            monitor.progress += 1
-        }
-    }
-
-    private fun copyXRefData(monitor: TaskMonitor) {
-        // On stubs where a SINGLE concrete implementation exists under the same name,
-        //  copy the references to the stub, to the identified concrete implementation.
-
-        monitor.message = "Copying stub refs to real implementations..."
-        monitor.maximum = selectorTrampolines.size.toLong()
-        monitor.progress = 0
-
-        for (trampoline in selectorTrampolines) {
-
-            val actualImplementation = trampoline.findActualImplementation()
-
-            if (actualImplementation == null) {
-                monitor.progress += 1
-                continue
-            }
-
-            val tAddress = trampoline.function.symbol.address
-
-            program.referenceManager.getReferencesTo(tAddress).forEach { reference ->
-                // Create call reference from calling function to the actual impl.
-                program.referenceManager.addMemoryReference(
-                    reference.fromAddress,
-                    actualImplementation.address,
-                    RefType.UNCONDITIONAL_CALL,
-                    SourceType.ANALYSIS,
-                    0
-                )
-            }
-
-            monitor.progress += 1
         }
 
+        val results = ParallelDecompiler.decompileFunctions(callback, trampolineFunctions, monitor)
+        callback.dispose()
+        return results
     }
 
-    private fun renameTrampolines(monitor: TaskMonitor) {
-        monitor.message = "Renaming Obj-C Trampolines..."
-        monitor.maximum = selectorTrampolines.size.toLong()
-        monitor.progress = 0
-
-        for (trampoline in selectorTrampolines) {
-            val selector = trampoline.getSelectorString()
-            println("${trampoline.function.name} --> $selector")
-            trampoline.function.setName(selector, SourceType.ANALYSIS)
-            monitor.progress += 1
+    private fun applySelectorToFunction(func: Function, selector: String?) {
+        if (selector != null){
+            if (func.name != selector){
+                // Change the function name based on the selector
+                // If it already had a name because symbol information was available, we don't want to overwrite it
+                // The name would be the same, but this way the SourceType.IMPORTED is preserved
+                func.setName(selector, SourceType.ANALYSIS)
+            }
         }
+
+        // Fixup signature of the function
+        fixTrampolineSignature(func, selector)
+
     }
 
-    override fun analysisEnded(program: Program) {
-        super.analysisEnded(program)
-        selectorTrampolines.clear()
+    private fun fixTrampolineSignature(func: Function, selector: String?) {
+        // Get ID datatype
+        val program = func.program
+        val idDataType = program.dataTypeManager.getDataType("/_objc2_/ID")
+        val returnVariable = ReturnParameterImpl(idDataType, program);
+
+        val arguments = mutableListOf<Variable>(ParameterImpl("recv", idDataType, program))
+        if (selector?.contains(':') == true){
+            // We need to add a parameter for the selector otherwise Ghidra doesn't find the varargs in x2 and later
+            // But we don't want the add clutter with a useless selector argument for selectors without arguments
+            arguments.add(
+                ParameterImpl("sel", program.dataTypeManager.getDataType("/_objc2_/SEL"), program)
+            )
+        }
+
+        func.updateFunction(
+            CompilerSpec.CALLING_CONVENTION_unknown,
+            returnVariable,
+            arguments,
+            Function.FunctionUpdateType.DYNAMIC_STORAGE_FORMAL_PARAMS,
+            false,
+            SourceType.ANALYSIS,
+        )
+        // It's technically not varArgs, because that trampoline will always take the same number of arguments
+        // The correct way would be to tell Ghidra to not assume that this is the full signature, and then do
+        // regular parameter ID on the function
+        func.setVarArgs(true)
     }
+
+    /**
+     * Decide if a method is a trampoline method
+     * The current minimal version only checks if it's in the "__objc_stubs" segment, but this could in theory
+     * be renamed to foil exactly this heuristic
+     *
+     * If this actually becomes a relevant enough problem to fix, it can be changed to some better heuristic
+     */
+    private fun isPlausibleTrampoline(function: Function): Boolean {
+        // Look up the block that the function is in
+        val block = getStubsSegment(function.program)!!
+        return block.contains(function.entryPoint)
+    }
+
+    override fun canAnalyze(program: Program): Boolean {
+        // Check if we have a "__objc_stubs" block
+        return getStubsSegment(program) != null
+    }
+
+    private fun getStubsSegment(program: Program): MemoryBlock? {
+        return program.memory.getBlock("__objc_stubs")
+    }
+
+
 
 }
