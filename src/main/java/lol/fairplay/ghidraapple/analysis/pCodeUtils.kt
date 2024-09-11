@@ -45,3 +45,14 @@ fun getConstantFromPcodeOp(pcodeOp: PcodeOp): Optional<Address> {
     }
 
 }
+/**
+ * Helper method to convert any kind of address into the same address in the default
+ * address space
+ * This is useful because constants in the decompiler will be represented as 'addresses'
+ * in the 'const' address space, and they need to be converted to the default address space
+ * before they can be used in the program API
+ */
+fun Address.toDefaultAddressSpace(program: Program): Address {
+    return program.addressFactory.defaultAddressSpace.getAddress(this.offset)
+}
+
