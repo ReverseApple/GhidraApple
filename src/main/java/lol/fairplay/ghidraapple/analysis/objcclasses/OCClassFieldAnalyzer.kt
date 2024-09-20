@@ -38,14 +38,20 @@ class OCClassFieldAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.DA
 
     override fun canAnalyze(program: Program): Boolean {
         this.program = program
-        return tryResolveNamespace("objc", "ivar_list_t")?.let { true } == true
+
+        val objc_const_sect = program.memory.getBlock("__objc_const")
+        return objc_const_sect != null
     }
 
     override fun added(program: Program, set: AddressSetView, monitor: TaskMonitor, log: MessageLog): Boolean {
         this.log = log
 
         val idDataType = program.dataTypeManager.getDataType("/_objc2_/ID")
-        val fieldLists = getIVarListsInAddressSet(set) ?: return false
+        val fieldLists = getIVarListsInAddressSet(set, monitor) ?: return false
+
+        monitor.message = "Applying class structure fields..."
+        monitor.progress = 0
+        monitor.maximum = fieldLists.size.toLong()
 
         program.withTransaction<Exception>("Applying fields...") {
             for (it in fieldLists) {
@@ -60,21 +66,32 @@ class OCClassFieldAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.DA
                         tryResolveDefinedStruct(it) ?: idDataType
                     }
 
-                    definedClassStruct.add(fieldType, field.size.toInt(), field.name, null)
+                    // review: not quite sure if this sizing is adequate - adeluca
+                    val fieldSize = if (fieldType == idDataType) {
+                        8
+                    } else {
+                        field.size.toInt()
+                    }
+
+                    definedClassStruct.add(fieldType, fieldSize, field.name, null)
                 }
+
+                monitor.incrementProgress()
             }
         }
-
 
         return true
     }
 
-    private fun getIVarListsInAddressSet(set: AddressSetView): List<IVarFieldList>? {
+    private fun getIVarListsInAddressSet(set: AddressSetView, monitor: TaskMonitor?): List<IVarFieldList>? {
+
+        monitor?.message = "Parsing ivar list structures..."
+
         val ivarNamespace = tryResolveNamespace("objc", "ivar_list_t") ?: return null
 
         val ivarNamespaceName = ivarNamespace.getName(true)
 
-        val ivarLists = program.listing.getDefinedData(set, true)
+        var ivarLists = program.listing.getDefinedData(set, true)
             .filter { data ->
                 val primarySymbol = data.primarySymbol
                 val parentNamespace = primarySymbol?.parentNamespace
@@ -82,10 +99,19 @@ class OCClassFieldAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.DA
                         parentNamespace != null &&
                         parentNamespace.getName(true) == ivarNamespaceName
             }
-            .mapNotNull { data -> parseIVarFieldList(data) }
-            .toList()
+//            .mapNotNull { data -> parseIVarFieldList(data) }
+//            .toList()
 
-        return if (ivarLists.isNotEmpty()) ivarLists else null
+        monitor?.maximum = ivarLists.size.toLong()
+        monitor?.progress = 0
+
+        val parsedLists = ivarLists.mapNotNull { data ->
+            val result = parseIVarFieldList(data)
+            monitor?.incrementProgress()
+            result
+        }.toList()
+
+        return if (parsedLists.isNotEmpty()) parsedLists else null
     }
 
     private fun parseIVarFieldList(data: Data): IVarFieldList? {
