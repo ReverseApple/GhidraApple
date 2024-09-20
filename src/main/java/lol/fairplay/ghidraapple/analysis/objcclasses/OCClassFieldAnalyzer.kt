@@ -4,10 +4,11 @@ import ghidra.app.services.AbstractAnalyzer
 import ghidra.app.services.AnalysisPriority
 import ghidra.app.services.AnalyzerType
 import ghidra.app.util.importer.MessageLog
-import ghidra.program.model.address.Address
 import ghidra.program.model.address.AddressSetView
 import ghidra.program.model.address.GenericAddress
-import ghidra.program.model.data.StructureDataType
+import ghidra.program.model.data.CategoryPath
+import ghidra.program.model.data.*;
+import ghidra.program.model.data.Structure
 import ghidra.program.model.listing.Data
 import ghidra.program.model.listing.Program
 import ghidra.program.model.scalar.Scalar
@@ -46,21 +47,24 @@ class OCClassFieldAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.DA
         val idDataType = program.dataTypeManager.getDataType("/_objc2_/ID")
         val fieldLists = getIVarListsInAddressSet(set) ?: return false
 
-        for (it in fieldLists) {
-            val definedClassStruct = tryResolveDefinedStruct(it.classSymbol.name)
-            if (definedClassStruct == null) {
-                log.appendMsg("Couldn't find defined structure for ${it.classSymbol.name} ivar list.")
-                continue
-            }
-
-            it.ivars.forEach { field ->
-                val fieldType = field.type.let {
-                    tryResolveDefinedStruct(it) ?: idDataType
+        program.withTransaction<Exception>("Applying fields...") {
+            for (it in fieldLists) {
+                val definedClassStruct = tryResolveDefinedStruct(it.classSymbol.name) as Structure?
+                if (definedClassStruct == null) {
+                    log.appendMsg("Couldn't find defined structure for ${it.classSymbol.name} ivar list.")
+                    continue
                 }
 
-                definedClassStruct.add(fieldType, field.size.toInt(), field.name, null)
+                it.ivars.forEach { field ->
+                    val fieldType = field.type.let {
+                        tryResolveDefinedStruct(it) ?: idDataType
+                    }
+
+                    definedClassStruct.add(fieldType, field.size.toInt(), field.name, null)
+                }
             }
         }
+
 
         return true
     }
@@ -121,8 +125,9 @@ class OCClassFieldAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.DA
         return IVarFieldList(definedClassStruct, ivFields)
     }
 
-    private fun tryResolveDefinedStruct(name: String): StructureDataType? {
-        return program.dataTypeManager.getDataType("/GA_OBJC/struct_${name}") as StructureDataType?
+    private fun tryResolveDefinedStruct(name: String): DataType? {
+        val category = CategoryPath("/GA_OBJC")
+        return program.dataTypeManager.getDataType(category, "struct_${name}")
     }
 
     private fun tryResolveNamespace(vararg fqnParts: String): Namespace?  {
