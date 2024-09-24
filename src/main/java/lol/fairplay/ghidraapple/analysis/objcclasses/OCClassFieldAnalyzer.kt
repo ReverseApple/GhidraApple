@@ -45,7 +45,7 @@ class OCClassFieldAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.DA
 
     override fun added(program: Program, set: AddressSetView, monitor: TaskMonitor, log: MessageLog): Boolean {
         this.log = log
-
+        val typeResolver = TypeResolver(program)
         val idDataType = program.dataTypeManager.getDataType("/_objc2_/ID")
         val fieldLists = getIVarListsInAddressSet(set, monitor) ?: return false
 
@@ -55,7 +55,7 @@ class OCClassFieldAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.DA
 
         program.withTransaction<Exception>("Applying fields...") {
             for (it in fieldLists) {
-                val definedClassStruct = tryResolveDefinedStruct(it.classSymbol.name) as Structure?
+                val definedClassStruct = typeResolver.tryResolveDefinedStruct(it.classSymbol.name) as Structure?
                 if (definedClassStruct == null) {
                     log.appendMsg("Couldn't find defined structure for ${it.classSymbol.name} ivar list.")
                     continue
@@ -63,15 +63,12 @@ class OCClassFieldAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.DA
 
                 it.ivars.forEach { field ->
                     val fieldType = field.type.let {
-                        tryResolveDefinedStruct(it) ?: idDataType
+                        typeResolver.parseEncoded(it) ?: idDataType
                     }
 
-                    // review: not quite sure if this sizing is adequate - adeluca
-                    val fieldSize = if (fieldType == idDataType) {
-                        8
-                    } else {
-                        field.size.toInt()
-                    }
+                    println("${field.name}: ${fieldType.name}")
+
+                    val fieldSize = field.size.toInt()
 
                     definedClassStruct.add(fieldType, fieldSize, field.name, null)
                 }
@@ -99,8 +96,6 @@ class OCClassFieldAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.DA
                         parentNamespace != null &&
                         parentNamespace.getName(true) == ivarNamespaceName
             }
-//            .mapNotNull { data -> parseIVarFieldList(data) }
-//            .toList()
 
         monitor?.maximum = ivarLists.size.toLong()
         monitor?.progress = 0
@@ -149,11 +144,6 @@ class OCClassFieldAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.DA
         }
 
         return IVarFieldList(definedClassStruct, ivFields)
-    }
-
-    private fun tryResolveDefinedStruct(name: String): DataType? {
-        val category = CategoryPath("/GA_OBJC")
-        return program.dataTypeManager.getDataType(category, "struct_${name}")
     }
 
     private fun tryResolveNamespace(vararg fqnParts: String): Namespace?  {
