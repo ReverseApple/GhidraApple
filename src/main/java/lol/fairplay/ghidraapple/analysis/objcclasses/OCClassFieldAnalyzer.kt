@@ -39,8 +39,8 @@ class OCClassFieldAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.DA
     override fun canAnalyze(program: Program): Boolean {
         this.program = program
 
-        val objc_const_sect = program.memory.getBlock("__objc_const")
-        return objc_const_sect != null
+        val objcConstSection = program.memory.getBlock("__objc_const")
+        return objcConstSection != null
     }
 
     override fun added(program: Program, set: AddressSetView, monitor: TaskMonitor, log: MessageLog): Boolean {
@@ -49,11 +49,16 @@ class OCClassFieldAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.DA
         val idDataType = program.dataTypeManager.getDataType("/_objc2_/ID")
         val fieldLists = getIVarListsInAddressSet(set, monitor) ?: return false
 
+        program.withTransaction<Exception>("Change __objc_const section permissions.") {
+            val objcConstSection = program.memory.getBlock("__objc_const")
+            objcConstSection.setPermissions(true, false, false)
+        }
+
         monitor.message = "Applying class structure fields..."
         monitor.progress = 0
         monitor.maximum = fieldLists.size.toLong()
 
-        program.withTransaction<Exception>("Applying fields...") {
+        program.withTransaction<Exception>("Apply fields.") {
             for (it in fieldLists) {
                 val definedClassStruct = typeResolver.tryResolveDefinedStruct(it.classSymbol.name) as Structure?
                 if (definedClassStruct == null) {
