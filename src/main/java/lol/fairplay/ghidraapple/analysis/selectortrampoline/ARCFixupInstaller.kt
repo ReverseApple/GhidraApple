@@ -86,7 +86,33 @@ class ARCFixupInstallerAnalyzer() : AbstractAnalyzer(NAME, DESCRIPTION, Analyzer
             
         """.trimIndent()
 
-        val specs = listOf(retainSpec, releaseSpec, storeStrongSpec, loadSpec)
+        val getPropertySpec = """
+                        <callfixup name="_objc_getProperty">
+                            <target name="_objc_getProperty"/>
+                          <pcode>
+                            <body><![CDATA[
+                                    x0 = *(x0 + x2);
+                             ]]></body>
+                          </pcode>
+                        </callfixup>
+        """.trimIndent()
+
+        val setPropertSpec = """
+                                    <callfixup name="_objc_setProperty_atomic">
+                                        <target name="_objc_setProperty_atomic"/>
+                                      <pcode>
+                                        <body><![CDATA[
+                                                *(x0 + x3) = x2;
+                                         ]]></body>
+                                      </pcode>
+                                    </callfixup>
+        """.trimIndent()
+
+
+
+        val specs = listOf(
+            retainSpec, releaseSpec, storeStrongSpec, loadSpec, getPropertySpec, setPropertSpec,
+        )
         specs.forEach {
             specExtension.addReplaceCompilerSpecExtension(it, monitor)
         }
