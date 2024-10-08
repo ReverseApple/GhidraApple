@@ -1,9 +1,9 @@
 package lol.fairplay.ghidraapple.analysis.objcclasses
 
+import ghidra.program.model.data.*
 import ghidra.program.model.data.BooleanDataType
 import ghidra.program.model.data.CategoryPath
 import ghidra.program.model.data.DataType
-import ghidra.program.model.data.*
 import ghidra.program.model.listing.Program
 
 class TypeResolver(val program: Program) {

@@ -6,15 +6,13 @@ import ghidra.app.services.AnalyzerType
 import ghidra.app.util.importer.MessageLog
 import ghidra.program.model.address.AddressSetView
 import ghidra.program.model.address.GenericAddress
-import ghidra.program.model.data.CategoryPath
-import ghidra.program.model.data.*;
 import ghidra.program.model.data.Structure
 import ghidra.program.model.listing.Data
 import ghidra.program.model.listing.Program
 import ghidra.program.model.scalar.Scalar
-import ghidra.program.model.symbol.Namespace
 import ghidra.program.model.symbol.Symbol
 import ghidra.util.task.TaskMonitor
+import lol.fairplay.ghidraapple.analysis.utilities.tryResolveNamespace
 
 private data class IVarField(val name: String, val type: String, val size: Int, val offset: Int)
 private data class IVarFieldList(val classSymbol: Symbol, val ivars: List<IVarField>)
@@ -89,7 +87,7 @@ class OCClassFieldAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.DA
 
         monitor?.message = "Parsing ivar list structures..."
 
-        val ivarNamespace = tryResolveNamespace("objc", "ivar_list_t") ?: return null
+        val ivarNamespace = tryResolveNamespace(program, "objc", "ivar_list_t") ?: return null
 
         val ivarNamespaceName = ivarNamespace.getName(true)
 
@@ -149,14 +147,5 @@ class OCClassFieldAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.DA
         }
 
         return IVarFieldList(definedClassStruct, ivFields)
-    }
-
-    private fun tryResolveNamespace(vararg fqnParts: String): Namespace?  {
-        // todo: move this to a utilities file eventually.
-        var ns = program.globalNamespace
-        for (part in fqnParts) {
-            ns = program.symbolTable.getNamespace(part, ns) ?: return null
-        }
-        return ns
     }
 }
