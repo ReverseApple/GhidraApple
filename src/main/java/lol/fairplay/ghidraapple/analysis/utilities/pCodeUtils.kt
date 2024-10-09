@@ -1,14 +1,9 @@
-package lol.fairplay.ghidraapple.analysis
+package lol.fairplay.ghidraapple.analysis.utilities
 
 import ghidra.program.model.address.Address
-import ghidra.program.model.data.DataType
 import ghidra.program.model.pcode.PcodeOp
 import ghidra.program.model.pcode.Varnode
-import ghidra.program.model.symbol.ReferenceManager
-import ghidra.program.model.symbol.SourceType
-import ghidra.program.model.listing.Function
 import ghidra.program.model.listing.Program
-import ghidra.program.model.pcode.*
 import ghidra.util.Msg
 import java.util.*
 

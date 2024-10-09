@@ -17,11 +17,10 @@ import ghidra.program.model.listing.Function
 import ghidra.program.model.mem.MemoryBlock
 import ghidra.program.model.pcode.PcodeOp
 import ghidra.program.model.symbol.SourceType
-import ghidra.util.Msg
 import ghidra.util.exception.CancelledException
 import ghidra.util.task.TaskMonitor
-import lol.fairplay.ghidraapple.analysis.getConstantFromVarNode
-import lol.fairplay.ghidraapple.analysis.toDefaultAddressSpace
+import lol.fairplay.ghidraapple.analysis.utilities.getConstantFromVarNode
+import lol.fairplay.ghidraapple.analysis.utilities.toDefaultAddressSpace
 import kotlin.Boolean
 import kotlin.Exception
 import kotlin.Pair
