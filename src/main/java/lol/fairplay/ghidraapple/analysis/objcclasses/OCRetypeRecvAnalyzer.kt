@@ -32,7 +32,9 @@ class OCRetypeRecvAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FU
 
     override fun canAnalyze(program: Program): Boolean {
         this.program = program
-        return true
+
+        val objcConstSection = program.memory.getBlock("__objc_const")
+        return objcConstSection != null
     }
 
     override fun added(program: Program, addresses: AddressSetView, monitor: TaskMonitor, log: MessageLog): Boolean {
