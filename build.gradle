@@ -39,6 +39,6 @@ dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
 }
 kotlin {
-    jvmToolchain(21)
+    jvmToolchain(17)
 }
 //----------------------END "DO NOT MODIFY" SECTION-------------------------------
