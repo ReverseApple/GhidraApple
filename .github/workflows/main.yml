@@ -8,7 +8,8 @@ jobs:
     strategy:
       matrix:
         ghidra:
-          - "latest"
+#          - "latest"
+          - "11.1.2"
           # - "11.1.1"
           # - "11.1"
           # - "11.0.3"
@@ -24,7 +25,7 @@ jobs:
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
-        java-version: '21'
+        java-version: '17'
 
     - name: Install Gradle
       uses: gradle/actions/setup-gradle@v3
