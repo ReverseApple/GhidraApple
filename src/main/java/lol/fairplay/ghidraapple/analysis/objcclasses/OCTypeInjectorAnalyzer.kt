@@ -24,7 +24,7 @@ import ghidra.program.model.symbol.SourceType
 import ghidra.program.model.symbol.Symbol
 import ghidra.util.Msg
 import ghidra.util.task.TaskMonitor
-import lol.fairplay.ghidraapple.analysis.getConstantFromVarNode
+import lol.fairplay.ghidraapple.analysis.utilities.getConstantFromVarNode
 import kotlin.jvm.optionals.getOrNull
 
 
