@@ -6,6 +6,7 @@ import ghidra.app.services.AnalyzerType
 import ghidra.app.util.importer.MessageLog
 import ghidra.program.model.address.AddressSetView
 import ghidra.program.model.address.GenericAddress
+import ghidra.program.model.data.DataType
 import ghidra.program.model.data.Structure
 import ghidra.program.model.listing.Data
 import ghidra.program.model.listing.Program
@@ -66,14 +67,14 @@ class OCClassFieldAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.DA
 
                 it.ivars.forEach { field ->
                     val fieldType = field.type.let {
-                        typeResolver.parseEncoded(it) ?: idDataType
+                        typeResolver.parseEncoded(it) ?: DataType.DEFAULT
                     }
 
                     println("${field.name}: ${fieldType.name}")
 
                     val fieldSize = field.size.toInt()
 
-                    definedClassStruct.add(fieldType, fieldSize, field.name, null)
+                    definedClassStruct.insertAtOffset(field.offset, fieldType, fieldSize, field.name, null)
                 }
 
                 monitor.incrementProgress()
@@ -133,15 +134,15 @@ class OCClassFieldAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.DA
             if (data.getComponent(i).dataType.name != "ivar_t")
                 continue
 
-            val fields = (0 .. data.getComponent(i).numComponents - 1).map {
+            val fields = (0..<data.getComponent(i).numComponents).map {
                 data.getComponent(i).getComponent(it)
             }
 
             // There's gotta be a better way to do this...
             val ivfName = program.listing.getDataAt(fields[1].value as GenericAddress?).value as String
             val ivfType = program.listing.getDataAt(fields[2].value as GenericAddress?).value as String
-            val ivfSize = (fields[4].value as Scalar).value.toInt()
-            val ivfOffset = (program.listing.getDataAt((fields[0].value as GenericAddress)).value as Scalar).value.toInt()
+            val ivfSize = (fields[4].value as Scalar).unsignedValue.toInt()
+            val ivfOffset = (program.listing.getDataAt((fields[0].value as GenericAddress)).value as Scalar).unsignedValue.toInt()
 
             ivFields.add(IVarField(ivfName, ivfType, ivfSize, ivfOffset))
         }
