@@ -83,15 +83,27 @@ class EncodingLexer(private val input: String) {
 
                 return Token.PrimitiveType(currentChar)
             }
+            in '0'..'9' -> {
+                return collectNumberLiteralToken()
+            }
             else -> {
-                TODO()
+                throw Exception("Unexpected character: $currentChar at position $pos")
             }
         }
     }
 
+    private fun collectNumberLiteralToken(): Token.NumberLiteral {
+        val start = pos
+        while (currentChar in '0'..'9') {
+            advance()
+        }
+        val result = input.substring(start, pos).toInt()
+        return Token.NumberLiteral(result)
+    }
+
     private fun collectIdentifierToken(): Token.Identifier {
         val start = pos
-        while (currentChar.isLetterOrDigit()) {
+        while (currentChar.isLetterOrDigit() || currentChar == '_') {
             advance()
         }
         return Token.Identifier(input.substring(start, pos))

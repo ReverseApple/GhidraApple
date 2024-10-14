@@ -1,7 +1,5 @@
 package lol.fairplay.ghidraapple.core.objc.encodings
 
-import lol.fairplay.ghidraapple.core.objc.encodings.Token.NumberToken
-
 
 sealed class Token {
     data class PrimitiveType(val type: Char) : Token()
@@ -21,8 +19,7 @@ sealed class Token {
     data class FieldSeparator(val type: Char = '=') : Token()
 
     data class StringLiteral(val value: String) : Token()
-    data class Offset(val value: Int) : Token()
-    data class Size(val value: Int) : Token()
+    data class NumberLiteral(val value: Int) : Token()
 
     object EndOfFile : Token()
 }
