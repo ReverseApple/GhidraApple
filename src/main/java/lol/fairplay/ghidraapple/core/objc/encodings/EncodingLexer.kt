@@ -59,6 +59,10 @@ class EncodingLexer(private val input: String) {
             }
             '?' -> {
                 advance()
+                if (structBegin) {
+                    structBegin = false
+                }
+
                 return Token.AnonymousType()
             }
             '@' -> {
@@ -74,14 +78,13 @@ class EncodingLexer(private val input: String) {
                 return Token.SelectorType()
             }
             in 'a'..'z', in 'A'..'Z', '_' -> {
-                advance()
                 if (structBegin) {
                     val id = collectIdentifierToken()
                     structBegin = false
                     return id
                 }
-
                 return Token.PrimitiveType(currentChar)
+                    .also { advance() }
             }
             in '0'..'9' -> {
                 return collectNumberLiteralToken()
@@ -118,7 +121,7 @@ class EncodingLexer(private val input: String) {
             advance()
         }
 
-        return Token.StringLiteral(input.substring(start, pos))
+        return Token.StringLiteral(input.substring(start, pos)).also { advance() }
     }
 
 }
