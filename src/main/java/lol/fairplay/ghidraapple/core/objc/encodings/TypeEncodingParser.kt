@@ -22,14 +22,30 @@ class TypeEncodingParser(val lexer: EncodingLexer) {
         }
     }
 
-    private fun parseObject(): TypeNode.Object {
+    private fun parseObject(): TypeNode {
         expectToken<Token.ObjectType>()
-        val name = if (currentToken is Token.StringLiteral) {
-            (currentToken as Token.StringLiteral).value.also { nextToken() }
+
+        if (currentToken is Token.Anonymous) {
+            nextToken()
+            return TypeNode.Block
+        } else if (currentToken is Token.StringLiteral) {
+            val name = (currentToken as Token.StringLiteral).value.also { nextToken() }
+            return TypeNode.Object(name)
         } else {
-            null
+            return TypeNode.Object(null)
         }
-        return TypeNode.Object(name)
+    }
+
+    private fun parsePointer(): TypeNode {
+        expectToken<Token.PointerType>()
+
+        if (currentToken is Token.Anonymous) {
+            nextToken()
+            return TypeNode.FunctionPointer
+        }
+
+        val pointee = parseType()
+        return TypeNode.Pointer(pointee)
     }
 
     private fun parseBitfield(): TypeNode.Bitfield {
@@ -42,12 +58,6 @@ class TypeEncodingParser(val lexer: EncodingLexer) {
         val primitiveType = (currentToken as Token.PrimitiveType).type
         nextToken()
         return TypeNode.Primitive(primitiveType.toString())
-    }
-
-    private fun parsePointer(): TypeNode.Pointer {
-        expectToken<Token.PointerType>()
-        val pointee = parseType()
-        return TypeNode.Pointer(pointee)
     }
 
     private fun parseStructOrClassObject(): TypeNode {

@@ -9,4 +9,6 @@ sealed class TypeNode {
     data class Primitive(val type: String) : TypeNode()
     data class Pointer(val pointee: TypeNode) : TypeNode()
     data class Bitfield(val size: Int) : TypeNode()
+    object Block : TypeNode()
+    object FunctionPointer : TypeNode()
 }
