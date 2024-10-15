@@ -9,7 +9,7 @@ class EncodingLexer(private val input: String) {
     private var pos = 0
 
     // --- context flags ---
-    private var structBegin = false
+    private var structOrUnionBegin = false
 
     private val currentChar: Char
         get() = if (pos < input.length) input[pos] else EOF_RAW
@@ -38,12 +38,21 @@ class EncodingLexer(private val input: String) {
             }
             '{' -> {
                 advance()
-                structBegin = true
+                structOrUnionBegin = true
                 return Token.StructOpen()
             }
             '}' -> {
                 advance()
                 return Token.StructClose()
+            }
+            '(' -> {
+                advance()
+                structOrUnionBegin = true
+                return Token.UnionOpen()
+            }
+            ')' -> {
+                advance()
+                return Token.UnionClose()
             }
             '[' -> {
                 advance()
@@ -59,8 +68,8 @@ class EncodingLexer(private val input: String) {
             }
             '?' -> {
                 advance()
-                if (structBegin) {
-                    structBegin = false
+                if (structOrUnionBegin) {
+                    structOrUnionBegin = false
                 }
 
                 return Token.Anonymous()
@@ -78,11 +87,17 @@ class EncodingLexer(private val input: String) {
                 return Token.SelectorType()
             }
             in 'a'..'z', in 'A'..'Z', '_' -> {
-                if (structBegin) {
+                if (currentChar == 'b' && peek(1).isDigit()) {
+                    advance()
+                    return Token.BitfieldType()
+                }
+
+                if (structOrUnionBegin) {
                     val id = collectIdentifierToken()
-                    structBegin = false
+                    structOrUnionBegin = false
                     return id
                 }
+
                 return Token.PrimitiveType(currentChar)
                     .also { advance() }
             }

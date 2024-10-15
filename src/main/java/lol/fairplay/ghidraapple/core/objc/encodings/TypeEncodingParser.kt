@@ -11,11 +11,31 @@ class TypeEncodingParser(val lexer: EncodingLexer) {
 
     private fun parseType(): TypeNode {
         return when (currentToken) {
-            is Token.StructOpen -> parseStruct()
+            is Token.StructOpen -> parseStructOrClassObject()
+            is Token.BitfieldType -> parseBitfield()
             is Token.ArrayOpen -> parseArray()
             is Token.PrimitiveType -> parsePrimitive()
+            is Token.UnionOpen -> parseUnion()
+            is Token.PointerType -> parsePointer()
+            is Token.ObjectType -> parseObject()
             else -> throw IllegalArgumentException("Unexpected token: $currentToken")
         }
+    }
+
+    private fun parseObject(): TypeNode.Object {
+        expectToken<Token.ObjectType>()
+        val name = if (currentToken is Token.StringLiteral) {
+            (currentToken as Token.StringLiteral).value.also { nextToken() }
+        } else {
+            null
+        }
+        return TypeNode.Object(name)
+    }
+
+    private fun parseBitfield(): TypeNode.Bitfield {
+        expectToken<Token.BitfieldType>()
+        val size = expectToken<Token.NumberLiteral>().value
+        return TypeNode.Bitfield(size)
     }
 
     private fun parsePrimitive(): TypeNode.Primitive {
@@ -24,14 +44,26 @@ class TypeEncodingParser(val lexer: EncodingLexer) {
         return TypeNode.Primitive(primitiveType.toString())
     }
 
-    private fun parseStruct(): TypeNode.Struct {
+    private fun parsePointer(): TypeNode.Pointer {
+        expectToken<Token.PointerType>()
+        val pointee = parseType()
+        return TypeNode.Pointer(pointee)
+    }
+
+    private fun parseStructOrClassObject(): TypeNode {
         expectToken<Token.StructOpen>()
 
-        val structName = expectOneOf(Token.Identifier::class, Token.Anonymous::class).let {
+        val identifier = expectOneOf(Token.Identifier::class, Token.Anonymous::class).let {
             if (it is Token.Identifier) it.name else null
         }
 
         expectToken<Token.FieldSeparator>()
+
+        var isClass = false
+        if (currentToken is Token.ClassObjectType) {
+            nextToken()
+            isClass = true
+        }
 
         val fields = mutableListOf<Pair<String?, TypeNode>>()
 
@@ -46,7 +78,31 @@ class TypeEncodingParser(val lexer: EncodingLexer) {
         }
 
         expectToken<Token.StructClose>()
-        return TypeNode.Struct(structName, fields)
+
+        return if (isClass) {
+            TypeNode.ClassObject(identifier, fields)
+        } else {
+            TypeNode.Struct(identifier, fields)
+        }
+    }
+
+    private fun parseUnion(): TypeNode.Union {
+        expectToken<Token.UnionOpen>()
+
+        val unionName = expectOneOf(Token.Identifier::class, Token.Anonymous::class).let {
+            if (it is Token.Identifier) it.name else null
+        }
+
+        expectToken<Token.FieldSeparator>()
+
+        val fields = mutableListOf<TypeNode>()
+        while (currentToken !is Token.UnionClose) {
+            fields.add(parseType())
+        }
+
+        expectToken<Token.UnionClose>()
+
+        return TypeNode.Union(unionName, fields)
     }
 
     private fun parseArray(): TypeNode.Array {

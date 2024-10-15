@@ -4,12 +4,18 @@ package lol.fairplay.ghidraapple.core.objc.encodings
 sealed class Token {
     data class PrimitiveType(val type: Char) : Token()
 
+    // Special types...
     data class ObjectType(val type: Char = '@') : Token()
     data class PointerType(val type: Char = '^') : Token()
     data class SelectorType(val type: Char = ':') : Token()
+    data class ClassObjectType(val type: Char = '#') : Token()
+    data class BitfieldType(val type: Char = 'b') : Token()
 
+    // Wrappers...
     data class StructOpen(val type: Char = '{') : Token()
     data class StructClose(val type: Char = '}') : Token()
+    data class UnionOpen(val type: Char = '(') : Token()
+    data class UnionClose(val type: Char = ')') : Token()
     data class ArrayOpen(val type: Char = '[') : Token()
     data class ArrayClose(val type: Char = ']') : Token()
 
