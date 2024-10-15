@@ -25,6 +25,16 @@ import ghidra.program.model.listing.Program
 import lol.fairplay.ghidraapple.core.objc.encodings.TypeNode
 import lol.fairplay.ghidraapple.core.objc.encodings.TypeNodeVisitor
 
+import java.security.SecureRandom
+
+fun getRandomHexString(length: Int): String {
+    val random = SecureRandom()
+    val bytes = ByteArray(length / 2)
+    random.nextBytes(bytes)
+
+    return bytes.joinToString("") { "%02x".format(it) }
+}
+
 
 /**
  * Converts a ``TypeNode`` tree into a Ghidra ``DataType``
@@ -42,16 +52,36 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
         return program.dataTypeManager.getDataType(category, name)
     }
 
+    /**
+     * Create a new instance of this class with the same parameters.
+     *
+     * This method is so that when we potentially change the constructor parameters, we won't
+     * have to go and update each call.
+     */
+    fun extend(): GhidraTypeBuilder {
+        return GhidraTypeBuilder(program)
+    }
+
     fun tryResolveDefinedStruct(name: String): DataType? {
         val category = CategoryPath("/GA_OBJC")
         return program.dataTypeManager.getDataType(category, "struct_${name}")
     }
 
     override fun visitStruct(struct: TypeNode.Struct) {
-        val ghidraStruct = StructureDataType(struct.name, 0)
+
+        val ghidraStruct = if (struct.name == null) {
+            StructureDataType("anon__${getRandomHexString(6)}", 0)
+        } else {
+            tryResolveDefinedStruct(struct.name) ?: StructureDataType(struct.name, 0)
+        } as StructureDataType
+
+        if (struct.fields == null) {
+            result = ghidraStruct
+            return
+        }
 
         for ((name, node) in struct.fields) {
-            val visitor = GhidraTypeBuilder(program)
+            val visitor = extend()
             node.accept(visitor)
 
             if (name != null) {
@@ -73,15 +103,20 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
             throw Exception("Not sure.")
         }
 
-        val resolved = tryResolveDefinedStruct(obj.name)
+        val resolved = tryResolveTypedef(obj.name)
         result = resolved ?: program.dataTypeManager.getDataType("/_objc2_/ID")
     }
 
     override fun visitUnion(union: TypeNode.Union) {
         val ghidraUnion = UnionDataType(union.name)
 
+        if (union.fields == null) {
+            result = ghidraUnion
+            return
+        }
+
         for ((name, node) in union.fields) {
-            val visitor = GhidraTypeBuilder(program)
+            val visitor = extend()
             node.accept(visitor)
 
             if (name != null) {
@@ -95,7 +130,7 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
     }
 
     override fun visitArray(array: TypeNode.Array) {
-        val visitor = GhidraTypeBuilder(program)
+        val visitor = extend()
         array.elementType.accept(visitor)
 
         result = ArrayDataType(visitor.getResult(), array.size)
@@ -117,12 +152,13 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
             'd' -> DoubleDataType.dataType
             'v' -> VoidDataType.dataType
             'B' -> BooleanDataType.dataType
+            '*' -> PointerDataType(CharDataType.dataType)
             else -> throw Exception("Unknown primitive type: ${primitive.type}")
         }
     }
 
     override fun visitPointer(pointer: TypeNode.Pointer) {
-        val visitor = GhidraTypeBuilder(program)
+        val visitor = extend()
         pointer.pointee.accept(visitor)
 
         result = PointerDataType(visitor.getResult())

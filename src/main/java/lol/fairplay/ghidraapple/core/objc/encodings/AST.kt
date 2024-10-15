@@ -4,13 +4,13 @@ sealed class TypeNode {
 
     abstract fun accept(visitor: TypeNodeVisitor)
 
-    data class Struct(val name: String?, val fields: List<Pair<String?, TypeNode>>) : TypeNode() {
+    data class Struct(val name: String?, val fields: List<Pair<String?, TypeNode>>?) : TypeNode() {
         override fun accept(visitor: TypeNodeVisitor) {
             visitor.visitStruct(this)
         }
     }
 
-    data class ClassObject(val name: String?, val fields: List<Pair<String?, TypeNode>>) : TypeNode() {
+    data class ClassObject(val name: String?, val fields: List<Pair<String?, TypeNode>>?) : TypeNode() {
         override fun accept(visitor: TypeNodeVisitor) {
             visitor.visitClassObject(this)
         }
@@ -22,7 +22,7 @@ sealed class TypeNode {
         }
     }
 
-    data class Union(val name: String?, val fields: List<Pair<String?, TypeNode>>) : TypeNode() {
+    data class Union(val name: String?, val fields: List<Pair<String?, TypeNode>>?) : TypeNode() {
         override fun accept(visitor: TypeNodeVisitor) {
             visitor.visitUnion(this)
         }

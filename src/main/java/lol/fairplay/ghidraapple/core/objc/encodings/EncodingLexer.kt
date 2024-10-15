@@ -90,7 +90,7 @@ class EncodingLexer(private val input: String) {
                 advance()
                 return Token.ClassObjectType()
             }
-            in 'a'..'z', in 'A'..'Z', '_' -> {
+            in 'a'..'z', in 'A'..'Z', '_', '*' -> {
                 if (currentChar == 'b' && peek(1).isDigit()) {
                     advance()
                     return Token.BitfieldType()

@@ -67,6 +67,11 @@ class TypeEncodingParser(val lexer: EncodingLexer) {
             if (it is Token.Identifier) it.name else null
         }
 
+        if (currentToken is Token.StructClose) {
+            nextToken()
+            return TypeNode.Struct(identifier, null)
+        }
+
         expectToken<Token.FieldSeparator>()
 
         var isClass = false

@@ -28,5 +28,6 @@ sealed class Token {
     data class NumberLiteral(val value: Int) : Token()
 
     object EndOfFile : Token()
+
 }
 
