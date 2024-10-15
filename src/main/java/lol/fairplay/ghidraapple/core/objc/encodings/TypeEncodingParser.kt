@@ -57,7 +57,7 @@ class TypeEncodingParser(val lexer: EncodingLexer) {
     private fun parsePrimitive(): TypeNode.Primitive {
         val primitiveType = (currentToken as Token.PrimitiveType).type
         nextToken()
-        return TypeNode.Primitive(primitiveType.toString())
+        return TypeNode.Primitive(primitiveType)
     }
 
     private fun parseStructOrClassObject(): TypeNode {
@@ -105,9 +105,15 @@ class TypeEncodingParser(val lexer: EncodingLexer) {
 
         expectToken<Token.FieldSeparator>()
 
-        val fields = mutableListOf<TypeNode>()
+        val fields = mutableListOf<Pair<String?, TypeNode>>()
         while (currentToken !is Token.UnionClose) {
-            fields.add(parseType())
+            var name: String? = null
+            if (currentToken is Token.StringLiteral) {
+                name = (currentToken as Token.StringLiteral).value
+                nextToken()
+            }
+
+            fields.add(name to parseType())
         }
 
         expectToken<Token.UnionClose>()

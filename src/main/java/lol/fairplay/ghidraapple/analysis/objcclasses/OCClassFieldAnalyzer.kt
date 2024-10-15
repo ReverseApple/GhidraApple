@@ -13,7 +13,10 @@ import ghidra.program.model.listing.Program
 import ghidra.program.model.scalar.Scalar
 import ghidra.program.model.symbol.Symbol
 import ghidra.util.task.TaskMonitor
+import lol.fairplay.ghidraapple.analysis.utilities.GhidraTypeBuilder
 import lol.fairplay.ghidraapple.analysis.utilities.tryResolveNamespace
+import lol.fairplay.ghidraapple.core.objc.encodings.EncodingLexer
+import lol.fairplay.ghidraapple.core.objc.encodings.TypeEncodingParser
 
 private data class IVarField(val name: String, val type: String, val size: Int, val offset: Int)
 private data class IVarFieldList(val classSymbol: Symbol, val ivars: List<IVarField>)
@@ -65,9 +68,13 @@ class OCClassFieldAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.DA
                     continue
                 }
 
-                it.ivars.forEach { field ->
-                    val fieldType = field.type.let {
-                        typeResolver.parseEncoded(it) ?: DataType.DEFAULT
+                for (field in it.ivars) {
+                    var fieldType: DataType? = null
+                    try {
+                        fieldType = getTypeFromEncoding(field.type)
+                    } catch (e: Exception) {
+                        log.appendMsg("Failed to resolve type: ${field.type}")
+                        continue
                     }
 
                     println("${field.name}: ${fieldType.name}")
@@ -82,6 +89,17 @@ class OCClassFieldAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.DA
         }
 
         return true
+    }
+
+    private fun getTypeFromEncoding(encoded: String): DataType {
+        val lexer = EncodingLexer(encoded)
+        val parser = TypeEncodingParser(lexer)
+
+        val root = parser.parse()
+        val builder = GhidraTypeBuilder(program)
+        root.accept(builder)
+
+        return builder.getResult()
     }
 
     private fun getIVarListsInAddressSet(set: AddressSetView, monitor: TaskMonitor?): List<IVarFieldList>? {
