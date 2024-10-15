@@ -34,12 +34,14 @@ class TypeResolver(val program: Program) {
         // this will be more robust in the future.
         // reference: https://nshipster.com/type-encodings/
 
-        println("input: $encodedType")
+        if (encodedType.isEmpty())
+            return null
 
         when (encodedType[0]) {
             '@' -> {
-                if (encodedType.length == 1)
+                if (encodedType.length == 1 || encodedType == "@?")
                     return dtm.getDataType("/_objc2_/ID")
+
                 // expect a defined type structure
                 return tryResolveTypedef(encodedType.substring(2, encodedType.length - 1))
             }

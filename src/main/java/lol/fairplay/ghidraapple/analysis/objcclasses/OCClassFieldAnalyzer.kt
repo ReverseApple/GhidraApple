@@ -6,8 +6,7 @@ import ghidra.app.services.AnalyzerType
 import ghidra.app.util.importer.MessageLog
 import ghidra.program.model.address.AddressSetView
 import ghidra.program.model.address.GenericAddress
-import ghidra.program.model.data.DataType
-import ghidra.program.model.data.Structure
+import ghidra.program.model.data.*
 import ghidra.program.model.listing.Data
 import ghidra.program.model.listing.Program
 import ghidra.program.model.scalar.Scalar
@@ -59,6 +58,7 @@ class OCClassFieldAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.DA
 
         program.withTransaction<Exception>("Apply fields.") {
             for (it in fieldLists) {
+                monitor.checkCancelled()
                 val definedClassStruct = typeResolver.tryResolveDefinedStruct(it.classSymbol.name) as Structure?
                 if (definedClassStruct == null) {
                     log.appendMsg("Couldn't find defined structure for ${it.classSymbol.name} ivar list.")
@@ -66,13 +66,29 @@ class OCClassFieldAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.DA
                 }
 
                 it.ivars.forEach { field ->
-                    val fieldType = field.type.let {
-                        typeResolver.parseEncoded(it) ?: DataType.DEFAULT
-                    }
-
-                    println("${field.name}: ${fieldType.name}")
 
                     val fieldSize = field.size.toInt()
+
+
+                    val fieldType = field.type.let { typeString ->
+                        val resolvedType = typeResolver.parseEncoded(typeString)
+
+                        if (resolvedType == null ){
+                            Undefined.getUndefinedDataType(fieldSize)
+                        }
+                        // There is some bug where a field is typed as int with size 4, but Ghidra later
+                        // treats an int as size 8, and then fails to decompile functions using this field
+                        // to fix this we change them to short and unsigned short respectively.
+                        else if (resolvedType.name == "int" && fieldSize == 4) {
+                            ShortDataType.dataType
+                        }
+                        else if (resolvedType.name == "uint" && fieldSize == 8) {
+                            UnsignedShortDataType.dataType
+                        }
+                        else {
+                            resolvedType
+                        }
+                    }
 
                     definedClassStruct.insertAtOffset(field.offset, fieldType, fieldSize, field.name, null)
                 }

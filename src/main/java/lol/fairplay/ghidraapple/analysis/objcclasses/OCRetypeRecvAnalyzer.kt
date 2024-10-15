@@ -43,10 +43,8 @@ class OCRetypeRecvAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FU
 
         program.withTransaction<Exception>("Apply receiver types to class methods.") {
             classMethods.forEach { (typedef, methods) ->
-                println("CLASS ${typedef.name}")
 
                 for (method in methods) {
-                    println("   METHOD ${method.name}")
 
                     if (method.parameterCount == 0) {
                         continue
