@@ -6,7 +6,6 @@ sealed class Token {
 
     data class ObjectType(val type: Char = '@') : Token()
     data class PointerType(val type: Char = '^') : Token()
-    data class AnonymousType(val type: Char = '?') : Token()
     data class SelectorType(val type: Char = ':') : Token()
 
     data class StructOpen(val type: Char = '{') : Token()
@@ -14,6 +13,7 @@ sealed class Token {
     data class ArrayOpen(val type: Char = '[') : Token()
     data class ArrayClose(val type: Char = ']') : Token()
 
+    data class Anonymous(val type: Char = '?') : Token()
     data class Identifier(val name: String) : Token()
 
     data class FieldSeparator(val type: Char = '=') : Token()

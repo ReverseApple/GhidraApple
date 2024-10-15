@@ -19,3 +19,10 @@ D = Second Argument (`SEL`, as indicated by `:`)
 
 ### Argument Structure:
 `<type><stack_offset>`
+
+## Encodings
+
+- Method Descriptors
+- Block Descriptors
+- Property Descriptors
+- ...?

@@ -63,7 +63,7 @@ class EncodingLexer(private val input: String) {
                     structBegin = false
                 }
 
-                return Token.AnonymousType()
+                return Token.Anonymous()
             }
             '@' -> {
                 advance()
@@ -121,7 +121,8 @@ class EncodingLexer(private val input: String) {
             advance()
         }
 
-        return Token.StringLiteral(input.substring(start, pos)).also { advance() }
+        return Token.StringLiteral(input.substring(start, pos))
+            .also { advance() }
     }
 
 }
