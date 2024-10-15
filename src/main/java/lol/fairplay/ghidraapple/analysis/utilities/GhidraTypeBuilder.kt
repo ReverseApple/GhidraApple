@@ -68,12 +68,11 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
     }
 
     override fun visitStruct(struct: TypeNode.Struct) {
+        val name = (struct.name ?: "anon__${getRandomHexString(6)}").let{
+            if (it.isEmpty()) "anon__${getRandomHexString(6)}" else it
+        }
 
-        val ghidraStruct = if (struct.name == null) {
-            StructureDataType("anon__${getRandomHexString(6)}", 0)
-        } else {
-            tryResolveDefinedStruct(struct.name) ?: StructureDataType(struct.name, 0)
-        } as StructureDataType
+        val ghidraStruct = (tryResolveDefinedStruct(name) ?: StructureDataType(name, 0)) as StructureDataType
 
         if (struct.fields == null) {
             result = ghidraStruct
@@ -108,7 +107,12 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
     }
 
     override fun visitUnion(union: TypeNode.Union) {
-        val ghidraUnion = UnionDataType(union.name)
+
+        val name = (union.name ?: "anon__${getRandomHexString(6)}").let{
+            if (it.isEmpty()) "anon__${getRandomHexString(6)}" else it
+        }
+
+        val ghidraUnion = UnionDataType(name)
 
         if (union.fields == null) {
             result = ghidraUnion

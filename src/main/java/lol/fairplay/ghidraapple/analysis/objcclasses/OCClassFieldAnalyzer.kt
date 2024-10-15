@@ -51,11 +51,6 @@ class OCClassFieldAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.DA
         val idDataType = program.dataTypeManager.getDataType("/_objc2_/ID")
         val fieldLists = getIVarListsInAddressSet(set, monitor) ?: return false
 
-        program.withTransaction<Exception>("Change __objc_const section permissions.") {
-            val objcConstSection = program.memory.getBlock("__objc_const")
-            objcConstSection.setPermissions(true, false, false)
-        }
-
         monitor.message = "Applying class structure fields..."
         monitor.progress = 0
         monitor.maximum = fieldLists.size.toLong()
@@ -71,6 +66,7 @@ class OCClassFieldAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.DA
                 for (field in it.ivars) {
                     var fieldType: DataType? = null
                     try {
+                        println("Encoded: ${field.type}")
                         fieldType = getTypeFromEncoding(field.type)
                     } catch (e: Exception) {
                         log.appendMsg("Failed to resolve type: ${field.type}")
@@ -86,6 +82,11 @@ class OCClassFieldAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.DA
 
                 monitor.incrementProgress()
             }
+        }
+
+        program.withTransaction<Exception>("Change __objc_const section permissions.") {
+            val objcConstSection = program.memory.getBlock("__objc_const")
+            objcConstSection.setPermissions(true, false, false)
         }
 
         return true
