@@ -1,4 +1,4 @@
-package lol.fairplay.ghidraapple.analysis.objcclasses
+package lol.fairplay.ghidraapple.analysis.passes.objcclasses
 
 import ghidra.app.decompiler.DecompInterface
 import ghidra.app.decompiler.DecompileOptions

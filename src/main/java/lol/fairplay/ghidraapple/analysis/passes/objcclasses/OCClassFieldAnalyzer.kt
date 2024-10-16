@@ -1,4 +1,4 @@
-package lol.fairplay.ghidraapple.analysis.objcclasses
+package lol.fairplay.ghidraapple.analysis.passes.objcclasses
 
 import ghidra.app.services.AbstractAnalyzer
 import ghidra.app.services.AnalysisPriority
@@ -14,6 +14,7 @@ import ghidra.program.model.scalar.Scalar
 import ghidra.program.model.symbol.Symbol
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.analysis.utilities.GhidraTypeBuilder
+import lol.fairplay.ghidraapple.analysis.objectivec.TypeResolver
 import lol.fairplay.ghidraapple.analysis.utilities.tryResolveNamespace
 import lol.fairplay.ghidraapple.core.objc.encodings.EncodingLexer
 import lol.fairplay.ghidraapple.core.objc.encodings.TypeEncodingParser

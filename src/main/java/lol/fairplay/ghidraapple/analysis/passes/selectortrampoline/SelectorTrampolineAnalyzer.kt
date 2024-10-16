@@ -1,4 +1,4 @@
-package lol.fairplay.ghidraapple.analysis.selectortrampoline
+package lol.fairplay.ghidraapple.analysis.passes.selectortrampoline
 
 import ghidra.app.decompiler.DecompInterface
 import ghidra.app.decompiler.DecompileOptions

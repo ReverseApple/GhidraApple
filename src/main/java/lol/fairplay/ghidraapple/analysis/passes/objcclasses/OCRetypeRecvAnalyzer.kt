@@ -1,4 +1,4 @@
-package lol.fairplay.ghidraapple.analysis.objcclasses
+package lol.fairplay.ghidraapple.analysis.passes.objcclasses
 
 import ghidra.app.services.AbstractAnalyzer
 import ghidra.app.services.AnalysisPriority
@@ -6,7 +6,6 @@ import ghidra.app.services.AnalyzerType
 import ghidra.app.util.importer.MessageLog
 import ghidra.program.model.address.AddressSetView
 import ghidra.program.model.data.CategoryPath
-import ghidra.program.model.data.TypedefDataType
 import ghidra.program.model.data.DataType
 import ghidra.program.model.listing.Function
 import ghidra.program.model.listing.Program
