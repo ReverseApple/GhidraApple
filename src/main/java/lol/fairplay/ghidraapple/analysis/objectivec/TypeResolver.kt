@@ -1,4 +1,4 @@
-package lol.fairplay.ghidraapple.analysis.objcclasses
+package lol.fairplay.ghidraapple.analysis.objectivec
 
 import ghidra.program.model.data.*
 import ghidra.program.model.data.BooleanDataType
