@@ -1,12 +1,18 @@
 package lol.fairplay.ghidraapple.core.objc.encodings
 
-import kotlin.reflect.KClass
 
-class TypeEncodingParser(val lexer: EncodingLexer) {
-    var currentToken = lexer.getNextToken()
+class TypeEncodingParser(lexer: EncodingLexer) : EncodingParser(lexer) {
 
     fun parse(): TypeNode {
         return parseType()
+    }
+
+    fun parseSequence(until: Token): List<TypeNode> {
+        val result = mutableListOf<TypeNode>()
+        while (currentToken::class != until::class) {
+            result.add(parseType())
+        }
+        return result.toList()
     }
 
     private fun parseType(): TypeNode {
@@ -22,12 +28,36 @@ class TypeEncodingParser(val lexer: EncodingLexer) {
         }
     }
 
+    private fun parseBlock(): TypeNode.Block {
+
+        /**
+         * In the context of method encodings, blocks are typically represented using angle brackets.
+         * ``@?<...>``
+         *
+         * In the context of type encodings, blocks are represented using only the ``@?`` signal.
+         */
+
+        if (currentToken !is Token.BlockOpen) {
+            return TypeNode.Block(null, null)
+        }
+
+        expectToken<Token.BlockOpen>()
+        val types = parseSequence(Token.BlockClose())
+        expectToken<Token.BlockClose>()
+
+        return TypeNode.Block(
+            types[0],
+            types.slice(1 until types.size)
+                .let { if (it.isEmpty()) null else it }
+                ?.map { Pair(it, null) })
+    }
+
     private fun parseObject(): TypeNode {
         expectToken<Token.ObjectType>()
 
         if (currentToken is Token.Anonymous) {
             nextToken()
-            return TypeNode.Block
+            return parseBlock()
         } else if (currentToken is Token.StringLiteral) {
             val name = (currentToken as Token.StringLiteral).value.also { nextToken() }
             return TypeNode.Object(name)
@@ -132,29 +162,5 @@ class TypeEncodingParser(val lexer: EncodingLexer) {
         val elementType = parseType()
         expectToken<Token.ArrayClose>()
         return TypeNode.Array(size, elementType)
-    }
-
-    private fun expectOneOf(vararg tokenTypes: KClass<out Token>): Token {
-        val token = currentToken
-        nextToken()
-        if (tokenTypes.any { it.isInstance(token) }) {
-            return token
-        } else {
-            throw IllegalArgumentException("Expected one of ${tokenTypes.joinToString()}, but got $token")
-        }
-    }
-
-    private inline fun <reified T : Token> expectToken(): T {
-        val token = currentToken
-        nextToken()
-        if (token is T) {
-            return token
-        } else {
-            throw IllegalArgumentException("Expected token ${T::class} but found ${token::class}")
-        }
-    }
-
-    private fun nextToken() {
-        currentToken = lexer.getNextToken()
     }
 }

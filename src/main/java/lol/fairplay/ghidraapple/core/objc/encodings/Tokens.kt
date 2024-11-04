@@ -18,6 +18,8 @@ sealed class Token {
     data class UnionClose(val type: Char = ')') : Token()
     data class ArrayOpen(val type: Char = '[') : Token()
     data class ArrayClose(val type: Char = ']') : Token()
+    data class BlockOpen(val type: Char = '<') : Token()
+    data class BlockClose(val type: Char = '>') : Token()
 
     data class Anonymous(val type: Char = '?') : Token()
     data class Identifier(val name: String) : Token()

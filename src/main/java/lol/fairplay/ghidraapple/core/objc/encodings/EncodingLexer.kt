@@ -62,6 +62,14 @@ class EncodingLexer(private val input: String) {
                 advance()
                 return Token.ArrayClose()
             }
+            '<' -> {
+                advance()
+                return Token.BlockOpen()
+            }
+            '>' -> {
+                advance()
+                return Token.BlockClose()
+            }
             '=' -> {
                 advance()
                 return Token.FieldSeparator()

@@ -52,7 +52,7 @@ sealed class TypeNode {
         }
     }
 
-    object Block : TypeNode() {
+    data class Block(val returnType: TypeNode?, val parameters: List<Pair<TypeNode, Int?>>?) : TypeNode() {
         override fun accept(visitor: TypeNodeVisitor) {
             visitor.visitBlock(this)
         }
