@@ -1,7 +1,6 @@
-package lol.fairplay.ghidraapple.analysis.utilities
+package lol.fairplay.ghidraapple.analysis.objectivec
 
 import ghidra.program.model.data.ArrayDataType
-import ghidra.program.model.data.BitFieldDataType
 import ghidra.program.model.data.BooleanDataType
 import ghidra.program.model.data.CategoryPath
 import ghidra.program.model.data.CharDataType

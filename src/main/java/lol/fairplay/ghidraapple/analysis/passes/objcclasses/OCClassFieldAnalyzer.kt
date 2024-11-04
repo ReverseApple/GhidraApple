@@ -13,7 +13,7 @@ import ghidra.program.model.listing.Program
 import ghidra.program.model.scalar.Scalar
 import ghidra.program.model.symbol.Symbol
 import ghidra.util.task.TaskMonitor
-import lol.fairplay.ghidraapple.analysis.utilities.GhidraTypeBuilder
+import lol.fairplay.ghidraapple.analysis.objectivec.GhidraTypeBuilder
 import lol.fairplay.ghidraapple.analysis.objectivec.TypeResolver
 import lol.fairplay.ghidraapple.analysis.utilities.tryResolveNamespace
 import lol.fairplay.ghidraapple.core.objc.encodings.EncodingLexer
