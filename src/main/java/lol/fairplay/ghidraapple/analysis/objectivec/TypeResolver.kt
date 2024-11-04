@@ -30,6 +30,7 @@ class TypeResolver(val program: Program) {
         }
     }
 
+    @Deprecated("Use GhidraTypeBuilder instead.")
     fun parseEncoded(encodedType: String): DataType? {
         // this will be more robust in the future.
         // reference: https://nshipster.com/type-encodings/
