@@ -21,4 +21,16 @@ class EncodingLexerTest {
         }
     }
 
+    @Test
+    fun test_SignatureLexing() {
+        val example = "B40@0:8@\"NSApplication\"16@\"NSUserActivity\"24@?<v@?@\"NSArray\">32"
+        val lexer = EncodingLexer(example)
+        
+        var token = lexer.getNextToken()
+        while (token != Token.EndOfFile) {
+            println(token)
+            token = lexer.getNextToken()
+        }
+    }
+
 }

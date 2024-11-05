@@ -49,7 +49,7 @@ class TypeEncodingParser(lexer: EncodingLexer) : EncodingParser(lexer) {
             types[0],
             types.slice(1 until types.size)
                 .let { if (it.isEmpty()) null else it }
-                ?.map { Pair(it, null) })
+                ?.map { it to null })
     }
 
     private fun parseObject(): TypeNode {

@@ -7,6 +7,7 @@ const val EOF_RAW = '\u0000'
 class EncodingLexer(private val input: String) {
 
     private var pos = 0
+    var latestToken: Token? = null
 
     // --- context flags ---
     private var structOrUnionBegin = false
@@ -25,8 +26,10 @@ class EncodingLexer(private val input: String) {
     fun getNextToken() : Token {
         while (currentChar != EOF_RAW) {
             val token = tryGetToken() ?: continue
+            latestToken = token
             return token
         }
+        latestToken = Token.EndOfFile
         return Token.EndOfFile
     }
 
@@ -153,3 +156,6 @@ class EncodingLexer(private val input: String) {
     }
 
 }
+
+
+

@@ -4,7 +4,9 @@ import kotlin.reflect.KClass
 
 abstract class EncodingParser(val lexer: EncodingLexer) {
 
-    var currentToken = lexer.getNextToken()
+    protected var currentToken: Token
+        get() = lexer.latestToken ?: lexer.getNextToken()
+        private set(_) {}
 
     protected fun expectOneOf(vararg tokenTypes: KClass<out Token>): Token {
         val token = currentToken
@@ -27,7 +29,7 @@ abstract class EncodingParser(val lexer: EncodingLexer) {
     }
 
     protected fun nextToken() {
-        currentToken = lexer.getNextToken()
+        lexer.getNextToken()
     }
 
 }
