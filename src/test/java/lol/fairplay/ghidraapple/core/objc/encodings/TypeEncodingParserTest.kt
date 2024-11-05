@@ -47,6 +47,9 @@ class TypeEncodingParserTest {
                     to EncodedSignatureType.METHOD_SIGNATURE,
             "#16@0:8"
                     to EncodedSignatureType.METHOD_SIGNATURE,
+
+            "@108@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16@48q56@64@72@80@88B96@100"
+                    to EncodedSignatureType.METHOD_SIGNATURE,
         )
 
         for ((sig, type) in examples) {
@@ -55,6 +58,21 @@ class TypeEncodingParserTest {
             val result = parser.parse()
 
             println(result)
+        }
+    }
+
+    @Test
+    fun test_ParseAttributeProperties() {
+        val examples = listOf(
+            "T@\"NSString\",C,N,V_contentUnavailableViewTitle",
+            "T@\"NSString\",C,N,V_localizedCount",
+            "T@\"NSString\",C,N,V_localizedSubtitle",
+            "T@\"NSTimer\",&,V_cycleTimer",
+            "T@\"NSString\",R,C,N",
+        )
+
+        for (ex in examples) {
+            println("$ex \n        => ${parseEncodedProperty(ex)}")
         }
     }
 }
