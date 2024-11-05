@@ -21,7 +21,7 @@ class SignatureParser(lexer: EncodingLexer, val sigType: EncodedSignatureType) :
             }
         }
 
-        while (lexer.latestToken != Token.EndOfFile) {
+        while (currentToken != Token.EndOfFile) {
             val type = parseType()
             val offset = expectToken<Token.NumberLiteral>().value
             parameters += type to offset
