@@ -45,6 +45,8 @@ class TypeEncodingParserTest {
         val examples = listOf(
             "B40@0:8@\"NSApplication\"16@\"NSUserActivity\"24@?<v@?@\"NSArray\">32"
                     to EncodedSignatureType.METHOD_SIGNATURE,
+            "#16@0:8"
+                    to EncodedSignatureType.METHOD_SIGNATURE,
         )
 
         for ((sig, type) in examples) {
