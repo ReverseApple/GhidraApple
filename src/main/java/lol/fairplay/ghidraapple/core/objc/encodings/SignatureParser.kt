@@ -36,3 +36,9 @@ class SignatureParser(lexer: EncodingLexer, val sigType: EncodedSignatureType) :
     }
 
 }
+
+fun parseSignature(input: String, type: EncodedSignatureType): EncodedSignature {
+    val lexer = EncodingLexer(input)
+    val parser = SignatureParser(lexer, type)
+    return parser.parse()
+}

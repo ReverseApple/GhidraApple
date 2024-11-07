@@ -4,14 +4,35 @@ import ghidra.app.services.AbstractAnalyzer
 import ghidra.app.services.AnalyzerType
 import ghidra.app.util.importer.MessageLog
 import ghidra.program.model.address.AddressSetView
+import ghidra.program.model.listing.Data
 import ghidra.program.model.listing.Program
 import ghidra.util.task.TaskMonitor
+import ghidra.program.model.listing.Function
+import lol.fairplay.ghidraapple.analysis.objectivec.TypeResolver
+import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.deref
+import lol.fairplay.ghidraapple.analysis.utilities.dataBlocksForNamespace
+import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.get
+import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.longValue
+import lol.fairplay.ghidraapple.analysis.utilities.address
+import lol.fairplay.ghidraapple.analysis.utilities.tryResolveNamespace
+import lol.fairplay.ghidraapple.core.objc.encodings.EncodedSignature
+import lol.fairplay.ghidraapple.core.objc.encodings.EncodedSignatureType
+import lol.fairplay.ghidraapple.core.objc.encodings.TypeNode
+import lol.fairplay.ghidraapple.core.objc.encodings.parseSignature
+
+
+private data class ProtocolT(
+    val className: String,
+    val methods: List<Pair<Function, EncodedSignature>>
+)
+
 
 class OCMethodAnalyzer : AbstractAnalyzer(
     NAME,
     DESCRIPTION,
     AnalyzerType.DATA_ANALYZER
 ) {
+    lateinit var program: Program
 
     companion object {
         private const val NAME = "Objective-C Methods"
@@ -24,7 +45,8 @@ class OCMethodAnalyzer : AbstractAnalyzer(
         setPrototype()
     }
 
-    override fun canAnalyze(program: Program?): Boolean {
+    override fun canAnalyze(program: Program): Boolean {
+        this.program = program
         return super.canAnalyze(program)
     }
 
@@ -35,32 +57,70 @@ class OCMethodAnalyzer : AbstractAnalyzer(
         log: MessageLog
     ): Boolean {
         // Analyze all method list structures in an Objective-C binary.
-        // Gather all members of: "objc::method_list_t::*"
 
-        // If the entry contains a structure definition beginning with: "method_list_t_small_"
-        //  - the list structure contains `method_small_t` definitions
+        val protocols = getProtocols(set) ?: return false
+        val typeResolver = TypeResolver(program)
 
-        // Conversely, if the namespace entry contains a structure beginning with: "method_list_t_"
-        //  - the list structure contains `method_t` definitions
-        //  - following those entries, are `count` type encodings for each respective `method_t` entry.
-        //    - these contiguous encoding pointers reference more descriptive types than those included in each
-        //       `method_t` entry, under their respective `types` field.
+        program.withTransaction<Exception>("Retyping class methods...") {
+            for (protocol in protocols) {
+                val gaClassDT = typeResolver.tryResolveDefinedStruct(protocol.className) ?: continue
 
-        // Cursory research suggests that more informative signatures also exist for `method_small_t` entries. However,
-        //  it is currently not clear how a method_small_t definition can be concretely and systematically related.
-
-        // method_small_t types follow:
-        /*
-            // Note: __((relative)) denotes a relative pointer value.
-            //  The absolute location for the pointed data can be computed with: (field_address + field_value)
-
-            struct method_small_t {
-                string * *32 __((relative)) name;
-                string *32 __((relative)) types;
-                string *32 __((relative)) imp;
-            };
-         */
+                for ((method, encSignature) in protocol.methods) {
+                    TODO("Not yet implemented")
+                }
+            }
+        }
 
         TODO("Not yet implemented")
     }
+
+    private fun getProtocols(addresses: AddressSetView): List<ProtocolT>? {
+        val protocolNs = tryResolveNamespace(program, "objc", "protocol_t") ?: return null
+        var dataBlocks = dataBlocksForNamespace(program, protocolNs, addresses)
+        var result = mutableListOf<ProtocolT>()
+
+        for (protoStruct in dataBlocks) {
+            val className = protoStruct[0].deref<String>()
+            val methods = extractMethodSignatures(protoStruct) ?: continue
+
+            result.add(ProtocolT(className, methods))
+        }
+
+        return result
+    }
+
+    private fun extractMethodSignatures(protoStruct: Data): List<Pair<Function, EncodedSignature>>? {
+        val result = mutableListOf<Pair<Function, EncodedSignature>>()
+
+        val extendedMethodTypesPtr = protoStruct[9]
+        if (extendedMethodTypesPtr.longValue(false) == 0L) return null
+
+        val extSigAddress = extendedMethodTypesPtr.longValue(false)
+
+        // Ensure the method list field is present
+        if (protoStruct[3].longValue(false) == 0L) return null
+
+        // iterate through and bind method functions to their corresponding extended type signature
+        val methodListStruct = protoStruct[3].deref<Data>()
+        val entryCount = methodListStruct[1].longValue(false)
+
+        for (i in 0 until entryCount) {
+            val methodT = methodListStruct[2 + i.toInt()]
+            val extendedSignature =
+                program.listing.getDataAt(program.address(extSigAddress + i.toLong() * 8)).value as String
+
+            // if the `method_t->imp` field is a nullptr, skip entry
+            if (methodT[2].longValue(false) == 0L) continue
+
+            // FIXME: fnAddress always appears to have nullptr as its value.
+            val fnAddress = program.address(methodT[2].longValue(false))
+
+            val functionEntity = program.functionManager.getFunctionAt(fnAddress) ?: continue
+
+            result.add(functionEntity to parseSignature(extendedSignature, EncodedSignatureType.METHOD_SIGNATURE))
+        }
+
+        return result.toList()
+    }
+
 }
