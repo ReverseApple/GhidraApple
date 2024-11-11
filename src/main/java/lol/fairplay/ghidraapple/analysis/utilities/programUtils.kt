@@ -36,3 +36,7 @@ fun dataBlocksForNamespace(program: Program, ns: Namespace, addresses: AddressSe
 
     return dataBlocks
 }
+
+
+fun dataAt(program: Program, address: Address): Data? =
+    program.listing.getDefinedDataAt(address)
