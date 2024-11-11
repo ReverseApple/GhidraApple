@@ -35,6 +35,10 @@ class EncodingLexer(private val input: String) {
 
     private fun tryGetToken() : Token? {
         return when (currentChar) {
+            'r', 'n', 'N', 'o', 'O', 'R', 'V' -> {
+                return Token.TypeModifier(currentChar)
+                    .also { advance() }
+            }
             '"' -> {
                 advance()
                 return collectStringLiteralToken()

@@ -50,6 +50,9 @@ class TypeEncodingParserTest {
 
             "@108@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16@48q56@64@72@80@88B96@100"
                     to EncodedSignatureType.METHOD_SIGNATURE,
+            "v32@0:8@\"NSArray\"16@?<v@?@\"NSArray\"@\"NSArray\"d>24"
+                    to EncodedSignatureType.METHOD_SIGNATURE,
+            "v40@?0I8^{__CFString=}12r^v20I28*32" to EncodedSignatureType.BLOCK_SIGNATURE,
         )
 
         for ((sig, type) in examples) {
@@ -69,6 +72,7 @@ class TypeEncodingParserTest {
             "T@\"NSString\",C,N,V_localizedSubtitle",
             "T@\"NSTimer\",&,V_cycleTimer",
             "T@\"NSString\",R,C,N",
+            "T@\"<TAReceiptRequestDelegate>\",W,N,V_delegate"
         )
 
         for (ex in examples) {
