@@ -4,10 +4,13 @@ package lol.fairplay.ghidraapple.core.objc.encodings
 class SignatureParser(lexer: EncodingLexer, val sigType: EncodedSignatureType) : EncodingParser(lexer) {
 
     fun parse(): EncodedSignature {
+        val startingEntry = parseEntry()
 
-        val returnType = parseType()
-        val stackSize = expectToken<Token.NumberLiteral>().value
-        val parameters = mutableListOf<Pair<TypeNode, Int>>()
+        val returnType = startingEntry.first
+        val rtModifiers = startingEntry.third
+        val stackSize = startingEntry.second
+
+        val parameters = mutableListOf<Triple<TypeNode, Int, List<SignatureTypeModifier>?>>()
 
         expectToken<Token.ObjectType>()
         when (sigType) {
@@ -18,16 +21,27 @@ class SignatureParser(lexer: EncodingLexer, val sigType: EncodedSignatureType) :
             }
             EncodedSignatureType.BLOCK_SIGNATURE -> {
                 expectToken<Token.Anonymous>()
+                expectToken<Token.NumberLiteral>()
             }
         }
 
         while (currentToken != Token.EndOfFile) {
-            val type = parseType()
-            val offset = expectToken<Token.NumberLiteral>().value
-            parameters += type to offset
+            val entry = parseEntry()
+            parameters += entry
         }
 
-        return EncodedSignature(sigType, returnType, stackSize, parameters.toList())
+        return EncodedSignature(sigType, returnType to rtModifiers, stackSize, parameters.toList())
+    }
+
+    private fun parseEntry(): Triple<TypeNode, Int, List<SignatureTypeModifier>?> {
+        val modifiers = mutableListOf<SignatureTypeModifier>()
+        while (currentToken is Token.TypeModifier) {
+            val modifier = expectToken<Token.TypeModifier>()
+            modifiers.add(SignatureTypeModifier.fromCode(modifier.value)!!) // if the result of fromCode is null, we have bigger problems.
+        }
+        val type = parseType()
+        val number = expectToken<Token.NumberLiteral>().value
+        return Triple(type, number, modifiers.let { if (it.isEmpty()) null else it.toList() })
     }
 
     private fun parseType(): TypeNode {

@@ -3,6 +3,7 @@ package lol.fairplay.ghidraapple.core.objc.encodings
 
 sealed class Token {
     data class PrimitiveType(val type: Char) : Token()
+    data class TypeModifier(val value: Char) : Token()
 
     // Special types...
     data class ObjectType(val type: Char = '@') : Token()
