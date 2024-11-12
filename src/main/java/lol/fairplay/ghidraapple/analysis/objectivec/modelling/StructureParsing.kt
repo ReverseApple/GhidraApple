@@ -192,7 +192,7 @@ class StructureParsing(val program: Program) {
                 implAddress = dat[2].longValue(false)
             )
         } else if (dat.dataType.name == "method_small_t") {
-            val addresses = (0..dat.numComponents).map {
+            val addresses = (0 until dat.numComponents).map {
                 dat[it].getPrimaryReference(0).toAddress
             }
 
