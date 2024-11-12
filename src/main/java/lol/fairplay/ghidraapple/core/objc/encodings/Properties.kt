@@ -12,7 +12,8 @@ enum class PropertyAttribute(val code: Char) {
     TYPE_ENCODING('T'),
     WEAK('W'),
     STRONG('P'),
-    NON_ATOMIC('N');
+    NON_ATOMIC('N'),
+    UNKNOWN('?');  // no idea what this one represents.
 
     companion object {
         fun fromCode(code: Char): PropertyAttribute? {
