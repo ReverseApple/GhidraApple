@@ -1,32 +1,31 @@
-package lol.fairplay.ghidraapple.analysis.objectivec.modelling
+package lol.fairplay.ghidraapple.core.objc.modelling
 
 import lol.fairplay.ghidraapple.core.objc.encodings.EncodedSignature
 import lol.fairplay.ghidraapple.core.objc.encodings.PropertyAttribute
 import lol.fairplay.ghidraapple.core.objc.encodings.TypeNode
 
-// TODO: we may be able to just move this to the core package.
 
 open class OCFieldContainer
 
 data class OCClass(
     val name: String,
     val flags: Long,
-    val baseMethods: List<OCMethod>?,
-    val baseProtocols: List<OCProtocol>?,
-    val instanceVariables: List<OCIVar>?,
-    val baseProperties: List<OCProperty>?,
+    var baseMethods: List<OCMethod>?,
+    var baseProtocols: List<OCProtocol>?,
+    var instanceVariables: List<OCIVar>?,
+    var baseProperties: List<OCProperty>?,
     val weakIvarLayout: Long,
 ) : OCFieldContainer()
 
 data class OCProtocol(
     val name: String,
-    val protocols: List<OCProtocol>?,
-    val instanceMethods: List<OCMethod>?,
-    val classMethods: List<OCMethod>?,
-    val optionalInstanceMethods: List<OCMethod>?,
-    val optionalClassMethods: List<OCMethod>?,
-    val instanceProperties: List<OCProperty>?,
-    val extendedSignatures: List<EncodedSignature>?
+    var protocols: List<OCProtocol>?,
+    var instanceMethods: List<OCMethod>?,
+    var classMethods: List<OCMethod>?,
+    var optionalInstanceMethods: List<OCMethod>?,
+    var optionalClassMethods: List<OCMethod>?,
+    var instanceProperties: List<OCProperty>?,
+    var extendedSignatures: List<EncodedSignature>?
 ) : OCFieldContainer()
 
 data class OCMethod(

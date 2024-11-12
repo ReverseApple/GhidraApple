@@ -1,6 +1,5 @@
 package lol.fairplay.ghidraapple.analysis.objectivec.modelling
 
-import ghidra.program.model.address.GenericAddress
 import ghidra.program.model.listing.Data
 import ghidra.program.model.listing.Program
 import ghidra.program.model.symbol.Namespace
@@ -16,6 +15,12 @@ import lol.fairplay.ghidraapple.core.objc.encodings.EncodingLexer
 import lol.fairplay.ghidraapple.core.objc.encodings.TypeEncodingParser
 import lol.fairplay.ghidraapple.core.objc.encodings.parseEncodedProperty
 import lol.fairplay.ghidraapple.core.objc.encodings.parseSignature
+import lol.fairplay.ghidraapple.core.objc.modelling.OCClass
+import lol.fairplay.ghidraapple.core.objc.modelling.OCFieldContainer
+import lol.fairplay.ghidraapple.core.objc.modelling.OCIVar
+import lol.fairplay.ghidraapple.core.objc.modelling.OCMethod
+import lol.fairplay.ghidraapple.core.objc.modelling.OCProperty
+import lol.fairplay.ghidraapple.core.objc.modelling.OCProtocol
 
 
 class StructureParsing(val program: Program) {
@@ -26,6 +31,8 @@ class StructureParsing(val program: Program) {
     val nsMethodList = tryResolveNamespace(program, "objc", "method_list_t")!!
     val nsProtocol = tryResolveNamespace(program, "objc", "protocol_t")!!
     val nsClassRw = tryResolveNamespace(program, "objc", "class_rw_t")!!
+
+    private val parentStack = mutableListOf<OCFieldContainer>()
 
     fun datResolve(address: Long, namespace: Namespace): Data? {
         val data = dataAt(program, program.address(address))
@@ -52,7 +59,21 @@ class StructureParsing(val program: Program) {
     fun parseProtocol(address: Long): OCProtocol? {
         val struct = datResolve(address, nsProtocol) ?: return null
 
+        val protocol = OCProtocol(
+            name = struct[1].deref<String>(),
+            protocols = parseProtocolList(struct[2].longValue(false)),
+            instanceMethods = null,
+            classMethods = null,
+            optionalInstanceMethods = null,
+            optionalClassMethods = null,
+            instanceProperties = null,
+            extendedSignatures = null,
+        )
+
+        parentStack.add(protocol)
+
         // I think only one of these are filled in at a time...?
+        val instanceProperties = parsePropertyList(struct[7].longValue(false))
         val instanceMethods = parseMethodList(struct[3].longValue(false))
         val classMethods = parseMethodList(struct[4].longValue(false))
         val optionalInstanceMethods = parseMethodList(struct[5].longValue(false))
@@ -77,19 +98,16 @@ class StructureParsing(val program: Program) {
             null
         }
 
-        return OCProtocol(
-            name = struct[1].deref<String>(),
-            protocols = parseProtocolList(struct[2].longValue(false)),
-            instanceMethods = instanceMethods,
-            classMethods = classMethods,
-            optionalInstanceMethods = optionalInstanceMethods,
-            optionalClassMethods = optionalClassMethods,
-            instanceProperties = parsePropertyList(struct[7].longValue(false)),
-            extendedSignatures = extendedSignatures
-        )
+        protocol.extendedSignatures = extendedSignatures
+        protocol.instanceMethods = instanceMethods
+        protocol.classMethods = classMethods
+        protocol.optionalInstanceMethods = optionalInstanceMethods
+        protocol.optionalClassMethods = optionalClassMethods
+        protocol.instanceProperties = instanceProperties
+        parentStack.removeLast()
+
+        return protocol
     }
-
-
 
     fun parseProperty(dat: Data): OCProperty? {
         if (dat.dataType.name != "objc_property") return null
@@ -97,7 +115,7 @@ class StructureParsing(val program: Program) {
         val encoding = parseEncodedProperty(dat[1].deref<String>())
 
         return OCProperty(
-            parent = TODO(),
+            parent = parentStack.last(),
             name = dat[0].deref<String>(),
             attributes = encoding.attributes,
             type = encoding.type,
@@ -111,7 +129,7 @@ class StructureParsing(val program: Program) {
         val parsedType = TypeEncodingParser(EncodingLexer(dat[2].deref<String>())).parse()
 
         return OCIVar(
-            ocClass = TODO(),
+            ocClass = parentStack.last() as OCClass,
             name = dat[1].deref<String>(),
             offset = dat[0].deref<Long>(),
             type = parsedType,
@@ -121,15 +139,26 @@ class StructureParsing(val program: Program) {
     fun parseClassRw(address: Long): OCClass? {
         val struct = datResolve(address, nsClassRw) ?: return null
 
-        return OCClass(
+        val klass = OCClass(
             name = struct[3].deref<String>(),
             flags = struct[0].longValue(false),
-            baseMethods = parseMethodList(struct[4].longValue(false)),
-            baseProtocols = parseProtocolList(struct[5].longValue(false)),
-            instanceVariables = parseIvarList(struct[6].longValue(false)),
-            baseProperties = parsePropertyList(struct[8].longValue(false)),
+            baseMethods = null,
+            baseProtocols = null,
+            instanceVariables = null,
+            baseProperties = null,
             weakIvarLayout = struct[7].longValue(false),
         )
+
+        parentStack.add(klass)
+
+        klass.baseMethods = parseMethodList(struct[4].longValue(false))
+        klass.baseProtocols = parseProtocolList(struct[5].longValue(false))
+        klass.instanceVariables = parseIvarList(struct[6].longValue(false))
+        klass.baseProperties = parsePropertyList(struct[8].longValue(false))
+
+        parentStack.removeLast()
+
+        return klass
     }
 
     fun parseIvarList(address: Long): List<OCIVar>? {
@@ -155,18 +184,42 @@ class StructureParsing(val program: Program) {
     }
 
     fun parseMethod(dat: Data): OCMethod? {
-        if (dat.dataType.name != "method_t") {
-            TODO()
+        if (dat.dataType.name == "method_t") {
+            return OCMethod(
+                parent = parentStack.last(),
+                name = dat[0].deref<String>(),
+                signature = parseSignature(dat[1].deref<String>(), EncodedSignatureType.METHOD_SIGNATURE),
+                implAddress = dat[2].longValue(false)
+            )
         } else if (dat.dataType.name == "method_small_t") {
-            TODO()
+            val addresses = (0..dat.numComponents).map {
+                dat[it].getPrimaryReference(0).toAddress
+            }
+
+            val name = dataAt(program, addresses[0])!!.deref<String>()
+            val signature = parseSignature(
+                dataAt(program, addresses[1])?.value as String,
+                EncodedSignatureType.METHOD_SIGNATURE
+            )
+            val implementation = addresses[2]
+
+            return OCMethod(
+                parent = parentStack.last(),
+                name = name,
+                signature = signature,
+                implAddress = implementation.unsignedOffset
+            )
         } else {
             return null
         }
     }
 
     fun parseMethodList(address: Long): List<OCMethod>? {
-        val struct = datResolve(address, nsMethodList)
+        val struct = datResolve(address, nsMethodList) ?: return null
         val result = mutableListOf<OCMethod>()
-        TODO()
+        for (i in 2 until struct.numComponents) {
+            result.add(parseMethod(struct[i])!!)
+        }
+        return result.toList()
     }
 }
