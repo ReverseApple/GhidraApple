@@ -178,4 +178,8 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
     override fun visitFunctionPointer(fnPtr: TypeNode.FunctionPointer) {
         result = PointerDataType(VoidDataType.dataType)
     }
+
+    override fun visitSelector(fnPtr: TypeNode.Selector) {
+        result = program.dataTypeManager.getDataType("/_objc2_/SEL")
+    }
 }

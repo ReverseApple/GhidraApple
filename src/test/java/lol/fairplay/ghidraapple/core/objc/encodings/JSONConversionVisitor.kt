@@ -139,4 +139,10 @@ class JSONConversionVisitor : TypeNodeVisitor {
         result = json
     }
 
+    override fun visitSelector(fnPtr: TypeNode.Selector) {
+        val json = JSONObject()
+        json.put("type", "Selector")
+        result = json
+    }
+
 }

@@ -40,6 +40,12 @@ sealed class TypeNode {
         }
     }
 
+    object Selector : TypeNode() {
+        override fun accept(visitor: TypeNodeVisitor) {
+            visitor.visitSelector(this)
+        }
+    }
+
     data class Pointer(val pointee: TypeNode) : TypeNode() {
         override fun accept(visitor: TypeNodeVisitor) {
             visitor.visitPointer(this)
@@ -76,4 +82,5 @@ interface TypeNodeVisitor {
     fun visitBitfield(bitfield: TypeNode.Bitfield)
     fun visitBlock(block: TypeNode.Block)
     fun visitFunctionPointer(fnPtr: TypeNode.FunctionPointer)
+    fun visitSelector(fnPtr: TypeNode.Selector)
 }

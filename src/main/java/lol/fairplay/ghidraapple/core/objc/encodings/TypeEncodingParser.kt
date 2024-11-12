@@ -24,9 +24,15 @@ class TypeEncodingParser(lexer: EncodingLexer) : EncodingParser(lexer) {
             is Token.UnionOpen -> parseUnion()
             is Token.PointerType -> parsePointer()
             is Token.ObjectType -> parseObject()
+            is Token.SelectorType-> parseSelectorType()
             is Token.ClassObjectType -> parseClassObject()
             else -> throw IllegalArgumentException("Unexpected token: $currentToken")
         }
+    }
+
+    private fun parseSelectorType(): TypeNode {
+        expectToken<Token.SelectorType>()
+        return TypeNode.Selector
     }
 
     private fun parseClassObject(): TypeNode {
