@@ -13,8 +13,13 @@ object StructureHelpers {
     }
 
     fun Data.longValue(signed: Boolean = true): Long {
-        return (this.value as Scalar).let {
-            return if (signed) it.signedValue else it.unsignedValue
+        val v = this.value
+        return if (v is Scalar) {
+            if (signed) v.signedValue else v.unsignedValue
+        } else if (v is GenericAddress) {
+            if (signed) v.offset else v.unsignedOffset
+        } else {
+            throw IllegalArgumentException("Unexpected value type: $v")
         }
     }
 
