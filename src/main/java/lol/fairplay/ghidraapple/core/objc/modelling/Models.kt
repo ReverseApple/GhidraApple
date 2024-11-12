@@ -35,6 +35,10 @@ data class OCMethod(
     val implAddress: Long?,
 ) {
 
+    override fun toString(): String {
+        return "OCMethod(name='$name', signature=$signature, implAddress=$implAddress)"
+    }
+
     fun getSignature(): EncodedSignature? {
         if (parent is OCProtocol) {
             // find the non-null method list, and then the index of ourselves in that list
@@ -51,7 +55,11 @@ data class OCIVar(
     val name: String,
     val offset: Long,
     val type: TypeNode,
-)
+) {
+    override fun toString(): String {
+        return "OCIVar(name='$name', offset=$offset, type=$type)"
+    }
+}
 
 data class OCProperty(
     val parent: OCFieldContainer,
@@ -60,6 +68,11 @@ data class OCProperty(
     val type: TypeNode?,
     private val backingIvar: String?
 ) {
+
+    override fun toString(): String {
+        return "OCProperty(name='$name', attributes=$attributes, type=$type)"
+    }
+
     fun getBackingIvar(): OCIVar? {
         return if (parent is OCClass) {
             parent.instanceVariables?.find { it.name == backingIvar }
