@@ -71,13 +71,13 @@ class StructureParsing(val program: Program) {
         )
 
         parentStack.add(protocol)
+        val instanceProperties = parsePropertyList(struct[7].longValue(false))
 
         // I think only one of these are filled in at a time...?
-        val instanceProperties = parsePropertyList(struct[7].longValue(false))
-        val instanceMethods = parseMethodList(struct[3].longValue(false))
-        val classMethods = parseMethodList(struct[4].longValue(false))
-        val optionalInstanceMethods = parseMethodList(struct[5].longValue(false))
-        val optionalClassMethods = parseMethodList(struct[6].longValue(false))
+        val instanceMethods = parseMethodList(struct[3].longValue(false), true)
+        val classMethods = parseMethodList(struct[4].longValue(false), false)
+        val optionalInstanceMethods = parseMethodList(struct[5].longValue(false), true)
+        val optionalClassMethods = parseMethodList(struct[6].longValue(false), false)
 
         val methodListCoalesced = instanceMethods ?: classMethods ?: optionalInstanceMethods ?: optionalClassMethods
 
@@ -183,13 +183,14 @@ class StructureParsing(val program: Program) {
         return result.toList()
     }
 
-    fun parseMethod(dat: Data): OCMethod? {
+    fun parseMethod(dat: Data, instanceMethod: Boolean): OCMethod? {
         if (dat.dataType.name == "method_t") {
             return OCMethod(
                 parent = parentStack.last(),
                 name = dat[0].deref<String>(),
                 signature = parseSignature(dat[1].deref<String>(), EncodedSignatureType.METHOD_SIGNATURE),
-                implAddress = dat[2].longValue(false)
+                implAddress = dat[2].longValue(false),
+                isInstanceMethod = instanceMethod
             )
         } else if (dat.dataType.name == "method_small_t") {
             val addresses = (0 until dat.numComponents).map {
@@ -207,18 +208,19 @@ class StructureParsing(val program: Program) {
                 parent = parentStack.last(),
                 name = name,
                 signature = signature,
-                implAddress = implementation.unsignedOffset
+                implAddress = implementation.unsignedOffset,
+                isInstanceMethod = instanceMethod
             )
         } else {
             return null
         }
     }
 
-    fun parseMethodList(address: Long): List<OCMethod>? {
+    fun parseMethodList(address: Long, instanceMethods: Boolean = true): List<OCMethod>? {
         val struct = datResolve(address, nsMethodList) ?: return null
         val result = mutableListOf<OCMethod>()
         for (i in 2 until struct.numComponents) {
-            result.add(parseMethod(struct[i])!!)
+            result.add(parseMethod(struct[i], instanceMethods)!!)
         }
         return result.toList()
     }

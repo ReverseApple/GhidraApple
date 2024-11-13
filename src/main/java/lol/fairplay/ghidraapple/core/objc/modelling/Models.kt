@@ -31,21 +31,55 @@ data class OCProtocol(
 data class OCMethod(
     val parent: OCFieldContainer,
     val name: String,
+    val isInstanceMethod: Boolean = true,
     private val signature: EncodedSignature,
     val implAddress: Long?,
 ) {
 
     override fun toString(): String {
-        return "OCMethod(name='$name', signature=$signature, implAddress=$implAddress)"
+//        return "OCMethod(name='$name', signature=$signature, implAddress=$implAddress)"
+        return prototypeString()
     }
 
     fun getSignature(): EncodedSignature? {
-        if (parent is OCProtocol) {
+        if (parent is OCProtocol && parent.extendedSignatures != null) {
             // find the non-null method list, and then the index of ourselves in that list
             // then, if it's not null, access that index of `extendedSignatures` and return it.
+
+            val methods = parent.instanceMethods
+                ?: parent.classMethods
+                ?: parent.optionalInstanceMethods
+                ?: parent.optionalClassMethods
+                ?: return signature
+            val index = methods.indexOf(this)
+
+            return parent.extendedSignatures!!.getOrNull(index) ?: signature
         }
         // otherwise, return our field.
         return signature
+    }
+
+    /**
+     * Get the method prototype in Objective-C syntax.
+     */
+    fun prototypeString(): String {
+        val sig = getSignature() ?: return ""
+
+        val prefix = if (isInstanceMethod) "-" else "+"
+        val returnType = sig.returnType.first ?: return ""
+
+        if (sig.parameters.count() > 0) {
+            var nsplit = name.split(":").filter { it.trim().isNotEmpty() }
+            println(nsplit)
+            var result = "$prefix($returnType)$name:${sig.parameters.first().first}\""
+            for (i in 1 until sig.parameters.count()) {
+                result += " ${nsplit[i]}\$:(${sig.parameters[i].first})"
+            }
+            return "$result;"
+        } else {
+            return "$prefix($returnType)$name;"
+        }
+
     }
 
 }
