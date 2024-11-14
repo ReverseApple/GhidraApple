@@ -91,7 +91,6 @@ class StructureParsing(val program: Program) {
 
             for (i in 0 until length) {
                 val indexedAddress = program.address(tblBase + i * 8)
-                println(indexedAddress)
                 val sigAddr = program.listing.getDataAt(indexedAddress).getLong(0)
                 val sigString = program.listing.getDataAt(program.address(sigAddr)).value as String
                 result.add(parseSignature(sigString, EncodedSignatureType.METHOD_SIGNATURE))
