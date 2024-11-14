@@ -37,5 +37,9 @@ object StructureHelpers {
         // program.listing.getDataAt(fields[1].value as GenericAddress?).value as String
         return this.program.listing.getDataAt(this.value as GenericAddress?).value as T
     }
+
+    fun Data.derefUntyped(): Data {
+        return this.program.listing.getDataAt(this.value as GenericAddress?)
+    }
 }
 

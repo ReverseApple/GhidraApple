@@ -10,6 +10,7 @@ import lol.fairplay.ghidraapple.analysis.utilities.tryResolveNamespace
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.get
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.longValue
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.deref
+import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.derefUntyped
 import lol.fairplay.ghidraapple.core.objc.encodings.EncodedSignature
 import lol.fairplay.ghidraapple.core.objc.encodings.EncodedSignatureType
 import lol.fairplay.ghidraapple.core.objc.encodings.EncodingLexer
@@ -32,6 +33,7 @@ class StructureParsing(val program: Program) {
     val nsMethodList = tryResolveNamespace(program, "objc", "method_list_t")!!
     val nsProtocol = tryResolveNamespace(program, "objc", "protocol_t")!!
     val nsClassRw = tryResolveNamespace(program, "objc", "class_rw_t")!!
+    val nsClass = tryResolveNamespace(program, "objc", "class_t")!!
 
     private val parentStack = mutableListOf<OCFieldContainer>()
 
@@ -89,8 +91,9 @@ class StructureParsing(val program: Program) {
 
             for (i in 0 until length) {
                 val indexedAddress = program.address(tblBase + i * 8)
-                val sigString = program.listing.getDataAt(indexedAddress).deref<String>()
-
+                println(indexedAddress)
+                val sigAddr = program.listing.getDataAt(indexedAddress).getLong(0)
+                val sigString = program.listing.getDataAt(program.address(sigAddr)).value as String
                 result.add(parseSignature(sigString, EncodedSignatureType.METHOD_SIGNATURE))
             }
 
@@ -137,25 +140,30 @@ class StructureParsing(val program: Program) {
         )
     }
 
-    fun parseClassRw(address: Long): OCClass? {
-        val struct = datResolve(address, nsClassRw) ?: return null
+    fun parseClass(address: Long): OCClass? {
+        val klassRo = datResolve(address, nsClass) ?: return null
+
+        // get the class_t->data (class_rw_t *) field...
+        val rwStruct = klassRo[4].derefUntyped()
+        val superAddress = klassRo[1].longValue(false)
 
         val klass = OCClass(
-            name = struct[3].deref<String>(),
-            flags = struct[0].longValue(false),
+            name = rwStruct[3].deref<String>(),
+            flags = rwStruct[0].longValue(false),
             baseMethods = null,
             baseProtocols = null,
             instanceVariables = null,
             baseProperties = null,
-            weakIvarLayout = struct[7].longValue(false),
+            weakIvarLayout = rwStruct[7].longValue(false),
+            superclass = parseClass(superAddress),
         )
 
         parentStack.add(klass)
 
-        klass.baseMethods = parseMethodList(struct[4].longValue(false))
-        klass.baseProtocols = parseProtocolList(struct[5].longValue(false))
-        klass.instanceVariables = parseIvarList(struct[6].longValue(false))
-        klass.baseProperties = parsePropertyList(struct[8].longValue(false))
+        klass.baseMethods = parseMethodList(rwStruct[4].longValue(false))
+        klass.baseProtocols = parseProtocolList(rwStruct[5].longValue(false))
+        klass.instanceVariables = parseIvarList(rwStruct[6].longValue(false))
+        klass.baseProperties = parsePropertyList(rwStruct[8].longValue(false))
 
         parentStack.removeLast()
 

@@ -10,12 +10,21 @@ open class OCFieldContainer
 data class OCClass(
     val name: String,
     val flags: Long,
+    val superclass: OCClass?,
     var baseMethods: List<OCMethod>?,
     var baseProtocols: List<OCProtocol>?,
     var instanceVariables: List<OCIVar>?,
     var baseProperties: List<OCProperty>?,
     val weakIvarLayout: Long,
-) : OCFieldContainer()
+) : OCFieldContainer() {
+
+    fun getInheritance(): List<OCClass>? {
+        if (superclass == null) {
+            return null
+        }
+        return listOf(superclass) + superclass.getInheritance()!!
+    }
+}
 
 data class OCProtocol(
     val name: String,
@@ -37,8 +46,8 @@ data class OCMethod(
 ) {
 
     override fun toString(): String {
-//        return "OCMethod(name='$name', signature=$signature, implAddress=$implAddress)"
-        return prototypeString()
+        return "OCMethod(name='$name', signature=$signature, implAddress=$implAddress)"
+//        return prototypeString()
     }
 
     fun getSignature(): EncodedSignature? {
@@ -63,6 +72,8 @@ data class OCMethod(
      * Get the method prototype in Objective-C syntax.
      */
     fun prototypeString(): String {
+        // todo: (low priority) decouple this method from OCMethod for separation of concern.
+
         val sig = getSignature() ?: return ""
 
         val prefix = if (isInstanceMethod) "-" else "+"
@@ -79,7 +90,6 @@ data class OCMethod(
         } else {
             return "$prefix($returnType)$name;"
         }
-
     }
 
 }

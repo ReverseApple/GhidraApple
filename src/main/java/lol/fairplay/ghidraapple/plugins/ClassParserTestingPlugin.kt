@@ -31,10 +31,10 @@ class ClassParserTestingPlugin(tool: PluginTool) : ProgramPlugin(tool) {
                 if (currentProgram == null) return
 
                 val data = currentProgram.listing.getDefinedDataAt(currentLocation.address) ?: return
-                if (data.dataType.name != "class_rw_t") return
+                if (data.dataType.name != "class_t") return
 
                 val parser = StructureParsing(currentProgram)
-                println(parser.parseClassRw(data.address.unsignedOffset))
+                println(parser.parseClass(data.address.unsignedOffset))
             }
 
         }
