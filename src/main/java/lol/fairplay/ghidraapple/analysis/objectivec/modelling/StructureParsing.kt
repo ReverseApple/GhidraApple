@@ -2,6 +2,7 @@ package lol.fairplay.ghidraapple.analysis.objectivec.modelling
 
 import ghidra.program.model.listing.Data
 import ghidra.program.model.listing.Program
+import ghidra.program.model.scalar.Scalar
 import ghidra.program.model.symbol.Namespace
 import lol.fairplay.ghidraapple.analysis.utilities.address
 import lol.fairplay.ghidraapple.analysis.utilities.dataAt
@@ -131,7 +132,7 @@ class StructureParsing(val program: Program) {
         return OCIVar(
             ocClass = parentStack.last() as OCClass,
             name = dat[1].deref<String>(),
-            offset = dat[0].deref<Long>(),
+            offset = dat[0].deref<Scalar>().unsignedValue,
             type = parsedType,
         )
     }
