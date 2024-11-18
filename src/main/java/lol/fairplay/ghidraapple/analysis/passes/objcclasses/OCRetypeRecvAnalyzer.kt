@@ -65,21 +65,19 @@ class OCRetypeRecvAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FU
     private fun getClassMethods(): HashMap<DataType, List<Function>> {
         val dtCategory = CategoryPath("/GA_OBJC")
 
-        val classTypes = program.dataTypeManager.getCategory(dtCategory).dataTypes.filter {
-            !it.name.startsWith("struct_")
-        }
+        val classTypes = program.dataTypeManager.getCategory(dtCategory).dataTypes
 
         val cns = program.symbolTable.classNamespaces.asSequence().toList()
 
         val result = hashMapOf<DataType, List<Function>>()
-        for (typedef in classTypes) {
-            val klass = cns.filter {
-                it.name.toString() == typedef.name
-            }.firstOrNull() ?: continue
+        for (entry in classTypes) {
+            val klass = cns.firstOrNull {
+                it.name.toString() == entry.name
+            } ?: continue
 
             val fcns = program.functionManager.getFunctions(klass.body, true)
 
-            result[typedef] = fcns.toList()
+            result[entry] = fcns.toList()
         }
 
         return result

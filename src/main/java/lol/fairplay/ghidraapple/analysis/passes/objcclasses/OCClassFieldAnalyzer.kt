@@ -22,6 +22,7 @@ import lol.fairplay.ghidraapple.core.objc.encodings.TypeEncodingParser
 private data class IVarField(val name: String, val type: String, val size: Int, val offset: Int)
 private data class IVarFieldList(val classSymbol: Symbol, val ivars: List<IVarField>)
 
+@Deprecated("Deprecated in favor of OCStructureAnalyzer")
 class OCClassFieldAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.DATA_ANALYZER) {
 
     lateinit var program: Program
@@ -43,7 +44,8 @@ class OCClassFieldAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.DA
         this.program = program
 
         val objcConstSection = program.memory.getBlock("__objc_const")
-        return objcConstSection != null
+//        return objcConstSection != null
+        return false
     }
 
     override fun added(program: Program, set: AddressSetView, monitor: TaskMonitor, log: MessageLog): Boolean {

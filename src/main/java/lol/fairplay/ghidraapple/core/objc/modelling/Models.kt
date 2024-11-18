@@ -2,6 +2,7 @@ package lol.fairplay.ghidraapple.core.objc.modelling
 
 import lol.fairplay.ghidraapple.core.objc.encodings.EncodedSignature
 import lol.fairplay.ghidraapple.core.objc.encodings.PropertyAttribute
+import lol.fairplay.ghidraapple.core.objc.encodings.SignatureTypeModifier
 import lol.fairplay.ghidraapple.core.objc.encodings.TypeNode
 
 
@@ -99,6 +100,8 @@ data class OCIVar(
     val name: String,
     val offset: Long,
     val type: TypeNode,
+    val alignment: Int,
+    val size: Int,
 ) {
     override fun toString(): String {
         return "OCIVar(name='$name', offset=$offset, type=$type)"
@@ -109,7 +112,7 @@ data class OCProperty(
     val parent: OCFieldContainer,
     val name: String,
     val attributes: List<PropertyAttribute>,
-    val type: TypeNode?,
+    val type: Pair<TypeNode, List<SignatureTypeModifier>?>?,
     private val backingIvar: String?
 ) {
 

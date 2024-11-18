@@ -113,7 +113,7 @@ class StructureParsing(val program: Program) {
 
     fun parseProperty(dat: Data): OCProperty? {
         if (dat.dataType.name != "objc_property") return null
-
+        println("parent: ${parentStack.last()}")
         val encoding = parseEncodedProperty(dat[1].deref<String>())
 
         return OCProperty(
@@ -135,6 +135,8 @@ class StructureParsing(val program: Program) {
             name = dat[1].deref<String>(),
             offset = dat[0].deref<Scalar>().unsignedValue,
             type = parsedType,
+            alignment = dat[3].longValue().toInt(),
+            size = dat[4].longValue().toInt(),
         )
     }
 

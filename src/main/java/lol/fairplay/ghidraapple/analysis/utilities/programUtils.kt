@@ -5,6 +5,7 @@ import ghidra.program.model.address.AddressSetView
 import ghidra.program.model.listing.Data
 import ghidra.program.model.listing.Program
 import ghidra.program.model.symbol.Namespace
+import ghidra.program.model.symbol.Symbol
 
 /**
  * Converts a given long value to an Address object using the default address space.
@@ -24,6 +25,10 @@ fun tryResolveNamespace(program: Program, vararg fqnParts: String): Namespace?  
     return ns
 }
 
+fun Namespace.getMembers(): Iterable<Symbol> {
+    return this.symbol.program.symbolTable.getChildren(this.symbol)
+}
+
 fun dataBlocksForNamespace(program: Program, ns: Namespace, addresses: AddressSetView): List<Data> {
     var dataBlocks = program.listing.getDefinedData(addresses, true)
         .filter { data ->
@@ -36,7 +41,6 @@ fun dataBlocksForNamespace(program: Program, ns: Namespace, addresses: AddressSe
 
     return dataBlocks
 }
-
 
 fun dataAt(program: Program, address: Address): Data? =
     program.listing.getDefinedDataAt(address)

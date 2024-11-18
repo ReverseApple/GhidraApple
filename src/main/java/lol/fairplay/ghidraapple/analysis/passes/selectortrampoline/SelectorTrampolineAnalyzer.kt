@@ -107,6 +107,12 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
             override fun process(results: DecompileResults, m: TaskMonitor): Pair<Function, String?> {
 //                inspectFunction(program, results, monitor)
                 m.increment()
+
+                if (results.highFunction == null) {
+                    println("function name: ${results.function.name}")
+                    return results.function to null
+                }
+
                 val callOp = results.highFunction.pcodeOps.iterator().asSequence()
                     .singleOrNull { it.opcode == PcodeOp.CALLIND || it.opcode == PcodeOp.CALL }
                 if (callOp != null) {

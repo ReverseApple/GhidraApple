@@ -9,6 +9,7 @@ import ghidra.program.model.data.DoubleDataType
 import ghidra.program.model.data.FloatDataType
 import ghidra.program.model.data.IntegerDataType
 import ghidra.program.model.data.LongDataType
+import ghidra.program.model.data.LongDoubleDataType
 import ghidra.program.model.data.LongLongDataType
 import ghidra.program.model.data.PointerDataType
 import ghidra.program.model.data.ShortDataType
@@ -46,11 +47,6 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
         return result
     }
 
-    fun tryResolveTypedef(name: String): DataType? {
-        val category = CategoryPath("/GA_OBJC")
-        return program.dataTypeManager.getDataType(category, name)
-    }
-
     /**
      * Create a new instance of this class with the same parameters.
      *
@@ -63,7 +59,11 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
 
     fun tryResolveDefinedStruct(name: String): DataType? {
         val category = CategoryPath("/GA_OBJC")
-        return program.dataTypeManager.getDataType(category, "struct_${name}")
+        return program.dataTypeManager.getDataType(category, name)
+    }
+
+    fun tryResolveStructPtr(name: String): DataType? {
+        return PointerDataType(tryResolveDefinedStruct(name) ?: return null)
     }
 
     override fun visitStruct(struct: TypeNode.Struct) {
@@ -81,11 +81,11 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
         for ((name, node) in struct.fields) {
             val visitor = extend()
             node.accept(visitor)
-
+            val visitorResult = visitor.getResult()
             if (name != null) {
-                ghidraStruct.add(visitor.getResult(), name, null)
+                ghidraStruct.add(visitorResult, visitorResult.length, name, null)
             } else {
-                ghidraStruct.add(visitor.getResult())
+                ghidraStruct.add(visitorResult, visitorResult.length)
             }
         }
 
@@ -104,7 +104,7 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
             return
         }
 
-        val resolved = tryResolveTypedef(obj.name)
+        val resolved = tryResolveStructPtr(obj.name)
         result = resolved ?: idType
     }
 
@@ -124,11 +124,12 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
         for ((name, node) in union.fields) {
             val visitor = extend()
             node.accept(visitor)
+            val visitorResult = visitor.getResult()
 
             if (name != null) {
-                ghidraUnion.add(visitor.getResult(), name, null)
+                ghidraUnion.add(visitorResult, visitorResult.length, name, null)
             } else {
-                ghidraUnion.add(visitor.getResult())
+                ghidraUnion.add(visitor.getResult(), visitorResult.length)
             }
         }
 
@@ -158,6 +159,7 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
             'd' -> DoubleDataType.dataType
             'v' -> VoidDataType.dataType
             'B' -> BooleanDataType.dataType
+            'D' -> LongDoubleDataType.dataType
             '*' -> PointerDataType(CharDataType.dataType)
             else -> throw Exception("Unknown primitive type: ${primitive.type}")
         }

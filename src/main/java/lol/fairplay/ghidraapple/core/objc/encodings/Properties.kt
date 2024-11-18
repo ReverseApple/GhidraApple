@@ -24,14 +24,15 @@ enum class PropertyAttribute(val code: Char) {
 
 data class EncodedProperty(
     val attributes: List<PropertyAttribute>,
-    val type: TypeNode?,
+    val type: Pair<TypeNode, List<SignatureTypeModifier>?>?,
     val backingIvar: String? = null,
 )
 
 
 fun parseEncodedProperty(input: String): EncodedProperty {
+    println("Property: $input")
     val stmts = input.split(',')
-    var type: TypeNode? = null
+    var type: Pair<TypeNode, List<SignatureTypeModifier>?>? = null
     var ivarName: String? = null
     val attributes = mutableListOf<PropertyAttribute>()
 
@@ -40,8 +41,17 @@ fun parseEncodedProperty(input: String): EncodedProperty {
         when (signal) {
             PropertyAttribute.TYPE_ENCODING -> {
                 a.substring(1).let {
-                   val parser = TypeEncodingParser(EncodingLexer(it))
-                   type = parser.parse()
+                    val lexer = EncodingLexer(it)
+                    val modifiers = mutableListOf<SignatureTypeModifier>()
+                    lexer.getNextToken()
+                    while (lexer.latestToken is Token.TypeModifier) {
+                        val code = (lexer.latestToken as Token.TypeModifier).value
+                        modifiers.add(SignatureTypeModifier.fromCode(code)!!)
+                        lexer.getNextToken()
+                    }
+
+                    val parser = TypeEncodingParser(lexer)
+                    type = parser.parse() to if (modifiers.isNotEmpty()) modifiers else null
                 }
             }
             PropertyAttribute.BACKING_IVAR -> {

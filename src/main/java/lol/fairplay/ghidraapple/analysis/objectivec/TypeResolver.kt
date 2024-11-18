@@ -1,9 +1,8 @@
 package lol.fairplay.ghidraapple.analysis.objectivec
 
-import ghidra.program.model.data.*
-import ghidra.program.model.data.BooleanDataType
 import ghidra.program.model.data.CategoryPath
 import ghidra.program.model.data.DataType
+import ghidra.program.model.data.PointerDataType
 import ghidra.program.model.listing.Program
 import lol.fairplay.ghidraapple.core.objc.encodings.EncodingLexer
 import lol.fairplay.ghidraapple.core.objc.encodings.TypeEncodingParser
@@ -27,14 +26,13 @@ class TypeResolver(val program: Program) {
         return builder.getResult()
     }
 
-    fun tryResolveTypedef(name: String): DataType? {
-        val category = CategoryPath("/GA_OBJC")
-        return program.dataTypeManager.getDataType(category, name)
+    fun tryResolveStructPtr(name: String): DataType? {
+        return PointerDataType(tryResolveDefinedStruct(name) ?: return null)
     }
 
     fun tryResolveDefinedStruct(name: String): DataType? {
         val category = CategoryPath("/GA_OBJC")
-        return program.dataTypeManager.getDataType(category, "struct_${name}")
+        return program.dataTypeManager.getDataType(category, name)
     }
 
 }
