@@ -13,7 +13,7 @@ enum class PropertyAttribute(val code: Char) {
     WEAK('W'),
     STRONG('P'),
     NON_ATOMIC('N'),
-    UNKNOWN('?');  // no idea what this one represents.
+    OPTIONAL('?');
 
     companion object {
         fun fromCode(code: Char): PropertyAttribute? {
