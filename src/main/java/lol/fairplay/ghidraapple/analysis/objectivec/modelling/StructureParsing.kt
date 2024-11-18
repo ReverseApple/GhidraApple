@@ -132,8 +132,8 @@ class StructureParsing(val program: Program) {
 
         return OCIVar(
             ocClass = parentStack.last() as OCClass,
+            offset = dat[0].derefUntyped().getInt(0),
             name = dat[1].deref<String>(),
-            offset = dat[0].deref<Scalar>().unsignedValue,
             type = parsedType,
             alignment = dat[3].longValue().toInt(),
             size = dat[4].longValue().toInt(),

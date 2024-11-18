@@ -98,7 +98,7 @@ data class OCMethod(
 data class OCIVar(
     val ocClass: OCClass,
     val name: String,
-    val offset: Long,
+    val offset: Int,
     val type: TypeNode,
     val alignment: Int,
     val size: Int,
