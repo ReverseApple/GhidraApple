@@ -93,16 +93,19 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
     }
 
     override fun visitClassObject(classObject: TypeNode.ClassObject) {
-        throw Exception("Not sure.")
+        result = program.dataTypeManager.getDataType("/_objc2_/CLASS")
     }
 
     override fun visitObject(obj: TypeNode.Object) {
+        val idType = program.dataTypeManager.getDataType("/_objc2_/ID")
+
         if (obj.name == null) {
-            throw Exception("Not sure.")
+            result = idType
+            return
         }
 
         val resolved = tryResolveTypedef(obj.name)
-        result = resolved ?: program.dataTypeManager.getDataType("/_objc2_/ID")
+        result = resolved ?: idType
     }
 
     override fun visitUnion(union: TypeNode.Union) {
@@ -168,7 +171,7 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
     }
 
     override fun visitBitfield(bitfield: TypeNode.Bitfield) {
-        throw Exception("Not sure.")
+        throw NotImplementedError("Bitfield type reconstruction is not implemented yet.")
     }
 
     override fun visitBlock(block: TypeNode.Block) {
