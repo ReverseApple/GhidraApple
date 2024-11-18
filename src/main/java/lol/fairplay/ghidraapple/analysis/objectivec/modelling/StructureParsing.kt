@@ -27,13 +27,12 @@ import lol.fairplay.ghidraapple.core.objc.modelling.OCProtocol
 
 class StructureParsing(val program: Program) {
 
-    val nsIvarList = tryResolveNamespace(program, "objc", "ivar_list_t")!!
-    val nsPropList = tryResolveNamespace(program, "objc", "objc_property_list")!!
-    val nsProtoList = tryResolveNamespace(program, "objc", "protocol_list_t")!!
-    val nsMethodList = tryResolveNamespace(program, "objc", "method_list_t")!!
-    val nsProtocol = tryResolveNamespace(program, "objc", "protocol_t")!!
-    val nsClassRw = tryResolveNamespace(program, "objc", "class_rw_t")!!
-    val nsClass = tryResolveNamespace(program, "objc", "class_t")!!
+    val nsIvarList = tryResolveNamespace(program, "objc", "ivar_list_t")
+    val nsPropList = tryResolveNamespace(program, "objc", "objc_property_list")
+    val nsProtoList = tryResolveNamespace(program, "objc", "protocol_list_t")
+    val nsMethodList = tryResolveNamespace(program, "objc", "method_list_t")
+    val nsProtocol = tryResolveNamespace(program, "objc", "protocol_t")
+    val nsClass = tryResolveNamespace(program, "objc", "class_t")
 
     private val parentStack = mutableListOf<OCFieldContainer>()
 
@@ -49,7 +48,7 @@ class StructureParsing(val program: Program) {
     }
 
     fun parseProtocolList(address: Long): List<OCProtocol>? {
-        val struct = datResolve(address, nsProtoList) ?: return null
+        val struct = datResolve(address, nsProtoList ?: return null) ?: return null
         val result = mutableListOf<OCProtocol>()
 
         for (i in 1 until struct.numComponents) {
@@ -60,7 +59,7 @@ class StructureParsing(val program: Program) {
     }
 
     fun parseProtocol(address: Long): OCProtocol? {
-        val struct = datResolve(address, nsProtocol) ?: return null
+        val struct = datResolve(address, nsProtocol ?: return null) ?: return null
 
         val protocol = OCProtocol(
             name = struct[1].deref<String>(),
@@ -140,7 +139,7 @@ class StructureParsing(val program: Program) {
     }
 
     fun parseClass(address: Long): OCClass? {
-        val klassRo = datResolve(address, nsClass) ?: return null
+        val klassRo = datResolve(address, nsClass ?: return null) ?: return null
 
         // get the class_t->data (class_rw_t *) field...
         val rwStruct = klassRo[4].derefUntyped()
@@ -170,7 +169,7 @@ class StructureParsing(val program: Program) {
     }
 
     fun parseIvarList(address: Long): List<OCIVar>? {
-        val struct = datResolve(address, nsIvarList) ?: return null
+        val struct = datResolve(address, nsIvarList ?: return null) ?: return null
         val result = mutableListOf<OCIVar>()
 
         for (i in 2 until struct.numComponents) {
@@ -181,7 +180,7 @@ class StructureParsing(val program: Program) {
     }
 
     fun parsePropertyList(address: Long): List<OCProperty>? {
-        val struct = datResolve(address, nsPropList) ?: return null
+        val struct = datResolve(address, nsPropList ?: return null) ?: return null
         val result = mutableListOf<OCProperty>()
 
         for (i in 2 until struct.numComponents) {
@@ -225,7 +224,7 @@ class StructureParsing(val program: Program) {
     }
 
     fun parseMethodList(address: Long, instanceMethods: Boolean = true): List<OCMethod>? {
-        val struct = datResolve(address, nsMethodList) ?: return null
+        val struct = datResolve(address, nsMethodList ?: return null) ?: return null
         val result = mutableListOf<OCMethod>()
         for (i in 2 until struct.numComponents) {
             result.add(parseMethod(struct[i], instanceMethods)!!)
