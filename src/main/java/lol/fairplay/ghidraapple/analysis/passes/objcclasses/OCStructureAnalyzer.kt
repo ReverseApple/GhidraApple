@@ -87,6 +87,8 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
 
         program.withTransaction<Exception>("Applying class structure fields.") {
             for ((name, data) in idealStructures) {
+                monitor.incrementProgress()
+
                 val structAddress = data.address
                 val classModel = context.parseClass(structAddress.unsignedOffset) ?: continue
                 val definedStructure = definedStructures[name] ?: continue
@@ -112,8 +114,6 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
                     )
                     println("    -> ${ivar.name}: $fieldType (${ivar.type})")
                 }
-
-                monitor.incrementProgress()
             }
         }
 
