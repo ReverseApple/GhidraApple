@@ -7,6 +7,12 @@ import ghidra.program.model.listing.Program
 import ghidra.util.Msg
 import java.util.*
 
+/**
+ * Retrieves a constant from a given Varnode, if applicable.
+ *
+ * @param varnode The Varnode from which to retrieve the constant.
+ * @return An Optional containing the constant Address if found, or an empty Optional otherwise.
+ */
 fun getConstantFromVarNode(varnode: Varnode): Optional<Address> {
 
     return when {
@@ -18,6 +24,12 @@ fun getConstantFromVarNode(varnode: Varnode): Optional<Address> {
     }
 }
 
+/**
+ * Retrieves a constant address from a given PcodeOp, if applicable.
+ *
+ * @param pcodeOp The PcodeOp from which to retrieve the constant address.
+ * @return An Optional containing the constant Address if found, or an empty Optional otherwise.
+ */
 fun getConstantFromPcodeOp(pcodeOp: PcodeOp): Optional<Address> {
     when (pcodeOp.opcode) {
         PcodeOp.CAST -> return getConstantFromVarNode(pcodeOp.inputs[0])
