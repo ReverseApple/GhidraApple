@@ -113,7 +113,7 @@ class StructureParsing(val program: Program) {
 
     fun parseProperty(dat: Data): OCProperty? {
         if (dat.dataType.name != "objc_property") return null
-        println("parent: ${parentStack.last()}")
+
         val encoding = parseEncodedProperty(dat[1].deref<String>())
 
         return OCProperty(
@@ -144,7 +144,7 @@ class StructureParsing(val program: Program) {
         val klassRo = datResolve(address, nsClass ?: return null) ?: return null
 
         // get the class_t->data (class_rw_t *) field...
-        val rwStruct = klassRo[4].derefUntyped()
+        val rwStruct = klassRo[4].derefUntyped(tolerant = true)
         val superAddress = klassRo[1].longValue(false)
 
         val klass = OCClass(

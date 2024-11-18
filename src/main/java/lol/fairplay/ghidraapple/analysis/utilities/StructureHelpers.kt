@@ -38,8 +38,9 @@ object StructureHelpers {
         return this.program.listing.getDataAt(this.value as GenericAddress?).value as T
     }
 
-    fun Data.derefUntyped(): Data {
-        return this.program.listing.getDataAt(this.value as GenericAddress?)
+    fun Data.derefUntyped(tolerant: Boolean = false): Data {
+        return if (!tolerant) this.program.listing.getDataAt(this.value as GenericAddress?)
+        else this.program.listing.getDataContaining(this.value as GenericAddress?)
     }
 }
 

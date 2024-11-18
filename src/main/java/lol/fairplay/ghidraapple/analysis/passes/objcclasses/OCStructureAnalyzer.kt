@@ -89,11 +89,11 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
             for ((name, data) in idealStructures) {
                 monitor.incrementProgress()
 
+                println("CLASS $name")
                 val structAddress = data.address
                 val classModel = context.parseClass(structAddress.unsignedOffset) ?: continue
                 val definedStructure = definedStructures[name] ?: continue
 
-                println("CLASS $name")
                 for (ivar in classModel.instanceVariables ?: continue) {
                     var fieldType: DataType? = null
                     try {
