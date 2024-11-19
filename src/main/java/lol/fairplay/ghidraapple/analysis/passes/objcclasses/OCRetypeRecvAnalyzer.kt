@@ -1,4 +1,4 @@
-package lol.fairplay.ghidraapple.analysis.objcclasses
+package lol.fairplay.ghidraapple.analysis.passes.objcclasses
 
 import ghidra.app.services.AbstractAnalyzer
 import ghidra.app.services.AnalysisPriority
@@ -6,8 +6,8 @@ import ghidra.app.services.AnalyzerType
 import ghidra.app.util.importer.MessageLog
 import ghidra.program.model.address.AddressSetView
 import ghidra.program.model.data.CategoryPath
-import ghidra.program.model.data.TypedefDataType
 import ghidra.program.model.data.DataType
+import ghidra.program.model.data.PointerDataType
 import ghidra.program.model.listing.Function
 import ghidra.program.model.listing.Program
 import ghidra.program.model.symbol.SourceType
@@ -54,7 +54,7 @@ class OCRetypeRecvAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FU
 
                     val param = method.getParameter(0)
                     if (!param.isAutoParameter) {
-                        param.setDataType(typedef, SourceType.ANALYSIS)
+                        param.setDataType(PointerDataType(typedef), SourceType.ANALYSIS)
                     }
                 }
             }
@@ -66,21 +66,19 @@ class OCRetypeRecvAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FU
     private fun getClassMethods(): HashMap<DataType, List<Function>> {
         val dtCategory = CategoryPath("/GA_OBJC")
 
-        val classTypes = program.dataTypeManager.getCategory(dtCategory).dataTypes.filter {
-            !it.name.startsWith("struct_")
-        }
+        val classTypes = program.dataTypeManager.getCategory(dtCategory).dataTypes
 
         val cns = program.symbolTable.classNamespaces.asSequence().toList()
 
         val result = hashMapOf<DataType, List<Function>>()
-        for (typedef in classTypes) {
-            val klass = cns.filter {
-                it.name.toString() == typedef.name
-            }.firstOrNull() ?: continue
+        for (entry in classTypes) {
+            val klass = cns.firstOrNull {
+                it.name.toString() == entry.name
+            } ?: continue
 
             val fcns = program.functionManager.getFunctions(klass.body, true)
 
-            result[typedef] = fcns.toList()
+            result[entry] = fcns.toList()
         }
 
         return result

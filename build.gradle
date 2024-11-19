@@ -37,8 +37,15 @@ repositories {
 }
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
+    testImplementation "org.jetbrains.kotlin:kotlin-test"
+    testImplementation "org.junit.jupiter:junit-jupiter-api:5.10.3"
+    testImplementation "org.json:json:20240303"
+    testRuntimeOnly "org.junit.jupiter:junit-jupiter-engine:5.10.3"
 }
 kotlin {
     jvmToolchain(17)
+}
+test {
+    useJUnitPlatform()
 }
 //----------------------END "DO NOT MODIFY" SECTION-------------------------------
