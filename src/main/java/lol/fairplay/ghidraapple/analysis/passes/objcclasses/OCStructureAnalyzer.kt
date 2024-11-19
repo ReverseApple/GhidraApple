@@ -108,6 +108,9 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
                 } catch (e: Exception) {
                     Msg.error(this, "Could not parse class $name into a model: $e")
                     continue
+                } catch (e: Error) {
+                    Msg.error(this, "Could not parse class $name into a model: $e")
+                    continue
                 }
 
                 val definedStructure = definedStructures[name] ?: continue
@@ -121,6 +124,9 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
                         fieldType = typeResolver.buildParsed(ivar.type) ?: continue
                     } catch (exception: Exception) {
                         Msg.error(this, "Could not recover type for $ivar: $exception")
+                        continue
+                    } catch (error: Error) {
+                        Msg.error(this, "Could not recover type for $ivar: $error")
                         continue
                     }
 
