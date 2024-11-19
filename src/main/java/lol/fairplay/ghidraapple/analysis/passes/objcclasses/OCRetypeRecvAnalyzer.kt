@@ -7,6 +7,7 @@ import ghidra.app.util.importer.MessageLog
 import ghidra.program.model.address.AddressSetView
 import ghidra.program.model.data.CategoryPath
 import ghidra.program.model.data.DataType
+import ghidra.program.model.data.PointerDataType
 import ghidra.program.model.listing.Function
 import ghidra.program.model.listing.Program
 import ghidra.program.model.symbol.SourceType
@@ -53,7 +54,7 @@ class OCRetypeRecvAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FU
 
                     val param = method.getParameter(0)
                     if (!param.isAutoParameter) {
-                        param.setDataType(typedef, SourceType.ANALYSIS)
+                        param.setDataType(PointerDataType(typedef), SourceType.ANALYSIS)
                     }
                 }
             }

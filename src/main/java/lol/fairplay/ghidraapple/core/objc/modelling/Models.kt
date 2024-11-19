@@ -23,8 +23,45 @@ data class OCClass(
         if (superclass == null) {
             return null
         }
-        return listOf(superclass) + superclass.getInheritance()!!
+        val superInheritance = superclass.getInheritance()
+        return if (superInheritance != null) {
+            listOf(superclass) + superInheritance
+        } else {
+            listOf(superclass)
+        }
     }
+
+    fun getProperties(): List<OCProperty>? {
+        // aggregate all baseProperties and properties from protocols.
+        val props = baseProperties?.toMutableList() ?: return null
+        baseProtocols?.forEach {
+            it.instanceProperties?.let { props.addAll(it) }
+        }
+        return props.toList()
+    }
+
+    fun getCollapsedProperties(): List<OCProperty>? {
+        val inheritance = getInheritance()
+        println("inheritance: $inheritance")
+        val myProperties = getProperties()
+        if (inheritance == null) {
+            return myProperties
+        }
+
+        val startMap = myProperties?.associate { it.name to it }
+            ?.toMutableMap() ?: return null
+
+        inheritance.forEach {
+            it.baseProperties?.forEach { prop ->
+                if (!startMap.containsKey(prop.name)) {
+                    startMap[prop.name] = prop
+                }
+            }
+        }
+
+        return startMap.values.toList()
+    }
+
 }
 
 data class OCProtocol(

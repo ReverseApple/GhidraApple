@@ -28,7 +28,7 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
     companion object {
         private const val NAME = "Objective-C Structures"
         private const val DESCRIPTION = ""
-        private val PRIORITY = AnalysisPriority.BLOCK_ANALYSIS.after()
+        val PRIORITY = AnalysisPriority.BLOCK_ANALYSIS.after()
     }
 
     var classNamespace: Namespace? = null

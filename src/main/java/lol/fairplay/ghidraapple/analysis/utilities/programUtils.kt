@@ -62,7 +62,7 @@ fun idealClassStructures(program: Program): Map<String, Data>? {
         }
     }
 
-    return result
+    return idealStructures
 }
 
 fun dataAt(program: Program, address: Address): Data? =
