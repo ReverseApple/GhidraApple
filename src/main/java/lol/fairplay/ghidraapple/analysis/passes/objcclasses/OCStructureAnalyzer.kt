@@ -71,7 +71,7 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
             }
         }
 
-        // Some classes that are not inside the objc::class_t namespace are prefixed with `_OBJC_CLASS_$_`
+        // Some class symbols that are not inside the objc::class_t namespace are prefixed with `_OBJC_CLASS_$_`
         // These are not parsable, but are still useful for analysis purposes.
         program.symbolTable.symbolIterator.filter {
             it.name.startsWith("_OBJC_CLASS_\$_")
@@ -97,7 +97,7 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
             for ((name, data) in idealStructures) {
                 monitor.incrementProgress()
 
-                println("CLASS $name")
+                Msg.info(this, "Analyzing class $name at ${data.address}...")
 
                 val structAddress = data.address
 
