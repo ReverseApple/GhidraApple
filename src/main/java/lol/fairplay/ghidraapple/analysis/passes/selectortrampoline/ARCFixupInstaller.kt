@@ -30,88 +30,69 @@ class ARCFixupInstallerAnalyzer() : AbstractAnalyzer(NAME, DESCRIPTION, Analyzer
         return ObjectiveC2_Constants.isObjectiveC2(program)
     }
 
+    private fun createCallFixupXML(name: String, code: String, vararg targets: String ): String {
+        return """
+            <callfixup name="$name">
+              ${targets.joinToString("\n") { "<target name=\"$it\"/>" }}
+              <pcode>
+                <body><![CDATA[
+                        $code
+                 ]]></body>
+              </pcode>
+            </callfixup>
+        """.trimIndent()
+    }
     override fun added(program: Program?, set: AddressSetView?, monitor: TaskMonitor?, log: MessageLog?): Boolean {
         val specExtension = SpecExtension(program)
 
-        val retainSpec = """
-            <callfixup name="_objc_retain">
-              <target name="_objc_retain"/>
-              <target name="_objc_retainAutoreleasedReturnValue"/>
-              <target name="_objc_retainAutoreleaseReturnValue"/>
-              <target name="_objc_autoreleaseReturnValue"/>
-              <target name="_objc_retainAutorelease"/>
-              <target name="_objc_autorelease"/>
-              <target name="_objc_claimAutoreleasedReturnValue"/>
-              <target name="___chkstk_darwin"/>
 
+        val retainSpec = createCallFixupXML(
+            "_objc_retain",
+            "x0 = x0;",
+            "_objc_retain",
+            "_objc_retainAutoreleasedReturnValue",
+            "_objc_retainAutoreleaseReturnValue",
+            "_objc_autoreleaseReturnValue",
+            "_objc_retainAutorelease",
+            "_objc_autorelease",
+            "_objc_claimAutoreleasedReturnValue",
+            "___chkstk_darwin",
+            "_objc_opt_self"
+        )
 
-              <pcode>
-                  <body><![CDATA[
-                  x0 = x0;
-                 ]]></body>
-              </pcode>
-            </callfixup>
-        """.trimIndent()
-        val releaseSpec = """
-            <callfixup name="objc_release">
-              <target name="_objc_release"/>
-              <pcode>
-                <body><![CDATA[
-                        x0 = 0;
-                 ]]></body>
-              </pcode>
-            </callfixup>
-        """.trimIndent()
+        val releaseSpec = createCallFixupXML(
+            "objc_release",
+            "x0 = 0;",
+            "_objc_release")
 
-        val storeStrongSpec = """
-            <callfixup name="_objc_storeStrong">
-                <target name="_objc_storeStrong"/>
-              <pcode>
-                <body><![CDATA[
-                        *x0 = x1;
-                 ]]></body>
-              </pcode>
-            </callfixup>
-        """.trimIndent()
+        val storeStrongSpec = createCallFixupXML(
+            "_objc_storeStrong",
+            "*x0 = x1;",
+            "_objc_storeStrong"
+        )
 
-        val loadSpec = """
-                        <callfixup name="_objc_loadWeakRetained">
-                            <target name="_objc_loadWeakRetained"/>
-                          <pcode>
-                            <body><![CDATA[
-                                    x0 = *x0;
-                             ]]></body>
-                          </pcode>
-                        </callfixup>
-            
-        """.trimIndent()
+        val loadSpec = createCallFixupXML(
+            "_objc_loadWeakRetained",
+            "x0 = *x0;",
+            "_objc_loadWeakRetained"
+        )
 
-        val getPropertySpec = """
-                        <callfixup name="_objc_getProperty">
-                            <target name="_objc_getProperty"/>
-                          <pcode>
-                            <body><![CDATA[
-                                    x0 = *(x0 + x2);
-                             ]]></body>
-                          </pcode>
-                        </callfixup>
-        """.trimIndent()
+        val getPropertySpec = createCallFixupXML(
+            "_objc_getProperty",
+            "x0 = *(x0 + x2);",
+            "_objc_getProperty"
+        )
 
-        val setPropertSpec = """
-                                    <callfixup name="_objc_setProperty_atomic">
-                                        <target name="_objc_setProperty_atomic"/>
-                                      <pcode>
-                                        <body><![CDATA[
-                                                *(x0 + x3) = x2;
-                                         ]]></body>
-                                      </pcode>
-                                    </callfixup>
-        """.trimIndent()
+        val setPropertySpec = createCallFixupXML(
+            "_objc_setProperty",
+            "*(x0 + x3) = x2;",
+            "_objc_setProperty"
+        )
 
 
 
         val specs = listOf(
-            retainSpec, releaseSpec, storeStrongSpec, loadSpec, getPropertySpec, setPropertSpec,
+            retainSpec, releaseSpec, storeStrongSpec, loadSpec, getPropertySpec, setPropertySpec,
         )
         specs.forEach {
             specExtension.addReplaceCompilerSpecExtension(it, monitor)
