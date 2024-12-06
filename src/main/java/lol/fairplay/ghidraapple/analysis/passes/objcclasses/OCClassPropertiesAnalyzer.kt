@@ -76,7 +76,7 @@ class OCClassPropertiesAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerTy
 
                 monitor.message = "Analyzing properties: ${klass.name}"
                 Msg.info(this, "Analyzing properties for ${klass.name}")
-                val properties = klass.getCollapsedProperties() ?: continue
+                val properties = klass.resolvedProperties() ?: continue
                 val methodMapping = klass.baseMethods?.associateBy { it.name } ?: continue
 
                 properties.forEach { property ->

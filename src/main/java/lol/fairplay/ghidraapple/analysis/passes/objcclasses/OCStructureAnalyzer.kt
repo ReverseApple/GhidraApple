@@ -91,7 +91,7 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
         val context = StructureParsing(program)
         val typeResolver = TypeResolver(program)
 
-        // Recover the structure fields by parsing each eligible class into our detailed model...
+        // Recover the structure fields by parsing each eligible class into the analysis model.
 
         program.withTransaction<Exception>("Applying class structure fields.") {
             for ((name, data) in idealStructures) {
