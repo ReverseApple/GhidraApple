@@ -40,8 +40,8 @@ class SignatureParser(lexer: EncodingLexer, val sigType: EncodedSignatureType) :
             modifiers.add(SignatureTypeModifier.fromCode(modifier.value)!!) // if the result of fromCode is null, we have bigger problems.
         }
         val type = parseType()
-        val number = expectToken<Token.NumberLiteral>().value
-        return Triple(type, number, modifiers.let { if (it.isEmpty()) null else it.toList() })
+        val stackOffset = expectToken<Token.NumberLiteral>().value
+        return Triple(type, stackOffset, modifiers.let { if (it.isEmpty()) null else it.toList() })
     }
 
     private fun parseType(): TypeNode {
@@ -52,7 +52,6 @@ class SignatureParser(lexer: EncodingLexer, val sigType: EncodedSignatureType) :
 }
 
 fun parseSignature(input: String, type: EncodedSignatureType): EncodedSignature {
-//    println("Signature: $input")
     val lexer = EncodingLexer(input)
     val parser = SignatureParser(lexer, type)
     return parser.parse()

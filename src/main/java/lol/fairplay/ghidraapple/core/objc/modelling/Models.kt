@@ -6,10 +6,10 @@ import lol.fairplay.ghidraapple.core.objc.encodings.SignatureTypeModifier
 import lol.fairplay.ghidraapple.core.objc.encodings.TypeNode
 
 
-open class OCFieldContainer
+open class OCFieldContainer(open val name: String)
 
 data class OCClass(
-    val name: String,
+    override val name: String,
     val flags: Long,
     val superclass: OCClass?,
     var baseMethods: List<OCMethod>?,
@@ -17,7 +17,7 @@ data class OCClass(
     var instanceVariables: List<OCIVar>?,
     var baseProperties: List<OCProperty>?,
     val weakIvarLayout: Long,
-) : OCFieldContainer() {
+) : OCFieldContainer(name) {
 
     fun getInheritance(): List<OCClass>? {
         if (superclass == null) {
@@ -25,47 +25,60 @@ data class OCClass(
         }
         val superInheritance = superclass.getInheritance()
         return if (superInheritance != null) {
-            listOf(superclass) + superInheritance
+            superInheritance + listOf(superclass)
         } else {
             listOf(superclass)
         }
     }
 
-    fun getProperties(): List<OCProperty>? {
-        // aggregate all baseProperties and properties from protocols.
-        val props = baseProperties?.toMutableList() ?: return null
-        baseProtocols?.forEach {
-            it.instanceProperties?.let { props.addAll(it) }
-        }
-        return props.toList()
-    }
-
-    fun getCollapsedProperties(): List<OCProperty>? {
+    fun resolvedProperties(): List<OCProperty>? {
         val inheritance = getInheritance()
-        println("inheritance: $inheritance")
-        val myProperties = getProperties()
-        if (inheritance == null) {
-            return myProperties
-        }
+        val propertyMapping = baseProperties?.associate { it.name to it }?.toMutableMap() ?: mutableMapOf()
 
-        val startMap = myProperties?.associate { it.name to it }
-            ?.toMutableMap() ?: return null
-
-        inheritance.forEach {
+        inheritance?.forEach {
             it.baseProperties?.forEach { prop ->
-                if (!startMap.containsKey(prop.name)) {
-                    startMap[prop.name] = prop
-                }
+                propertyMapping[prop.name] = prop
             }
         }
 
-        return startMap.values.toList()
+        baseProtocols?.forEach {
+            it.resolvedProperties()?.forEach { prop ->
+                propertyMapping[prop.name] = prop
+            }
+        }
+
+        return propertyMapping.values.toList()
+    }
+
+    fun resolvedMethods(): List<OCMethod>? {
+        val inheritance = getInheritance()
+        val methodMapping = baseMethods?.associate { it.name to it }?.toMutableMap() ?: mutableMapOf()
+
+        // collect methods using MRO
+        inheritance?.forEach {
+            it.baseMethods?.forEach { method ->
+                methodMapping[method.name] = method
+            }
+        }
+
+        // collect resolved methods from implemented protocols
+        baseProtocols?.forEach {
+            it.resolvedMethods()?.forEach { method ->
+                methodMapping[method.name] = method
+            }
+        }
+
+        return if (methodMapping.isEmpty()) {
+            null
+        } else {
+            methodMapping.values.toList()
+        }
     }
 
 }
 
 data class OCProtocol(
-    val name: String,
+    override val name: String,
     var protocols: List<OCProtocol>?,
     var instanceMethods: List<OCMethod>?,
     var classMethods: List<OCMethod>?,
@@ -73,7 +86,53 @@ data class OCProtocol(
     var optionalClassMethods: List<OCMethod>?,
     var instanceProperties: List<OCProperty>?,
     var extendedSignatures: List<EncodedSignature>?
-) : OCFieldContainer()
+) : OCFieldContainer(name) {
+
+    fun resolvedProperties(): List<OCProperty>? {
+        val propertyMapping = mutableMapOf<String, OCProperty>()
+
+        protocols?.forEach {
+            it.resolvedProperties()?.forEach { prop ->
+                propertyMapping[prop.name] = prop
+            }
+        }
+
+        instanceProperties?.forEach { prop ->
+            propertyMapping[prop.name] = prop
+        }
+
+        return if (propertyMapping.isEmpty()) {
+            null
+        } else {
+            propertyMapping.values.toList()
+        }
+    }
+
+    fun resolvedMethods(): List<OCMethod>? {
+        val methodMapping = mutableMapOf<String, OCMethod>()
+
+        protocols?.forEach {
+            it.resolvedMethods()?.forEach { method ->
+                methodMapping[method.name] = method
+            }
+        }
+
+        activeMethodList()?.forEach { method ->
+            methodMapping[method.name] = method
+        }
+
+        return if (methodMapping.isEmpty()) {
+            null
+        } else {
+            methodMapping.values.toList()
+        }
+    }
+
+    fun activeMethodList(): List<OCMethod>? {
+        return instanceMethods ?: classMethods ?: optionalInstanceMethods ?: optionalClassMethods
+    }
+
+}
 
 data class OCMethod(
     val parent: OCFieldContainer,
@@ -84,7 +143,7 @@ data class OCMethod(
 ) {
 
     override fun toString(): String {
-        return "OCMethod(name='$name', signature=$signature, implAddress=$implAddress)"
+        return "OCMethod(name='$name', signature=${getSignature()}, implAddress=$implAddress)"
 //        return prototypeString()
     }
 
@@ -93,11 +152,9 @@ data class OCMethod(
             // find the non-null method list, and then the index of ourselves in that list
             // then, if it's not null, access that index of `extendedSignatures` and return it.
 
-            val methods = parent.instanceMethods
-                ?: parent.classMethods
-                ?: parent.optionalInstanceMethods
-                ?: parent.optionalClassMethods
-                ?: return signature
+            // use the activeMethodList instead of resolvedMethods because we are operating on the
+            // presumption that only local methods will have entries in the extended signatures
+            val methods = parent.activeMethodList() ?: return signature
             val index = methods.indexOf(this)
 
             return parent.extendedSignatures!!.getOrNull(index) ?: signature
