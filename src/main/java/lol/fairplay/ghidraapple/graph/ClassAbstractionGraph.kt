@@ -9,6 +9,8 @@ import ghidra.service.graph.EmptyGraphType
 import ghidra.util.task.Task
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.core.objc.modelling.OCClass
+import lol.fairplay.ghidraapple.core.objc.modelling.OCFieldContainer
+import lol.fairplay.ghidraapple.core.objc.modelling.OCProtocol
 
 
 // reference code: ghidra.app.plugin.core.decompile.actions.PCodeDfgGraphTask
@@ -38,30 +40,53 @@ class ClassAbstractionGraphTask(
     }
 
     private fun buildGraph() {
-        var previousVertex: AttributedVertex? = null
-        var currentClass: OCClass? = classModel
-        var currentVertex = classVertex(classModel.name)
+        val visited = mutableSetOf<String>()
+        val stack = mutableListOf<OCFieldContainer>()
+        stack.add(classModel)
 
-        while (currentClass != null) {
-            if (previousVertex != null) createInheritsEdge(currentVertex, previousVertex)
-            currentClass.baseProtocols?.forEach {
-                val baseProtocol = it.name
-                val baseProtocolVertex = protoVertex(baseProtocol)
-                createImplementsEdge(baseProtocolVertex, currentVertex)
+        while (stack.isNotEmpty()) {
+            val current = stack.removeLast()
+
+            if (current is OCClass) {
+                val cVertex = getOrCreateClassVertex(current.name)
+                current.baseProtocols?.forEach { protocol ->
+                    val protoVertex = getOrCreateProtoVertex(protocol.name)
+                    createImplementsEdge(protoVertex, cVertex)
+                    if (!visited.contains(protocol.name))
+                        stack.add(protocol)
+                }
+                current.superclass?.let {
+                    val superVertex = getOrCreateClassVertex(it.name)
+                    createInheritsEdge(superVertex, cVertex)
+                    if (!visited.contains(it.name))
+                        stack.add(it)
+                }
+            } else if (current is OCProtocol) {
+                val pVertex = getOrCreateProtoVertex(current.name)
+                current.protocols?.forEach { protocol ->
+                    val protoVertex = getOrCreateProtoVertex(protocol.name)
+                    createImplementsEdge(protoVertex, pVertex)
+                    if (!visited.contains(protocol.name))
+                        stack.add(protocol)
+                }
             }
-            previousVertex = currentVertex
-            currentClass = currentClass.superclass ?: break
-            currentVertex = classVertex(currentClass.name)
+
+            visited.add(current.name)
         }
+
     }
 
-    private fun protoVertex(name: String): AttributedVertex {
+    private fun getOrCreateProtoVertex(name: String): AttributedVertex {
+        if (graph.getVertex(name) != null) return graph.getVertex(name)!!
+
         val v =  graph.addVertex(name)
         v.setAttribute("color", "blue")
         return v
     }
 
-    private fun classVertex(name: String): AttributedVertex {
+    private fun getOrCreateClassVertex(name: String): AttributedVertex {
+        if (graph.getVertex(name) != null) return graph.getVertex(name)!!
+
         val v = graph.addVertex(name)
         return v
     }
