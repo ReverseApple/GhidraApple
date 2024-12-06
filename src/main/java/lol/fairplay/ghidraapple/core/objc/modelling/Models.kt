@@ -19,20 +19,23 @@ data class OCClass(
     val weakIvarLayout: Long,
 ) : OCFieldContainer(name) {
 
+    /**
+     * Returns the list of superclasses from concrete to abstract.
+     */
     fun getInheritance(): List<OCClass>? {
         if (superclass == null) {
             return null
         }
         val superInheritance = superclass.getInheritance()
         return if (superInheritance != null) {
-            superInheritance + listOf(superclass)
+            listOf(superclass) + superInheritance
         } else {
             listOf(superclass)
         }
     }
 
     fun resolvedProperties(): List<OCProperty>? {
-        val inheritance = getInheritance()
+        val inheritance = getInheritance()?.reversed()
         val propertyMapping = baseProperties?.associate { it.name to it }?.toMutableMap() ?: mutableMapOf()
 
         inheritance?.forEach {
@@ -51,7 +54,7 @@ data class OCClass(
     }
 
     fun resolvedMethods(): List<OCMethod>? {
-        val inheritance = getInheritance()
+        val inheritance = getInheritance()?.reversed()
         val methodMapping = baseMethods?.associate { it.name to it }?.toMutableMap() ?: mutableMapOf()
 
         // collect methods using MRO
