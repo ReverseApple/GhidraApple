@@ -25,6 +25,8 @@ enum class PropertyAttribute(val code: Char) {
 data class EncodedProperty(
     val attributes: List<PropertyAttribute>,
     val type: Pair<TypeNode, List<SignatureTypeModifier>?>?,
+    val customGetter: String? = null,
+    val customSetter: String? = null,
     val backingIvar: String? = null,
 )
 
@@ -35,6 +37,8 @@ fun parseEncodedProperty(input: String): EncodedProperty {
     var type: Pair<TypeNode, List<SignatureTypeModifier>?>? = null
     var ivarName: String? = null
     val attributes = mutableListOf<PropertyAttribute>()
+    var customSetter: String? = null
+    var customGetter: String? = null
 
     for (a in stmts) {
         val signal = PropertyAttribute.fromCode(a[0])!!
@@ -57,10 +61,21 @@ fun parseEncodedProperty(input: String): EncodedProperty {
             PropertyAttribute.BACKING_IVAR -> {
                 ivarName = a.substring(1)
             }
+            PropertyAttribute.CUSTOM_GETTER, PropertyAttribute.CUSTOM_SETTER -> {
+                a.substring(1).let {
+                    if (signal == PropertyAttribute.CUSTOM_SETTER) {
+                        attributes.add(PropertyAttribute.CUSTOM_SETTER)
+                        customSetter = it
+                    } else {
+                        attributes.add(PropertyAttribute.CUSTOM_GETTER)
+                        customGetter = it
+                    }
+                }
+            }
             else -> attributes.add(signal)
         }
     }
 
-    return EncodedProperty(attributes, type, ivarName)
+    return EncodedProperty(attributes, type, customGetter, customSetter, ivarName)
 }
 

@@ -210,6 +210,8 @@ data class OCProperty(
     val name: String,
     val attributes: List<PropertyAttribute>,
     val type: Pair<TypeNode, List<SignatureTypeModifier>?>?,
+    private val customGetter: String?,
+    private val customSetter: String?,
     private val backingIvar: String?
 ) {
 
