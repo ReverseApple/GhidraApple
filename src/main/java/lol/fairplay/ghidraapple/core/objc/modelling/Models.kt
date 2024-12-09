@@ -8,6 +8,25 @@ import lol.fairplay.ghidraapple.core.objc.encodings.TypeNode
 
 open class OCFieldContainer(open val name: String)
 
+
+// fixme: this whole class is probably overkill
+class ResolvedMethod(val name: String) {
+
+    // stack order is concrete to abstract
+    private val stack = mutableListOf<OCMethod>()
+
+    fun method(): OCMethod = stack[0]
+    fun pushInstance(method: OCMethod) = stack.add(method)
+
+    fun bestSignature(): Pair<EncodedSignature?, OCFieldContainer> {
+        val impl = stack.find {
+            it.parent is OCProtocol && it.parent.extendedSignatures != null
+        } ?: stack.first()
+        return impl.getSignature() to impl.parent
+    }
+}
+
+
 data class OCClass(
     override val name: String,
     val flags: Long,
@@ -53,21 +72,33 @@ data class OCClass(
         return propertyMapping.values.toList()
     }
 
-    fun resolvedMethods(): List<OCMethod>? {
+    fun resolvedMethods(): List<ResolvedMethod>? {
         val inheritance = getInheritance()?.reversed()
-        val methodMapping = baseMethods?.associate { it.name to it }?.toMutableMap() ?: mutableMapOf()
-
-        // collect methods using MRO
-        inheritance?.forEach {
-            it.baseMethods?.forEach { method ->
-                methodMapping[method.name] = method
-            }
-        }
+        val methodMapping = baseMethods?.associate {
+            val a = ResolvedMethod(it.name)
+            a.pushInstance(it)
+            it.name to a
+        }?.toMutableMap() ?: mutableMapOf()
 
         // collect resolved methods from implemented protocols
         baseProtocols?.forEach {
             it.resolvedMethods()?.forEach { method ->
-                methodMapping[method.name] = method
+                if (method.name !in methodMapping) {
+                    methodMapping[method.name] = ResolvedMethod(method.name)
+                }
+
+                methodMapping[method.name]!!.pushInstance(method)
+            }
+        }
+
+        // collect methods using MRO
+        inheritance?.forEach {
+            it.baseMethods?.forEach { method ->
+                if (method.name !in methodMapping) {
+                    methodMapping[method.name] = ResolvedMethod(method.name)
+                }
+
+                methodMapping[method.name]!!.pushInstance(method)
             }
         }
 
@@ -227,4 +258,6 @@ data class OCProperty(
         }
     }
 }
+
+
 
