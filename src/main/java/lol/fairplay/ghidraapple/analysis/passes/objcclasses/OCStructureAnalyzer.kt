@@ -18,21 +18,22 @@ import lol.fairplay.ghidraapple.analysis.objectivec.TypeResolver
 import lol.fairplay.ghidraapple.analysis.objectivec.modelling.StructureParsing
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.derefUntyped
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.get
-import lol.fairplay.ghidraapple.analysis.utilities.getMembers
-import lol.fairplay.ghidraapple.analysis.utilities.tryResolveNamespace
+import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.deref
+import lol.fairplay.ghidraapple.analysis.utilities.parseObjCListSection
 import lol.fairplay.ghidraapple.core.objc.modelling.OCClass
 
 
 class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYTE_ANALYZER) {
 
     companion object {
-        private const val NAME = "Objective-C Structures"
+        private const val NAME = "Objective-C: Structures"
         private const val DESCRIPTION = ""
         val PRIORITY = AnalysisPriority.BLOCK_ANALYSIS.after()
     }
 
-    var classNamespace: Namespace? = null
     lateinit var program: Program
+
+    val structureCategory = CategoryPath("/GA_OBJC")
 
     init {
         priority = PRIORITY
@@ -41,110 +42,114 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
 
     override fun canAnalyze(program: Program): Boolean {
         this.program = program
+
         return program.memory.getBlock("__objc_classlist") != null
+                || program.memory.getBlock("__objc_protolist") != null
     }
 
     override fun added(program: Program, set: AddressSetView, monitor: TaskMonitor, log: MessageLog?): Boolean {
-        classNamespace = tryResolveNamespace(program, "objc", "class_t") ?: return false
-        val category = CategoryPath("/GA_OBJC")
-        val namespace = classNamespace!!
+        monitor.message = "Reading list sections..."
 
-        monitor.message = "Creating structures..."
+        val classStructures = (parseObjCListSection(program, "__objc_classlist")?.associate { klassT ->
+            // class_t[4]->class_rw[3]->name
+            klassT[4].derefUntyped()[3].deref<String>() to klassT
+        } ?: emptyMap()).toMutableMap()
 
-        // Get the most information-rich form of each class structure.
-        // This works by preferring classes that do not have an `isa` field value of `_OBJC_METACLASS_$_NSObject`
-        val definedStructures = mutableMapOf<String, DataType>()
-        val idealStructures = mutableMapOf<String, Data>()
-        namespace.getMembers().forEach { member ->
-            if (member.name !in idealStructures) {
-                val classStruct = StructureDataType(category, member.name, 0)
-                definedStructures[member.name] = program.dataTypeManager.addDataType(classStruct, null)
-                Msg.info(this, "Added ${member.name} structure.")
 
-                idealStructures[member.name] = program.listing.getDefinedDataAt(member.address)
-            } else {
-                val data = idealStructures[member.name]!!
-                val superclassExisting = data[0].derefUntyped()
-                if (superclassExisting.primarySymbol.name.startsWith("_OBJC_METACLASS_\$")) {
-                    idealStructures[member.name] = program.listing.getDefinedDataAt(member.address)
-                }
-            }
-        }
+        val protocolStructures = (parseObjCListSection(program, "__objc_protolist")?.associate { protoT ->
+            // protocol_t[1]->name
+            protoT[1].deref<String>() to protoT
+        } ?: emptyMap()).toMutableMap()
+
 
         // Some class symbols that are not inside the objc::class_t namespace are prefixed with `_OBJC_CLASS_$_`
         // These are not parsable, but are still useful for analysis purposes.
-        program.symbolTable.symbolIterator.filter {
+        val externalClasses = program.symbolTable.symbolIterator.filter {
             it.name.startsWith("_OBJC_CLASS_\$_")
-        }.forEach {
+        }.mapNotNull {
             val className = it.name.removePrefix("_OBJC_CLASS_\$_")
-            if (className !in definedStructures) {
-                val classStruct = StructureDataType(category, className, 0)
-                definedStructures[className] = program.dataTypeManager.addDataType(classStruct, null)
-                Msg.info(this, "Added structure for external class $className")
+            // just for sanity, ensure it's not already in either of the structure mappings.
+            if (className !in classStructures && className !in protocolStructures) {
+                className
+            } else {
+                null
             }
         }
 
-        monitor.message = "Creating fields..."
-        monitor.maximum = idealStructures.size.toLong()
-        monitor.progress = 0
-
-        val context = StructureParsing(program)
-        val typeResolver = TypeResolver(program)
+        buildStructureTypes(classStructures, protocolStructures, externalClasses, monitor)
 
         // Recover the structure fields by parsing each eligible class into the analysis model.
-
-        program.withTransaction<Exception>("Applying class structure fields.") {
-            for ((name, data) in idealStructures) {
-                monitor.incrementProgress()
-
-                Msg.info(this, "Analyzing class $name at ${data.address}...")
-
-                val structAddress = data.address
-
-                // Parse the class structure into our custom model.
-                var classModel: OCClass? = null
-                try {
-                    classModel = context.parseClass(structAddress.unsignedOffset) ?: continue
-                } catch (e: Exception) {
-                    Msg.error(this, "Could not parse class $name into a model: $e")
-                    continue
-                } catch (e: Error) {
-                    Msg.error(this, "Could not parse class $name into a model: $e")
-                    continue
-                }
-
-                val definedStructure = definedStructures[name] ?: continue
-
-                for (ivar in classModel.instanceVariables ?: continue) {
-
-                    // Attempt to reconstruct the Ghidra DataType from the encoded type AST...
-                    var fieldType: DataType? = null
-                    try {
-                        Msg.info(this, "Reconstructing type for ivar ${ivar.name}: ${ivar.type}")
-                        fieldType = typeResolver.buildParsed(ivar.type) ?: continue
-                    } catch (exception: Exception) {
-                        Msg.error(this, "Could not recover type for $ivar: $exception")
-                        continue
-                    } catch (error: Error) {
-                        Msg.error(this, "Could not recover type for $ivar: $error")
-                        continue
-                    }
-
-                    // Apply the new field to our pre-defined structure.
-                    (definedStructure as Structure).insertAtOffset(
-                        ivar.offset.toInt(),
-                        fieldType,
-                        ivar.size,
-                        ivar.name,
-                        null
-                    )
-
-                    Msg.info(this, "${ivar.name} -> $fieldType (${ivar.type})")
-                }
-            }
-        }
 
         return true
     }
 
+    private fun buildStructureTypes(
+        klassData: Map<String, Data>,
+        protoData: Map<String, Data>,
+        externalClasses: List<String>,
+        taskMonitor: TaskMonitor?
+    ): Boolean {
+
+        val parser = StructureParsing(program)
+        val typeResolver = TypeResolver(program)
+
+        taskMonitor?.maximum = (klassData.size + protoData.size + externalClasses.size).toLong()
+        taskMonitor?.progress = 0
+        taskMonitor?.message = "Creating class types..."
+
+        protoData.forEach { (name, data) ->
+            taskMonitor?.incrementProgress()
+            val dataType = program.dataTypeManager.addDataType(StructureDataType(structureCategory, name, 0), null)
+        }
+
+        // Create class types with fields.
+        klassData.forEach { (name, data) ->
+            val dataType = program.dataTypeManager.addDataType(StructureDataType(structureCategory, name, 0), null)
+
+            taskMonitor?.incrementProgress()
+
+            // Attempt to parse the class into the analysis models.
+            val model = runCatching {
+                parser.parseClass(data.address.unsignedOffset)
+            }.onFailure {
+                Msg.error(this, "Could not parse class $name into a model: $it")
+            }.getOrNull() ?: return@forEach
+
+            // Create the instance variables for the structure.
+            for (ivar in model.instanceVariables ?: return@forEach) {
+
+                var fieldType = runCatching {
+                    typeResolver.buildParsed(ivar.type)
+                }.onFailure {
+                    Msg.error(this, "Could not reconstruct type for ivar ${model.name}->${ivar.name}")
+                }.getOrNull() ?: continue
+
+                (dataType as Structure).insertAtOffset(
+                    ivar.offset.toInt(),
+                    fieldType,
+                    ivar.size,
+                    ivar.name,
+                    null
+                )
+            }
+        }
+
+//        protoData.forEach { (name, data) ->
+//            val dataType = program.dataTypeManager.addDataType(StructureDataType(structureCategory, name, 0), null)
+//
+//            taskMonitor?.incrementProgress()
+//
+//            val model = runCatching {
+//                parser.parseProtocol(data.address.unsignedOffset)
+//            }.onFailure {
+//                Msg.error(this, "Could not parse protocol $name into a model: $it")
+//            }.getOrNull() ?: return@forEach
+//
+//
+//        }
+
+        return true
+    }
 }
+
+

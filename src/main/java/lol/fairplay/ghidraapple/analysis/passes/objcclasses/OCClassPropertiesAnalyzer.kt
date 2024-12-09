@@ -34,7 +34,11 @@ class OCClassPropertiesAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerTy
 
     override fun canAnalyze(program: Program): Boolean {
         this.program = program
-        return program.memory.getBlock("__objc_classlist") != null
+
+        program.memory.getBlock("__objc_classlist") ?: return false
+        program.memory.getBlock("__objc_protolist") ?: return false
+
+        return true
     }
 
     override fun added(program: Program, set: AddressSetView, monitor: TaskMonitor, log: MessageLog): Boolean {

@@ -65,5 +65,22 @@ fun idealClassStructures(program: Program): Map<String, Data>? {
     return idealStructures
 }
 
+fun parseObjCListSection(program: Program, sectionName: String): List<Data>? {
+    val sectionBlock = program.memory.getBlock(sectionName) ?: return null
+    val entries = sectionBlock.size / 8
+    val start = sectionBlock.start
+
+    return (0 until entries).map {
+        val datAddress = program.listing
+            .getDataAt(start.add(it * 8))
+            .getPrimaryReference(0)
+            .toAddress
+        program.listing.getDefinedDataAt(datAddress)
+    }
+}
+
 fun dataAt(program: Program, address: Address): Data? =
     program.listing.getDefinedDataAt(address)
+
+
+
