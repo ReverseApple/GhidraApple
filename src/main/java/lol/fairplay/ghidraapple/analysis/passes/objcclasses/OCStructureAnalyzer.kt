@@ -95,11 +95,18 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
 
         taskMonitor?.maximum = (klassData.size + protoData.size + externalClasses.size).toLong()
         taskMonitor?.progress = 0
-        taskMonitor?.message = "Creating class types..."
+
+        taskMonitor?.message = "Creating nullary types..."
+
+        externalClasses.forEach {
+            println("Creating nullary: $it")
+            program.dataTypeManager.addDataType(StructureDataType(structureCategory, it, 0), null)
+        }
 
         protoData.forEach { (name, data) ->
             taskMonitor?.incrementProgress()
-            val dataType = program.dataTypeManager.addDataType(StructureDataType(structureCategory, name, 0), null)
+
+            program.dataTypeManager.addDataType(StructureDataType(structureCategory, "<$name>", 0), null)
         }
 
         // Create class types with fields.
@@ -133,20 +140,6 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
                 )
             }
         }
-
-//        protoData.forEach { (name, data) ->
-//            val dataType = program.dataTypeManager.addDataType(StructureDataType(structureCategory, name, 0), null)
-//
-//            taskMonitor?.incrementProgress()
-//
-//            val model = runCatching {
-//                parser.parseProtocol(data.address.unsignedOffset)
-//            }.onFailure {
-//                Msg.error(this, "Could not parse protocol $name into a model: $it")
-//            }.getOrNull() ?: return@forEach
-//
-//
-//        }
 
         return true
     }
