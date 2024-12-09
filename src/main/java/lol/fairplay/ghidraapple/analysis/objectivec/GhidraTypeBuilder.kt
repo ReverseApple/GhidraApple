@@ -13,6 +13,7 @@ import ghidra.program.model.data.LongDoubleDataType
 import ghidra.program.model.data.LongLongDataType
 import ghidra.program.model.data.PointerDataType
 import ghidra.program.model.data.ShortDataType
+import ghidra.program.model.data.Structure
 import ghidra.program.model.data.StructureDataType
 import ghidra.program.model.data.UnionDataType
 import ghidra.program.model.data.UnsignedCharDataType
@@ -62,8 +63,10 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
         return program.dataTypeManager.getDataType(category, name)
     }
 
-    fun tryResolveStructPtr(name: String): DataType? {
-        return PointerDataType(tryResolveDefinedStruct(name) ?: return null)
+    fun getOrCreateType(name: String): DataType {
+        val category = CategoryPath("/GA_OBJC")
+        return tryResolveDefinedStruct(name)
+            ?: program.dataTypeManager.addDataType(StructureDataType(category, name, 0), null)
     }
 
     override fun visitStruct(struct: TypeNode.Struct) {
@@ -71,7 +74,7 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
             if (it.isEmpty()) "anon__${getRandomHexString(6)}" else it
         }
 
-        val ghidraStruct = (tryResolveDefinedStruct(name) ?: StructureDataType(name, 0)) as StructureDataType
+        val ghidraStruct = getOrCreateType(name) as Structure
 
         if (struct.fields == null) {
             result = ghidraStruct
@@ -104,8 +107,9 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
             return
         }
 
-        val resolved = tryResolveStructPtr(obj.name)
-        result = resolved ?: idType
+        val resolved = PointerDataType(getOrCreateType(obj.name))
+
+        result = resolved
     }
 
     override fun visitUnion(union: TypeNode.Union) {
