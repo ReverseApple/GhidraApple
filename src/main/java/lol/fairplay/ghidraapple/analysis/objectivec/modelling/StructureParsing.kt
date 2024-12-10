@@ -121,7 +121,9 @@ class StructureParsing(val program: Program) {
             name = dat[0].deref<String>(),
             attributes = encoding.attributes,
             type = encoding.type,
-            backingIvar = encoding.backingIvar
+            customGetter = encoding.customGetter,
+            customSetter = encoding.customSetter,
+            backingIvar = encoding.backingIvar,
         )
     }
 
