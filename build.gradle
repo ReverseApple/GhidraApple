@@ -48,4 +48,12 @@ kotlin {
 test {
     useJUnitPlatform()
 }
+
+sourceSets {
+    main {
+        kotlin {
+            srcDirs 'ghidra_scripts'
+        }
+    }
+}
 //----------------------END "DO NOT MODIFY" SECTION-------------------------------
