@@ -23,7 +23,7 @@ class JSONConversionVisitor : TypeNodeVisitor {
 
         if (struct.fields != null) {
             val arr = JSONArray()
-            for ((name, node) in struct.fields) {
+            for ((name, node) in struct.fields!!) {
                 val entry = JSONObject()
                 val visitor = extend()
                 node.accept(visitor)
@@ -44,7 +44,7 @@ class JSONConversionVisitor : TypeNodeVisitor {
 
         if (classObject.fields != null) {
             val arr = JSONArray()
-            for ((name, node) in classObject.fields) {
+            for ((name, node) in classObject.fields!!) {
                 val entry = JSONObject()
                 val visitor = extend()
                 node.accept(visitor)
@@ -72,7 +72,7 @@ class JSONConversionVisitor : TypeNodeVisitor {
 
         if (union.fields != null) {
             val arr = JSONArray()
-            for ((name, node) in union.fields) {
+            for ((name, node) in union.fields!!) {
                 val entry = JSONObject()
                 val visitor = extend()
                 node.accept(visitor)
