@@ -12,7 +12,9 @@ import lol.fairplay.ghidraapple.analysis.objectivec.TypeResolver
 import lol.fairplay.ghidraapple.analysis.objectivec.modelling.StructureParsing
 import lol.fairplay.ghidraapple.analysis.utilities.address
 import lol.fairplay.ghidraapple.analysis.utilities.idealClassStructures
+import lol.fairplay.ghidraapple.core.objc.encodings.PropertyAttribute
 import lol.fairplay.ghidraapple.core.objc.modelling.OCClass
+import lol.fairplay.ghidraapple.core.objc.modelling.OCProtocol
 
 class OCClassPropertiesAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTION_ANALYZER) {
 
@@ -32,7 +34,11 @@ class OCClassPropertiesAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerTy
 
     override fun canAnalyze(program: Program): Boolean {
         this.program = program
-        return program.memory.getBlock("__objc_classlist") != null
+
+        program.memory.getBlock("__objc_classlist") ?: return false
+        program.memory.getBlock("__objc_protolist") ?: return false
+
+        return true
     }
 
     override fun added(program: Program, set: AddressSetView, monitor: TaskMonitor, log: MessageLog): Boolean {
@@ -76,14 +82,18 @@ class OCClassPropertiesAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerTy
 
                 monitor.message = "Analyzing properties: ${klass.name}"
                 Msg.info(this, "Analyzing properties for ${klass.name}")
-                val properties = klass.getCollapsedProperties() ?: continue
+                val properties = klass.resolvedProperties() ?: continue
                 val methodMapping = klass.baseMethods?.associateBy { it.name } ?: continue
 
                 properties.forEach { property ->
-                    val methodGetter = methodMapping[property.name] ?: return@forEach
+                    println("Property: ${property.name}")
+                    if (property.parent != klass) {
+                        Msg.error(this, "Unsupported property: ${property.name} is not from the current class")
+                        return@forEach
+                    }
 
-                    val setterName = "set${property.name[0].uppercase()}${property.name.substring(1)}:"
-                    val methodSetter = methodMapping[setterName] ?: return@forEach
+                    val getterName = property.customGetter ?: property.name
+                    val methodGetter = methodMapping[getterName] ?: return@forEach
 
                     val propertyDataType = runCatching {
                         val parsed = property.type?.first ?: return@runCatching null
@@ -93,10 +103,15 @@ class OCClassPropertiesAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerTy
                     }.getOrNull() ?: return@forEach
 
                     val fnGetter = program.functionManager.getFunctionAt(program.address(methodGetter.implAddress!!.toLong()))
-                    val fnSetter = program.functionManager.getFunctionAt(program.address(methodSetter.implAddress!!.toLong()))
-
                     fnGetter.setReturnType(propertyDataType, SourceType.ANALYSIS)
-                    fnSetter.getParameter(2).setDataType(propertyDataType, SourceType.ANALYSIS)
+
+                    if (!property.attributes.contains(PropertyAttribute.READ_ONLY)) {
+                        val setterName = property.customSetter ?: "set${property.name[0].uppercase()}${property.name.substring(1)}:"
+                        val methodSetter = methodMapping[setterName]!!
+                        val fnSetter = program.functionManager.getFunctionAt(program.address(methodSetter.implAddress!!.toLong()))
+                        fnSetter.getParameter(2).setDataType(propertyDataType, SourceType.ANALYSIS)
+                    }
+
                 }
             }
         }

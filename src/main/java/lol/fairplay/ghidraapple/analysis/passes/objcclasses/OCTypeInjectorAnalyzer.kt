@@ -89,7 +89,7 @@ class OCTypeInjectorAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.
         val objectLookUp: Map<Long, Symbol> = program.symbolTable.symbolIterator
             .filter { it.name.startsWith("_OBJC_CLASS_\$_") || it.parentNamespace.name == "class_t" }
             .filter { !it.isExternal }
-            .map { it.address.offset to it}.toMap()
+            .associate { it.address.offset to it }
 
         val decompiler = DecompInterface()
         decompiler.openProgram(program)
@@ -145,8 +145,12 @@ class OCTypeInjectorAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.
                 }
                 val allocatedSymbol = objectLookUp[const.offset]
                 if (allocatedSymbol != null){
-                    val ocType = getDataTypeFromSymbol(allocatedSymbol!!)
-                    result.add(AllocInfo(function, allocCall.seqnum.target, generateFunctionSignatureForType(ocType)))
+                    runCatching {
+                        val ocType = getDataTypeFromSymbol(allocatedSymbol!!)
+                        result.add(AllocInfo(function, allocCall.seqnum.target, generateFunctionSignatureForType(ocType)))
+                    }.onFailure { error ->
+                        Msg.error(this, "Failed to inject type for ${allocatedSymbol.name} in ${function.name}", error)
+                    }
                 }
                 else {
                     messageLog.appendMsg(NAME, "Could not find symbol for constant $const in ${function.name}")
