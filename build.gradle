@@ -1,6 +1,8 @@
 plugins {
-    id 'org.jetbrains.kotlin.jvm'
-}// Builds a Ghidra Extension for a given Ghidra installation.
+    id 'org.jetbrains.kotlin.jvm' version "1.9.23"
+    id 'idea'
+}
+// Builds a Ghidra Extension for a given Ghidra installation.
 //
 // An absolute path to the Ghidra installation directory must be supplied either by setting the 
 // GHIDRA_INSTALL_DIR environment variable or Gradle project property:
@@ -43,8 +45,9 @@ dependencies {
     testRuntimeOnly "org.junit.jupiter:junit-jupiter-engine:5.10.3"
 }
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain(21)
 }
+
 test {
     useJUnitPlatform()
 }
