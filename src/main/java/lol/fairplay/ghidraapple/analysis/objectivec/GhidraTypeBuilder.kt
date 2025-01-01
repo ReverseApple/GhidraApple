@@ -1,32 +1,9 @@
 package lol.fairplay.ghidraapple.analysis.objectivec
 
-import ghidra.program.model.data.ArrayDataType
-import ghidra.program.model.data.BooleanDataType
-import ghidra.program.model.data.CategoryPath
-import ghidra.program.model.data.CharDataType
-import ghidra.program.model.data.DataType
-import ghidra.program.model.data.DoubleDataType
-import ghidra.program.model.data.FloatDataType
-import ghidra.program.model.data.IntegerDataType
-import ghidra.program.model.data.LongDataType
-import ghidra.program.model.data.LongDoubleDataType
-import ghidra.program.model.data.LongLongDataType
-import ghidra.program.model.data.PointerDataType
-import ghidra.program.model.data.ShortDataType
-import ghidra.program.model.data.Structure
-import ghidra.program.model.data.StructureDataType
-import ghidra.program.model.data.Union
-import ghidra.program.model.data.UnionDataType
-import ghidra.program.model.data.UnsignedCharDataType
-import ghidra.program.model.data.UnsignedIntegerDataType
-import ghidra.program.model.data.UnsignedLongDataType
-import ghidra.program.model.data.UnsignedLongLongDataType
-import ghidra.program.model.data.UnsignedShortDataType
-import ghidra.program.model.data.VoidDataType
+import ghidra.program.model.data.*
 import ghidra.program.model.listing.Program
 import lol.fairplay.ghidraapple.core.objc.encodings.TypeNode
 import lol.fairplay.ghidraapple.core.objc.encodings.TypeNodeVisitor
-
 import java.security.SecureRandom
 
 fun getRandomHexString(length: Int): String {
@@ -167,8 +144,9 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
             'C' -> UnsignedCharDataType.dataType
             's' -> ShortDataType.dataType
             'S' -> UnsignedShortDataType.dataType
-            'i' -> IntegerDataType.dataType
-            'I' -> UnsignedIntegerDataType.dataType
+//            'i' -> IntegerDataType.dataType
+//            'I' -> UnsignedIntegerDataType.dataType
+            'i', 'I' -> Undefined4DataType.dataType
             'l' -> LongDataType.dataType
             'L' -> UnsignedLongDataType.dataType
             'q' -> LongLongDataType.dataType
