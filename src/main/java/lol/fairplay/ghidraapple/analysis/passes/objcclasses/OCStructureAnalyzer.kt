@@ -50,10 +50,14 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
     override fun added(program: Program, set: AddressSetView, monitor: TaskMonitor, log: MessageLog?): Boolean {
         monitor.message = "Reading list sections..."
 
-        val classStructures = (parseObjCListSection(program, "__objc_classlist")?.associate { klassT ->
+        val classStructures = (parseObjCListSection(program, "__objc_classlist")?.mapNotNull { klassT ->
             // class_t[4]->class_rw[3]->name
-            klassT[4].derefUntyped()[3].deref<String>() to klassT
-        } ?: emptyMap()).toMutableMap()
+            runCatching {
+                klassT[4].derefUntyped()[3].deref<String>() to klassT
+            }.onFailure {
+                Msg.error(this, "Failed to parse class data at ${klassT.address}")
+            }.getOrNull()
+        }?.toMap() ?: emptyMap()).toMutableMap()
 
 
         val protocolStructures = (parseObjCListSection(program, "__objc_protolist")?.associate { protoT ->
