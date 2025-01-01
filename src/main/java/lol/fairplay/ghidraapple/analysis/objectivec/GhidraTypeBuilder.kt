@@ -118,7 +118,7 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
         }
 
         val objDT = getGAType(obj.name) ?: createStructureDT(obj.name)
-        result = PointerDataType(objDT)
+        result = PointerDataType(objDT, 8)
     }
 
     override fun visitUnion(union: TypeNode.Union) {
@@ -178,7 +178,7 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
             'v' -> VoidDataType.dataType
             'B' -> BooleanDataType.dataType
             'D' -> LongDoubleDataType.dataType
-            '*' -> PointerDataType(CharDataType.dataType)
+            '*' -> PointerDataType(CharDataType.dataType, 8)
             else -> throw Exception("Unknown primitive type: ${primitive.type}")
         }
     }
@@ -187,7 +187,7 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
         val visitor = extend()
         pointer.pointee.accept(visitor)
 
-        result = PointerDataType(visitor.getResult())
+        result = PointerDataType(visitor.getResult(), 8)
     }
 
     override fun visitBitfield(bitfield: TypeNode.Bitfield) {
@@ -199,7 +199,7 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
     }
 
     override fun visitFunctionPointer(fnPtr: TypeNode.FunctionPointer) {
-        result = PointerDataType(VoidDataType.dataType)
+        result = PointerDataType(VoidDataType.dataType, 8)
     }
 
     override fun visitSelector(fnPtr: TypeNode.Selector) {
