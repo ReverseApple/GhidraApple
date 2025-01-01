@@ -55,7 +55,7 @@ data class OCClass(
 
     fun resolvedProperties(): List<OCProperty>? {
         val inheritance = getInheritance()?.reversed()
-        val propertyMapping = baseProperties?.associate { it.name to it }?.toMutableMap() ?: mutableMapOf()
+        val propertyMapping = mutableMapOf<String, OCProperty>()
 
         inheritance?.forEach {
             it.baseProperties?.forEach { prop ->
@@ -67,6 +67,10 @@ data class OCClass(
             it.resolvedProperties()?.forEach { prop ->
                 propertyMapping[prop.name] = prop
             }
+        }
+
+        baseProperties?.forEach { prop ->
+            propertyMapping[prop.name] = prop
         }
 
         return propertyMapping.values.toList()
@@ -178,7 +182,6 @@ data class OCMethod(
 
     override fun toString(): String {
         return "OCMethod(name='$name', signature=${getSignature()}, implAddress=$implAddress)"
-//        return prototypeString()
     }
 
     fun getSignature(): EncodedSignature? {
