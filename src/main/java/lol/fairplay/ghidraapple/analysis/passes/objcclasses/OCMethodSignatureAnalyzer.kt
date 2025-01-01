@@ -3,14 +3,10 @@ package lol.fairplay.ghidraapple.analysis.passes.objcclasses
 import ghidra.app.services.AbstractAnalyzer
 import ghidra.app.services.AnalyzerType
 import ghidra.app.util.importer.MessageLog
-import ghidra.program.database.function.FunctionDB
 import ghidra.program.model.address.AddressSetView
 import ghidra.program.model.listing.Function
 import ghidra.program.model.listing.ParameterImpl
 import ghidra.program.model.listing.Program
-import ghidra.program.model.listing.Variable
-import ghidra.program.model.listing.VariableStorage
-import ghidra.program.model.pcode.HighFunctionDBUtil
 import ghidra.program.model.symbol.SourceType
 import ghidra.util.Msg
 import ghidra.util.task.TaskMonitor
@@ -19,7 +15,6 @@ import lol.fairplay.ghidraapple.analysis.objectivec.modelling.StructureParsing
 import lol.fairplay.ghidraapple.analysis.utilities.address
 import lol.fairplay.ghidraapple.analysis.utilities.parseObjCListSection
 import lol.fairplay.ghidraapple.core.objc.modelling.OCClass
-import org.python.antlr.op.Param
 
 class OCMethodSignatureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTION_ANALYZER) {
 
@@ -105,31 +100,21 @@ class OCMethodSignatureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerTy
 
             parameters.add(ParameterImpl("self", recvType, 0, program))
             parameters.add(ParameterImpl("selector", program.dataTypeManager.getDataType("/_objc2_/SEL")!!, 8, program))
-
-            // todo: make this an optional thing later...
-            // create parameter names, acknowledging common objective-c naming conventions.
-            val newNames = method.name.split(":").map { part ->
-                // e.g. "wantsProcessCommandKeyDownWithCode" -> "code"
-                if (part.lowercase().contains("with")){
-                    part.lowercase().indexOf("with").let { idx ->
-                        part.slice(idx + 4 until part.length)
-                    }
-                } else if (part.lowercase().contains("for")) {
-                    part.lowercase().indexOf("for").let { idx ->
-                        part.slice(idx + 3 until part.length)
-                    }
-                } else part
-            }.map { it.replaceFirstChar { it.lowercase() }}
+            var newNames = parameterNamesForMethod(method.name)
 
             // Reconstruct and apply parameter types.
             encSignature.parameters.forEachIndexed { i, (type, stackOffset, modifiers) ->
                 val paramDT = runCatching {
                     typeResolver.buildParsed(type)
                 }.onFailure { exception ->
-                    Msg.error(this, "Could not parse argument ${i+2} type for ${klass.name}->${method.name}", exception)
+                    Msg.error(
+                        this,
+                        "Could not parse argument ${i + 2} type for ${klass.name}->${method.name}",
+                        exception
+                    )
                 }.getOrNull() ?: return@forEachIndexed
 
-                Msg.info(this, "Applying argument ${i+2} type to function for ${klass.name}->${method.name}...")
+                Msg.info(this, "Applying argument ${i + 2} type to function for ${klass.name}->${method.name}...")
 
                 parameters.add(ParameterImpl(newNames[i], paramDT, stackOffset, program))
             }
@@ -138,6 +123,8 @@ class OCMethodSignatureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerTy
             if (returnDT != null) {
                 returnVar.setDataType(returnDT, SourceType.ANALYSIS)
             }
+
+            println(newNames)
 
             fcnEntity.updateFunction(
                 null,
@@ -149,6 +136,34 @@ class OCMethodSignatureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerTy
             )
 
         }
+    }
+
+    private fun parameterNamesForMethod(methodName: String): List<String> {
+        // todo: make this an optional thing later...
+        // create parameter names, acknowledging common objective-c naming conventions.
+
+        val baseNames = methodName.split(":").map { part ->
+            when {
+                "with" in part.lowercase() -> part.substringAfter("with").replaceFirstChar { it.lowercase() }
+                "for" in part.lowercase() -> {
+                    if (part.startsWith("for")) {
+                        part.substringAfter("for").replaceFirstChar { it.lowercase() }
+                    } else {
+                        part.substringAfter("for").replaceFirstChar { it.lowercase() }
+                    }
+                }
+                else -> part.replaceFirstChar { it.lowercase() }
+            }
+        }
+
+        val uniqueNames = mutableMapOf<String, Int>()
+        val result = baseNames.map { name ->
+            val count = uniqueNames.getOrDefault(name, 0)
+            uniqueNames[name] = count + 1
+            if (count > 0) "${name}_$count" else name
+        }
+
+        return result
     }
 
 }
