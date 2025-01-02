@@ -1,11 +1,18 @@
 package lol.fairplay.ghidraapple.analysis.utilities
 
+import docking.widgets.table.AbstractDynamicTableColumn
+import docking.widgets.table.TableColumnDescriptor
+import ghidra.docking.settings.Settings
+import ghidra.framework.plugintool.ServiceProvider
 import ghidra.program.model.address.Address
 import ghidra.program.model.address.AddressSetView
-import ghidra.program.model.data.StructureDataType
 import ghidra.program.model.listing.Data
+import ghidra.program.model.listing.Function
 import ghidra.program.model.listing.Program
 import ghidra.program.model.symbol.Namespace
+import ghidra.program.model.symbol.RefType
+import ghidra.program.model.symbol.ReferenceManager
+import ghidra.program.model.symbol.SourceType
 import ghidra.program.model.symbol.Symbol
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.derefUntyped
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.get
@@ -16,11 +23,12 @@ import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.get
  * @param value The long value to be converted to an Address.
  * @return The Address object corresponding to the given long value.
  */
-fun Program.address(value: Long): Address {
-    return this.addressFactory.defaultAddressSpace.getAddress(value)
-}
+fun Program.address(value: Long): Address = this.addressFactory.defaultAddressSpace.getAddress(value)
 
-fun tryResolveNamespace(program: Program, vararg fqnParts: String): Namespace? {
+fun tryResolveNamespace(
+    program: Program,
+    vararg fqnParts: String,
+): Namespace? {
     var ns = program.globalNamespace
     for (part in fqnParts) {
         ns = program.symbolTable.getNamespace(part, ns) ?: return null
@@ -28,19 +36,25 @@ fun tryResolveNamespace(program: Program, vararg fqnParts: String): Namespace? {
     return ns
 }
 
-fun Namespace.getMembers(): Iterable<Symbol> {
-    return this.symbol.program.symbolTable.getChildren(this.symbol)
-}
+fun Namespace.getMembers(): Iterable<Symbol> =
+    this.symbol.program.symbolTable
+        .getChildren(this.symbol)
 
-fun dataBlocksForNamespace(program: Program, ns: Namespace, addresses: AddressSetView): List<Data> {
-    var dataBlocks = program.listing.getDefinedData(addresses, true)
-        .filter { data ->
-            val primarySymbol = data.primarySymbol
-            val parentNamespace = primarySymbol?.parentNamespace
-            primarySymbol != null &&
+fun dataBlocksForNamespace(
+    program: Program,
+    ns: Namespace,
+    addresses: AddressSetView,
+): List<Data> {
+    var dataBlocks =
+        program.listing
+            .getDefinedData(addresses, true)
+            .filter { data ->
+                val primarySymbol = data.primarySymbol
+                val parentNamespace = primarySymbol?.parentNamespace
+                primarySymbol != null &&
                     parentNamespace != null &&
                     parentNamespace.getName(true) == ns.getName(true)
-        }
+            }
 
     return dataBlocks
 }
@@ -65,5 +79,50 @@ fun idealClassStructures(program: Program): Map<String, Data>? {
     return idealStructures
 }
 
-fun dataAt(program: Program, address: Address): Data? =
-    program.listing.getDefinedDataAt(address)
+fun dataAt(
+    program: Program,
+    address: Address,
+): Data? = program.listing.getDefinedDataAt(address)
+
+fun ReferenceManager.setCallTarget(
+    callsite: Address,
+    targetFunction: Function,
+    sourceType: SourceType,
+) {
+    val ref = addMemoryReference(callsite, targetFunction.entryPoint, RefType.UNCONDITIONAL_CALL, sourceType, 0)
+    setPrimary(ref, true)
+}
+
+fun <ROW_TYPE, COLUMN_TYPE> TableColumnDescriptor<ROW_TYPE>.addColumn(
+    name: String,
+    visible: Boolean,
+    accessor: (ROW_TYPE) -> COLUMN_TYPE,
+) {
+    if (visible) {
+        addVisibleColumn(
+            object : AbstractDynamicTableColumn<ROW_TYPE, COLUMN_TYPE, Any?>() {
+                override fun getColumnName(): String = name
+
+                override fun getValue(
+                    rowObject: ROW_TYPE,
+                    settings: Settings,
+                    data: Any?,
+                    serviceProvider: ServiceProvider,
+                ): COLUMN_TYPE = accessor(rowObject)
+            },
+        )
+    } else {
+        addHiddenColumn(
+            object : AbstractDynamicTableColumn<ROW_TYPE, COLUMN_TYPE, Any?>() {
+                override fun getColumnName(): String = name
+
+                override fun getValue(
+                    rowObject: ROW_TYPE,
+                    settings: Settings,
+                    data: Any?,
+                    serviceProvider: ServiceProvider,
+                ): COLUMN_TYPE = accessor(rowObject)
+            },
+        )
+    }
+}

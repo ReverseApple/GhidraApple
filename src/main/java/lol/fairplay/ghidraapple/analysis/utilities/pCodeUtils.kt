@@ -4,6 +4,7 @@ import ghidra.program.model.address.Address
 import ghidra.program.model.pcode.PcodeOp
 import ghidra.program.model.pcode.Varnode
 import ghidra.program.model.listing.Program
+import ghidra.program.model.listing.Function
 import ghidra.util.Msg
 import java.util.*
 
@@ -42,6 +43,7 @@ fun getConstantFromPcodeOp(pcodeOp: PcodeOp): Optional<Address> {
         // Multiequal is a phi node, so we can't get _one_ constant from it
         PcodeOp.MULTIEQUAL -> return Optional.empty<Address>()
         PcodeOp.INDIRECT -> return getConstantFromVarNode(pcodeOp.inputs[0])
+        PcodeOp.CALL -> return Optional.empty()
         else -> {
             Msg.error("getConstantFromPcodeOp",
                 "Unknown opcode ${pcodeOp.mnemonic} encountered at ${pcodeOp.seqnum.target}")
@@ -63,3 +65,13 @@ fun Address.toDefaultAddressSpace(program: Program): Address {
     return program.addressFactory.defaultAddressSpace.getAddress(this.offset)
 }
 
+
+fun getFunctionForPCodeCall(program: Program, pcodeOp: PcodeOp?): Optional<Function> {
+    if (pcodeOp != null && pcodeOp.opcode == PcodeOp.CALL) {
+        val target = pcodeOp.inputs.getOrNull(0) ?: return Optional.empty()
+        if (target.isAddress) {
+            return Optional.of(program.functionManager.getFunctionAt(target.address))
+        }
+    }
+    return Optional.empty()
+}
