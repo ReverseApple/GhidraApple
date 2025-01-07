@@ -50,7 +50,7 @@ class UniversalBinaryLoader : MachoLoader() {
                 val originalFolderPath = loaded.projectFolderPath
                 val newFolderPath = originalFolderPath
                     .split("/")
-                    // Filter out, potentially, the last empty element (if the path ended in "/").
+                    // Filter out, potentially, the last, empty, element (if the path ended in "/").
                     .filter { it != "" }
                     .dropLast(1)
                     .joinToString("/")
