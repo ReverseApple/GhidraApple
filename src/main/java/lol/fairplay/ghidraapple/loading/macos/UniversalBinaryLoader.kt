@@ -52,9 +52,8 @@ class UniversalBinaryLoader : MachoLoader() {
                 program.name = preferredName
                 program.endTransaction(renameTransaction, true)
 
-                // After renaming, the programs will still be in folders named after their original
-                // names. To reduce redundancy, we move the programs to the parent folder (which is
-                // named after the binary).
+                // After renaming, the programs will be in folders named after their original
+                // names. To reduce redundancy, we move the programs to the parent folder.
                 val originalFolderPath = loaded.projectFolderPath
                 val newFolderPath = originalFolderPath
                     .split("/")
