@@ -22,7 +22,7 @@ class UniversalBinaryLoader : MachoLoader() {
 
         // The fsrl is two-fold: the path to the binary, and a path within the binary. We take the former
         // and extract the name (which will be the last path component, the binary name).
-        var binaryName = byteProvider.fsrl.split()[0].name
+        val binaryName = byteProvider.fsrl.split()[0].name
         return "$binaryName-$original";
     }
 
