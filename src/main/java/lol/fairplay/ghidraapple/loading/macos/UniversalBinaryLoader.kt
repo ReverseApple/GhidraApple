@@ -4,7 +4,7 @@ import ghidra.app.util.Option
 import ghidra.app.util.bin.ByteProvider
 import ghidra.app.util.importer.MessageLog
 import ghidra.app.util.opinion.Loaded
-import ghidra.app.util.opinion.MachoLoader;
+import ghidra.app.util.opinion.MachoLoader
 import ghidra.file.formats.ubi.UniversalBinaryFileSystem
 import ghidra.formats.gfilesystem.annotations.FileSystemInfo
 import ghidra.framework.model.Project
@@ -18,12 +18,12 @@ class UniversalBinaryLoader : MachoLoader() {
         val original = super.getPreferredFileName(byteProvider)
         val ubType = UniversalBinaryFileSystem::class.findAnnotation<FileSystemInfo>()?.type ?: "universalbinary"
         // If this isn't a universal binary then just return the original file name.
-        if (!byteProvider.fsrl.toStringPart().startsWith("$ubType://")) return original;
+        if (!byteProvider.fsrl.toStringPart().startsWith("$ubType://")) return original
 
         // The fsrl is two-fold: the path to the binary, and a path within the binary. We take the former
         // and extract the name (which will be the last path component, the binary name).
         val binaryName = byteProvider.fsrl.split()[0].name
-        return "$binaryName-$original";
+        return "$binaryName-$original"
     }
 
     override fun postLoadProgramFixups(
