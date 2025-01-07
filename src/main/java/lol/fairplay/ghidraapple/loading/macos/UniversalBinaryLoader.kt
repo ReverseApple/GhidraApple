@@ -23,6 +23,7 @@ class UniversalBinaryLoader : MachoLoader() {
         // The fsrl is two-fold: the path to the binary, and a path within the binary. We take the former
         // and extract the name (which will be the last path component, the binary name).
         val binaryName = byteProvider.fsrl.split()[0].name
+        // We prefix with the binary name as the original name is just the architecture and CPU.
         return "$binaryName-$original"
     }
 
@@ -39,22 +40,30 @@ class UniversalBinaryLoader : MachoLoader() {
                 // The actual program is wrapped, so we need to unwrap it.
                 val program = loaded.domainObject
 
-                // We rename with the preferred name.
-                val renameTransaction = program.startTransaction("rename")
                 // This will trigger [getPreferredFileName] above.
-                program.name = loaded.name
+                val preferredName = loaded.name
+
+                // If the preferred name is the same as the give name, this probably wasn't
+                // part of a universal binary. Thus, we skip any operations.
+                if (program.name == preferredName) return
+
+                // Otherwise, we rename with the preferred name.
+                val renameTransaction = program.startTransaction("rename")
+                program.name = preferredName
                 program.endTransaction(renameTransaction, true)
 
-                // The programs will still be in folders named after the architecture. We need
-                // to move them up to the folder named after the binary.
+                // After renaming, the programs will still be in folders named after their original
+                // names. To reduce redundancy, we move the programs to the parent folder (which is
+                // named after the binary).
                 val originalFolderPath = loaded.projectFolderPath
                 val newFolderPath = originalFolderPath
                     .split("/")
                     // Filter out, potentially, the last, empty, element (if the path ended in "/").
                     .filter { it != "" }
-                    .dropLast(1)
+                    .dropLast(1) // Drop the last path component, leaving a path to the parent folder.
                     .joinToString("/")
                 loaded.projectFolderPath = newFolderPath
+                // Now that the programs up one folder, we can delete the original one.
                 project?.projectData?.getFolder(originalFolderPath)?.delete()
             }
         }
