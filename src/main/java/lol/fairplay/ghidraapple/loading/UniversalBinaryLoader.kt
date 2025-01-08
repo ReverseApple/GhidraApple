@@ -1,4 +1,4 @@
-package lol.fairplay.ghidraapple.loading.macos
+package lol.fairplay.ghidraapple.loading
 
 import ghidra.app.util.Option
 import ghidra.app.util.bin.ByteProvider
