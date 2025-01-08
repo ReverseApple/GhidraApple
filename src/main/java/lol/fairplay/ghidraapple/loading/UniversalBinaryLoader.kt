@@ -45,9 +45,9 @@ class UniversalBinaryLoader : MachoLoader() {
                 if (program.name == preferredName) return
 
                 // Otherwise, we rename with the preferred name.
-                val renameTransaction = program.startTransaction("rename")
-                program.name = preferredName
-                program.endTransaction(renameTransaction, true)
+                program.withTransaction<Exception>("rename") {
+                    program.name = preferredName
+                }
 
                 // After renaming, the programs will be in folders named after their original
                 // names. To reduce redundancy, we move the programs to the parent folder.
@@ -55,7 +55,7 @@ class UniversalBinaryLoader : MachoLoader() {
                 val newFolderPath = originalFolderPath
                     .split("/")
                     // Filter out, potentially, the last, empty, element (if the path ended in "/").
-                    .filter { it != "" }
+                    .filterNot(String::isEmpty)
                     .dropLast(1) // Drop the last path component, leaving a path to the parent folder.
                     .joinToString("/")
                 loaded.projectFolderPath = newFolderPath
