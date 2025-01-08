@@ -5,18 +5,15 @@ import ghidra.app.util.bin.ByteProvider
 import ghidra.app.util.importer.MessageLog
 import ghidra.app.util.opinion.Loaded
 import ghidra.app.util.opinion.MachoLoader
-import ghidra.file.formats.ubi.UniversalBinaryFileSystem
-import ghidra.formats.gfilesystem.annotations.FileSystemInfo
 import ghidra.framework.model.Project
 import ghidra.program.model.listing.Program
 import ghidra.util.task.TaskMonitor
-import kotlin.reflect.full.findAnnotation
 
 class UniversalBinaryLoader : MachoLoader() {
 
     override fun getPreferredFileName(byteProvider: ByteProvider): String {
         val original = super.getPreferredFileName(byteProvider)
-        val ubType = UniversalBinaryFileSystem::class.findAnnotation<FileSystemInfo>()?.type ?: "universalbinary"
+        val ubType = "universalbinary"
         // If this isn't a universal binary then just return the original file name.
         if (!byteProvider.fsrl.toStringPart().startsWith("$ubType://")) return original
 
