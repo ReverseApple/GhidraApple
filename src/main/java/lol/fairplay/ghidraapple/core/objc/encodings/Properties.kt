@@ -13,7 +13,7 @@ enum class PropertyAttribute(val code: Char) {
     WEAK('W'),
     STRONG('P'),
     NON_ATOMIC('N'),
-    OPTIONAL('?');
+    NULLABLE('?');
 
     companion object {
         fun fromCode(code: Char): PropertyAttribute? {
@@ -31,6 +31,9 @@ enum class PropertyAttribute(val code: Char) {
             CUSTOM_SETTER -> "setter="
             BACKING_IVAR -> "ivar="
             WEAK -> "weak"
+            STRONG -> "strong"
+            NON_ATOMIC -> "nonatomic"
+            NULLABLE -> "nullable"
             else -> null
         }
     }
