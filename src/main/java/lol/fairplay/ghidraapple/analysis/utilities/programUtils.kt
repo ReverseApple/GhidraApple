@@ -6,6 +6,7 @@ import ghidra.docking.settings.Settings
 import ghidra.framework.plugintool.ServiceProvider
 import ghidra.program.model.address.Address
 import ghidra.program.model.address.AddressSetView
+import ghidra.program.model.data.StructureDataType
 import ghidra.program.model.listing.Data
 import ghidra.program.model.listing.Function
 import ghidra.program.model.listing.Program
@@ -54,7 +55,7 @@ fun dataBlocksForNamespace(
                 primarySymbol != null &&
                     parentNamespace != null &&
                     parentNamespace.getName(true) == ns.getName(true)
-            }
+        }
 
     return dataBlocks
 }
