@@ -253,6 +253,31 @@ data class OCProperty(
         return "OCProperty(name='$name', attributes=$attributes, type=$type)"
     }
 
+    fun declaration(): String {
+        val builder = StringBuilder()
+        builder.append("\n")
+        builder.append("@property ")
+
+        if (attributes.isNotEmpty()) {
+            builder.append("(")
+            attributes
+                .mapNotNull { it.annotationString() }
+                .map {
+                    when (it) {
+                        "getter=" -> "getter=$customGetter"
+                        "setter=" -> "setter=$customSetter"
+                        else -> it
+                    }
+                }
+                .joinToString(", ", postfix = ") ") { it }
+                .let { builder.append(it) }
+        }
+        builder.append("<TYPE> $name;")
+        builder.append("\n")
+
+        return builder.toString()
+    }
+
     fun getBackingIvar(): OCIVar? {
         return if (parent is OCClass) {
             parent.instanceVariables?.find { it.name == backingIvar }
