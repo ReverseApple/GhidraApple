@@ -4,6 +4,7 @@ import lol.fairplay.ghidraapple.core.objc.encodings.EncodedSignature
 import lol.fairplay.ghidraapple.core.objc.encodings.PropertyAttribute
 import lol.fairplay.ghidraapple.core.objc.encodings.SignatureTypeModifier
 import lol.fairplay.ghidraapple.core.objc.encodings.TypeNode
+import lol.fairplay.ghidraapple.core.objc.encodings.TypeStringify
 
 
 open class OCFieldContainer(open val name: String)
@@ -258,7 +259,7 @@ data class OCProperty(
         builder.append("\n")
         builder.append("@property ")
 
-        if (attributes.isNotEmpty()) {
+        if (attributes.filterNot { it == PropertyAttribute.TYPE_ENCODING }.isNotEmpty()) {
             builder.append("(")
             attributes
                 .mapNotNull { it.annotationString() }
@@ -272,7 +273,8 @@ data class OCProperty(
                 .joinToString(", ", postfix = ") ") { it }
                 .let { builder.append(it) }
         }
-        builder.append("<TYPE> $name;")
+        val typeString = TypeStringify.getResult(type!!.first)
+        builder.append("$typeString $name;")
         builder.append("\n")
 
         return builder.toString()
