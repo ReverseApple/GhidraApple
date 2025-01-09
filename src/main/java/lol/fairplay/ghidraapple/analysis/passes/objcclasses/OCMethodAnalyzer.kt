@@ -26,8 +26,8 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
     companion object {
         const val NAME = "Objective-C: Method Analyzer"
         const val DESCRIPTION = ""
-        const val PROPERTY_TAG_GETTER = "OBJC_PROPERTY_SETTER"
-        const val PROPERTY_TAG_SETTER = "OBJC_PROPERTY_GETTER"
+        const val PROPERTY_TAG_GETTER = "OBJC_PROPERTY_GETTER"
+        const val PROPERTY_TAG_SETTER = "OBJC_PROPERTY_SETTER"
         val PRIORITY = OCStructureAnalyzer.PRIORITY.after()
     }
 
