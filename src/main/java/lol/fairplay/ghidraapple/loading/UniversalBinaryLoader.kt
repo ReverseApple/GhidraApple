@@ -59,7 +59,7 @@ class UniversalBinaryLoader : MachoLoader() {
                     .dropLast(1) // Drop the last path component, leaving a path to the parent folder.
                     .joinToString("/")
                 loaded.projectFolderPath = newFolderPath
-                // Now that the programs up one folder, we can delete the original one.
+                // Now that the program is up one folder, we can delete the original one.
                 project?.projectData?.getFolder(originalFolderPath)?.delete()
             }
         }
