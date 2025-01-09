@@ -215,8 +215,10 @@ class StructureParsing(val program: Program) {
             )
             val implementation = addresses[2]
 
+            val parent = parentStack.last()
+
             return OCMethod(
-                parent = parentStack.last(),
+                parent = parent,
                 name = name,
                 signature = signature,
                 implAddress = implementation.unsignedOffset,
