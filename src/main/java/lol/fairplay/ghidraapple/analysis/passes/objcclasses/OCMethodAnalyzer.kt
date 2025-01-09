@@ -16,13 +16,13 @@ import lol.fairplay.ghidraapple.analysis.utilities.address
 import lol.fairplay.ghidraapple.analysis.utilities.parseObjCListSection
 import lol.fairplay.ghidraapple.core.objc.modelling.OCClass
 
-class OCMethodSignatureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTION_ANALYZER) {
+class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTION_ANALYZER) {
 
     lateinit var program: Program
     lateinit var log: MessageLog
 
     companion object {
-        const val NAME = "Objective-C: Propagate Method Signatures"
+        const val NAME = "Objective-C: Method Analyzer"
         const val DESCRIPTION = ""
         val PRIORITY = OCStructureAnalyzer.PRIORITY.after()
     }
@@ -138,32 +138,51 @@ class OCMethodSignatureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerTy
         }
     }
 
+    fun splitCamelCase(input: String): List<String> {
+        return input.split(Regex("(?<=[a-zA-Z])(?=[A-Z])"))
+    }
+
     private fun parameterNamesForMethod(methodName: String): List<String> {
-        // todo: make this an optional thing later...
+        // todo: make this optional.
         // create parameter names, acknowledging common objective-c naming conventions.
 
-        val baseNames = methodName.split(":").map { part ->
-            when {
-                "with" in part.lowercase() -> part.substringAfter("with").replaceFirstChar { it.lowercase() }
-                "for" in part.lowercase() -> {
-                    if (part.startsWith("for")) {
-                        part.substringAfter("for").replaceFirstChar { it.lowercase() }
+        val keywords = listOf("with", "for", "from", "to", "in", "at")
+
+        val baseNames = methodName.split(":")
+            .filter{ !it.isEmpty() }
+            .map { part ->
+            val ccSplit = splitCamelCase(part)
+
+            val matchIndex = ccSplit.indexOfFirst {
+                it.lowercase() in keywords
+            }
+            val match = ccSplit.getOrNull(matchIndex) ?: return@map part
+
+            when (match.lowercase()) {
+                "for" -> {
+                    if (part.startsWith(match)) {
+                        part.substringAfter(match).replaceFirstChar { it.lowercase() }
                     } else {
-                        part.substringAfter("for").replaceFirstChar { it.lowercase() }
+                        part.substringAfter(match).replaceFirstChar { it.lowercase() }
                     }
                 }
-                else -> part.replaceFirstChar { it.lowercase() }
+                in keywords -> part.substringAfter(match).replaceFirstChar { it.lowercase() }
+                else -> part
             }
         }
 
-        val uniqueNames = mutableMapOf<String, Int>()
+        val uniqueNames = mutableMapOf<String, Int>(
+            "self" to 0,
+            "selector" to 0,
+        )
+
         val result = baseNames.map { name ->
             val count = uniqueNames.getOrDefault(name, 0)
             uniqueNames[name] = count + 1
             if (count > 0) "${name}_$count" else name
         }
 
-        return result
+        return result.drop(2)
     }
 
 }
