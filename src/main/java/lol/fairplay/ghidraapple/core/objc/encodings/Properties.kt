@@ -20,6 +20,20 @@ enum class PropertyAttribute(val code: Char) {
             return PropertyAttribute.entries.find {it.code == code}
         }
     }
+
+    fun annotationString(): String? {
+        return when (this) {
+            READ_ONLY -> "readonly"
+            BY_COPY -> "copy"
+            BY_REFERENCE -> "retain"
+            DYNAMIC -> "dynamic"
+            CUSTOM_GETTER -> "getter="
+            CUSTOM_SETTER -> "setter="
+            BACKING_IVAR -> "ivar="
+            WEAK -> "weak"
+            else -> null
+        }
+    }
 }
 
 data class EncodedProperty(
