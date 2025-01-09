@@ -14,7 +14,9 @@ import lol.fairplay.ghidraapple.analysis.objectivec.TypeResolver
 import lol.fairplay.ghidraapple.analysis.objectivec.modelling.StructureParsing
 import lol.fairplay.ghidraapple.analysis.utilities.address
 import lol.fairplay.ghidraapple.analysis.utilities.parseObjCListSection
+import lol.fairplay.ghidraapple.core.objc.encodings.PropertyAttribute
 import lol.fairplay.ghidraapple.core.objc.modelling.OCClass
+import lol.fairplay.ghidraapple.core.objc.modelling.OCProperty
 
 class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTION_ANALYZER) {
 
@@ -24,6 +26,8 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
     companion object {
         const val NAME = "Objective-C: Method Analyzer"
         const val DESCRIPTION = ""
+        const val PROPERTY_TAG_GETTER = "OBJC_PROPERTY_SETTER"
+        const val PROPERTY_TAG_SETTER = "OBJC_PROPERTY_GETTER"
         val PRIORITY = OCStructureAnalyzer.PRIORITY.after()
     }
 
@@ -57,7 +61,11 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
                 Msg.error(this, "Could not parse class at ${klassData.address.unsignedOffset}", exception)
             }.getOrNull() ?: return@forEach
 
+            monitor.message = "Propagating signatures for ${model.name}..."
             propagateSignatures(model, monitor)
+
+            monitor.message = "Analyzing properties for ${model.name}..."
+            processProperties(model, monitor)
         }
 
         return true
@@ -119,6 +127,7 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
                 parameters.add(ParameterImpl(newNames[i], paramDT, stackOffset, program))
             }
 
+
             val returnVar = fcnEntity.getReturn()
             if (returnDT != null) {
                 returnVar.setDataType(returnDT, SourceType.ANALYSIS)
@@ -135,6 +144,44 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
                 SourceType.ANALYSIS
             )
 
+        }
+    }
+
+    private fun applyPropertyInsights(property: OCProperty, getter: Function, setter: Function?) {
+        val declaration = property.declaration()
+
+        getter.addTag(PROPERTY_TAG_GETTER)
+        getter.setComment(declaration)
+
+        setter?.addTag(PROPERTY_TAG_SETTER)
+        setter?.setComment(declaration)
+    }
+
+    private fun processProperties(klass: OCClass, taskMonitor: TaskMonitor?) {
+
+        val fm = program.functionManager
+        if (fm.functionTagManager.getFunctionTag(PROPERTY_TAG_GETTER) == null) {
+            fm.functionTagManager.createFunctionTag(PROPERTY_TAG_GETTER, "Objective-C Property Getter Implementation")
+        }
+        if (fm.functionTagManager.getFunctionTag(PROPERTY_TAG_SETTER) == null) {
+            fm.functionTagManager.createFunctionTag(PROPERTY_TAG_SETTER, "Objective-C Property Setter Implementation")
+        }
+
+        val baseMethods = klass.baseMethods?.associateBy { it.name } ?: return
+
+        klass.resolvedProperties()?.forEach { property ->
+            taskMonitor?.message = "Analyzing property: ${property.name}"
+
+            val getterName = property.customGetter ?: property.name
+            val setterName = property.customSetter ?: "set${property.name.replaceFirstChar { it.uppercase() }}:"
+
+            val methodGetter = baseMethods[getterName] ?: return@forEach
+            val methodSetter = baseMethods[setterName]
+
+            val getter = fm.getFunctionAt(program.address(methodGetter.implAddress!!.toLong()))
+            val setter = methodSetter?.let { fm.getFunctionAt(program.address(it.implAddress!!.toLong())) }
+
+            applyPropertyInsights(property, getter, setter)
         }
     }
 
@@ -172,8 +219,8 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
         }
 
         val uniqueNames = mutableMapOf<String, Int>(
-            "self" to 0,
-            "selector" to 0,
+            "self" to 1,
+            "selector" to 1,
         )
 
         val result = baseNames.map { name ->
@@ -182,7 +229,7 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
             if (count > 0) "${name}_$count" else name
         }
 
-        return result.drop(2)
+        return result
     }
 
 }
