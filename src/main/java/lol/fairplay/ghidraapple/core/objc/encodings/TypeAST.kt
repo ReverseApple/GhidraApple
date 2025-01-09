@@ -82,5 +82,5 @@ interface TypeNodeVisitor {
     fun visitBitfield(bitfield: TypeNode.Bitfield)
     fun visitBlock(block: TypeNode.Block)
     fun visitFunctionPointer(fnPtr: TypeNode.FunctionPointer)
-    fun visitSelector(fnPtr: TypeNode.Selector)
+    fun visitSelector(selector: TypeNode.Selector)
 }
