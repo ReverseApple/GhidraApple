@@ -27,7 +27,6 @@ class TypeStringify : TypeNodeVisitor {
 
         if (struct.fields != null) {
             for ((name, node) in struct.fields) {
-                // todo: add bitfield support
 
                 builder.append("\n")
                 val typeStr = getResult(node)
