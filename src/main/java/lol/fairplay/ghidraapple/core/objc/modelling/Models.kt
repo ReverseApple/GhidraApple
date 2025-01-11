@@ -14,7 +14,7 @@ open class OCFieldContainer(open val name: String)
 class ResolvedMethod(val name: String) {
 
     // stack order is concrete to abstract
-    private val stack = mutableListOf<OCMethod>()
+    internal val stack = mutableListOf<OCMethod>()
 
     fun method(): OCMethod = stack[0]
     fun pushInstance(method: OCMethod) = stack.add(method)
@@ -223,20 +223,20 @@ data class OCMethod(
      * Get the method prototype in Objective-C syntax.
      */
     fun prototypeString(): String {
-        // todo: (low priority) decouple this method from OCMethod for separation of concern.
-
         val sig = getSignature() ?: return ""
 
         val prefix = if (isClassMethod()) "+" else "-"
-        val returnType = sig.returnType.first
+        val returnType = TypeStringify.getResult(sig.returnType.first)
 
         if (sig.parameters.count() > 0) {
             var nsplit = name.split(":").filter { it.trim().isNotEmpty() }
-            println(nsplit)
-            var result = "$prefix($returnType)$name:${sig.parameters.first().first}\""
+            var result = "$prefix($returnType)${nsplit[0]}:(${TypeStringify.getResult(sig.parameters.first().first)})"
+
             for (i in 1 until sig.parameters.count()) {
-                result += " ${nsplit[i]}\$:(${sig.parameters[i].first})"
+                val typeStr = TypeStringify.getResult(sig.parameters[i].first)
+                result += " ${nsplit[i]}:(${typeStr})"
             }
+
             return "$result;"
         } else {
             return "$prefix($returnType)$name;"
