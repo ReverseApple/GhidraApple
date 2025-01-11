@@ -6,21 +6,18 @@ import ghidra.app.services.AnalyzerType
 import ghidra.app.util.importer.MessageLog
 import ghidra.program.model.address.AddressSetView
 import ghidra.program.model.data.CategoryPath
-import ghidra.program.model.data.DataType
 import ghidra.program.model.data.Structure
 import ghidra.program.model.data.StructureDataType
 import ghidra.program.model.listing.Data
 import ghidra.program.model.listing.Program
-import ghidra.program.model.symbol.Namespace
 import ghidra.util.Msg
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.analysis.objectivec.TypeResolver
 import lol.fairplay.ghidraapple.analysis.objectivec.modelling.StructureParsing
+import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.deref
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.derefUntyped
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.get
-import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.deref
 import lol.fairplay.ghidraapple.analysis.utilities.parseObjCListSection
-import lol.fairplay.ghidraapple.core.objc.modelling.OCClass
 
 
 class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYTE_ANALYZER) {
@@ -65,13 +62,13 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
             protoT[1].deref<String>() to protoT
         } ?: emptyMap()).toMutableMap()
 
-
         // Some class symbols that are not inside the objc::class_t namespace are prefixed with `_OBJC_CLASS_$_`
         // These are not parsable, but are still useful for analysis purposes.
         val externalClasses = program.symbolTable.symbolIterator.filter {
             it.name.startsWith("_OBJC_CLASS_\$_")
         }.mapNotNull {
             val className = it.name.removePrefix("_OBJC_CLASS_\$_")
+
             // just for sanity, ensure it's not already in either of the structure mappings.
             if (className !in classStructures && className !in protocolStructures) {
                 className
@@ -81,8 +78,6 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
         }
 
         buildStructureTypes(classStructures, protocolStructures, externalClasses, monitor)
-
-        // Recover the structure fields by parsing each eligible class into the analysis model.
 
         return true
     }
