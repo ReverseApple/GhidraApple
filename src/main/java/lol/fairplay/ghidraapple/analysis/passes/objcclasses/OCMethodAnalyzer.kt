@@ -14,8 +14,9 @@ import lol.fairplay.ghidraapple.analysis.objectivec.TypeResolver
 import lol.fairplay.ghidraapple.analysis.objectivec.modelling.StructureParsing
 import lol.fairplay.ghidraapple.analysis.utilities.address
 import lol.fairplay.ghidraapple.analysis.utilities.parseObjCListSection
-import lol.fairplay.ghidraapple.core.objc.encodings.PropertyAttribute
+import lol.fairplay.ghidraapple.core.objc.encodings.EncodedSignature
 import lol.fairplay.ghidraapple.core.objc.modelling.OCClass
+import lol.fairplay.ghidraapple.core.objc.modelling.OCMethod
 import lol.fairplay.ghidraapple.core.objc.modelling.OCProperty
 
 class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTION_ANALYZER) {
@@ -94,57 +95,97 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
             val encSignature = resolution.bestSignature().first ?: return@forEach
 
             // Reconstruct the return type for the method.
-            val returnDT = runCatching {
-                typeResolver.buildParsed(encSignature.returnType.first)
-            }.onFailure { exception ->
-                Msg.error(this, "Could not parse return type for ${klass.name}->${method.name}", exception)
-            }.getOrNull()
-
-            // starting at 2 to skip `self` and SEL.
-            val parameters = mutableListOf<ParameterImpl>()
-
-            val recvType = typeResolver.tryResolveDefinedStructPtr(klass.name)
-                ?: program.dataTypeManager.getDataType("/_objc2_/ID")!!
-
-            parameters.add(ParameterImpl("self", recvType, 0, program))
-            parameters.add(ParameterImpl("selector", program.dataTypeManager.getDataType("/_objc2_/SEL")!!, 8, program))
-            var newNames = parameterNamesForMethod(method.name)
-
-            // Reconstruct and apply parameter types.
-            encSignature.parameters.forEachIndexed { i, (type, stackOffset, modifiers) ->
-                val paramDT = runCatching {
-                    typeResolver.buildParsed(type)
-                }.onFailure { exception ->
-                    Msg.error(
-                        this,
-                        "Could not parse argument ${i + 2} type for ${klass.name}->${method.name}",
-                        exception
-                    )
-                }.getOrNull() ?: return@forEachIndexed
-
-                Msg.info(this, "Applying argument ${i + 2} type to function for ${klass.name}->${method.name}...")
-
-                parameters.add(ParameterImpl(newNames[i], paramDT, stackOffset, program))
-            }
+            applySignature(typeResolver, encSignature, klass, method, fcnEntity)
 
 
-            val returnVar = fcnEntity.getReturn()
-            if (returnDT != null) {
-                returnVar.setDataType(returnDT, SourceType.ANALYSIS)
-            }
+            // todo: this is kind of sloppy; fix later.
+            val chain = resolution.stack.reversed()
+                .joinToString(" -> ") { it.parent.name }.let {
+                    if (resolution.stack.size == 1) "" else "\n                Chain: ${it}"
+                }
 
-            println(newNames)
-
-            fcnEntity.updateFunction(
-                null,
-                returnVar,
-                parameters,
-                Function.FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS,
-                true,
-                SourceType.ANALYSIS
-            )
-
+            fcnEntity.comment = """
+                
+                Member of: ${method.parent.name}$chain
+                
+                ${method.prototypeString()}
+                
+            """.trimIndent()
         }
+
+        taskMonitor?.message = "Propagating signatures: Class Methods"
+        klass.baseClassMethods?.forEach { method ->
+            if (method.implAddress == null) {
+                Msg.error(this, "Method ${klass.name}->${method.name} has no implementation address!")
+                return@forEach
+            }
+            val fcnEntity = program.listing.getFunctionAt(program.address(method.implAddress))
+            if (fcnEntity == null) {
+                Msg.error(this, "Could not find method ${klass.name}->${method.name} at ${method.implAddress}")
+                return@forEach
+            }
+
+            val encSignature = method.getSignature() ?: return@forEach
+            applySignature(typeResolver, encSignature, klass, method, fcnEntity)
+        }
+    }
+
+    private fun applySignature(
+        typeResolver: TypeResolver,
+        encSignature: EncodedSignature,
+        klass: OCClass,
+        method: OCMethod,
+        fcnEntity: Function
+    ) {
+        val returnDT = runCatching {
+            typeResolver.buildParsed(encSignature.returnType.first)
+        }.onFailure { exception ->
+            Msg.error(this, "Could not parse return type for ${klass.name}->${method.name}", exception)
+        }.getOrNull()
+
+        // starting at 2 to skip `self` and SEL.
+        val parameters = mutableListOf<ParameterImpl>()
+
+        val recvType = typeResolver.tryResolveDefinedStructPtr(klass.name)
+            ?: program.dataTypeManager.getDataType("/_objc2_/ID")!!
+
+        parameters.add(ParameterImpl("self", recvType, 0, program))
+        parameters.add(ParameterImpl("selector", program.dataTypeManager.getDataType("/_objc2_/SEL")!!, 8, program))
+        var newNames = parameterNamesForMethod(method.name)
+
+        // Reconstruct and apply parameter types.
+        encSignature.parameters.forEachIndexed { i, (type, stackOffset, modifiers) ->
+            val paramDT = runCatching {
+                typeResolver.buildParsed(type)
+            }.onFailure { exception ->
+                Msg.error(
+                    this,
+                    "Could not parse argument ${i + 2} type for ${klass.name}->${method.name}",
+                    exception
+                )
+            }.getOrNull() ?: return@forEachIndexed
+
+            Msg.info(this, "Applying argument ${i + 2} type to function for ${klass.name}->${method.name}...")
+
+            parameters.add(ParameterImpl(newNames[i], paramDT, stackOffset, program))
+        }
+
+
+        val returnVar = fcnEntity.getReturn()
+        if (returnDT != null) {
+            returnVar.setDataType(returnDT, SourceType.ANALYSIS)
+        }
+
+        println(newNames)
+
+        fcnEntity.updateFunction(
+            null,
+            returnVar,
+            parameters,
+            Function.FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS,
+            true,
+            SourceType.ANALYSIS
+        )
     }
 
     private fun applyPropertyInsights(property: OCProperty, getter: Function, setter: Function?) {
