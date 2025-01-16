@@ -147,11 +147,11 @@ class StructureParsing(val program: Program) {
             flags = rwStruct[0].longValue(false).toULong(),
             superclass = parseClass(superAddress),
             baseClassMethods = null,
-            baseMethods = null,
+            baseInstanceMethods = null,
             baseProtocols = null,
             instanceVariables = null,
             baseClassProperties = null,
-            baseProperties = null,
+            baseInstanceProperties = null,
             weakIvarLayout = rwStruct[7].longValue(false),
         )
 
@@ -167,13 +167,13 @@ class StructureParsing(val program: Program) {
             null
         }
 
-        klass.baseClassMethods = metaclass?.baseMethods
-        klass.baseClassProperties = metaclass?.baseProperties
+        klass.baseClassMethods = metaclass?.baseInstanceMethods
+        klass.baseClassProperties = metaclass?.baseInstanceProperties
 
-        klass.baseMethods = parseMethodList(rwStruct[4].longValue(false))
+        klass.baseInstanceMethods = parseMethodList(rwStruct[4].longValue(false))
         klass.baseProtocols = parseProtocolList(rwStruct[5].longValue(false))
         klass.instanceVariables = parseIvarList(rwStruct[6].longValue(false))
-        klass.baseProperties = parsePropertyList(rwStruct[8].longValue(false))
+        klass.baseInstanceProperties = parsePropertyList(rwStruct[8].longValue(false))
 
         if (!isMetaclass) {
             parentStack.removeLast()

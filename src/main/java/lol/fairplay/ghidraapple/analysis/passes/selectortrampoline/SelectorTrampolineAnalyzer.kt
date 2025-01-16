@@ -80,8 +80,6 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
 
     }
 
-
-
     /**
      * Core of the trampoline analysis
      */

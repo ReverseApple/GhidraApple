@@ -31,11 +31,14 @@ class ClassParserTestingPlugin(tool: PluginTool) : ProgramPlugin(tool) {
         println("inheritance: ${klass.getInheritance()?.joinToString(", ") { it.name }}")
 
         println("Resolved methods:")
-        klass.resolvedMethods()?.forEach { println("\t${it.name} FROM ${it.method().parent.name}") }
+        klass.resolvedMethods().forEach {
+            it.abstract().last().let { println("\t${it.name} FROM ${it.parent.name}")}
+        }
 
         println("Resolved properties:")
-        klass.resolvedProperties()?.forEach {
-            println("\t${it.name} FROM ${it.parent.name} IVAR: ${ it.getBackingIvar()?.name ?: "None"}")
+        klass.resolvedProperties().forEach {
+            val abstract = it.abstract().last()
+            println("\t${it.name} FROM ${abstract.parent.name} IVAR: ${ abstract.getBackingIvar()?.name ?: "None"}")
         }
     }
 
