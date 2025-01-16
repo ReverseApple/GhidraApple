@@ -118,7 +118,7 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
 
                 "${it.first.name} ($type)"
             }.let {
-                if (resolution.stack.size == 1) "" else "\n${indent}Def. Chain: ${it}"
+                if (resolution.stack.size == 1) "" else "\n${indent}Origin: ${it}"
             }
 
         return chain
