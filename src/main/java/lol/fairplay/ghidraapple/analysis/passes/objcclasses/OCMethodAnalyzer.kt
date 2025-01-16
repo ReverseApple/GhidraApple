@@ -15,9 +15,7 @@ import lol.fairplay.ghidraapple.analysis.objectivec.modelling.StructureParsing
 import lol.fairplay.ghidraapple.analysis.utilities.address
 import lol.fairplay.ghidraapple.analysis.utilities.parseObjCListSection
 import lol.fairplay.ghidraapple.core.objc.encodings.EncodedSignature
-import lol.fairplay.ghidraapple.core.objc.modelling.OCClass
-import lol.fairplay.ghidraapple.core.objc.modelling.OCMethod
-import lol.fairplay.ghidraapple.core.objc.modelling.OCProperty
+import lol.fairplay.ghidraapple.core.objc.modelling.*
 
 class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTION_ANALYZER) {
 
@@ -26,7 +24,7 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
 
     companion object {
         const val NAME = "Objective-C: Method Analyzer"
-        const val DESCRIPTION = ""
+        const val DESCRIPTION = "Performs a variety of method-related analyses."
         const val PROPERTY_TAG_GETTER = "OBJC_PROPERTY_GETTER"
         const val PROPERTY_TAG_SETTER = "OBJC_PROPERTY_SETTER"
         val PRIORITY = OCStructureAnalyzer.PRIORITY.after()
@@ -78,11 +76,16 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
         val typeResolver = TypeResolver(program)
         val methods = klass.resolvedMethods()
 
-        methods?.forEach { resolution ->
-            val method = resolution.method()
+        methods.forEach { resolution ->
+            val method = resolution.concrete()
 
             if (method.implAddress == null) {
                 Msg.error(this, "Method ${klass.name}->${method.name} has no implementation address!")
+                return@forEach
+            }
+
+            if (method.parent != klass) {
+                Msg.info(this, "Method ${klass.name}->${method.name} does not belong to class ${klass.name}! Skipping...")
                 return@forEach
             }
 
@@ -96,38 +99,46 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
 
             // Reconstruct the return type for the method.
             applySignature(typeResolver, encSignature, klass, method, fcnEntity)
+            applyMethodInsights(resolution, fcnEntity)
+        }
+    }
 
-
-            // todo: this is kind of sloppy; fix later.
-            val chain = resolution.stack.reversed()
-                .joinToString(" -> ") { it.parent.name }.let {
-                    if (resolution.stack.size == 1) "" else "\n                Chain: ${it}"
+    private fun <T : OCField> definitionChain(
+        resolution: ResolvedEntity<T>,
+        indent: String
+    ): String {
+        // fixme: this is kind of sloppy
+        val chain = resolution.chain().reversed()
+            .joinToString(" -> ") {
+                val type = when (it.first) {
+                    is OCClass -> "Class"
+                    is OCProtocol -> "Protocol"
+                    else -> "Category"
                 }
 
-            fcnEntity.comment = """
-                
-                Member of: ${method.parent.name}$chain
-                
-                ${method.prototypeString()}
-                
-            """.trimIndent()
-        }
-
-        taskMonitor?.message = "Propagating signatures: Class Methods"
-        klass.baseClassMethods?.forEach { method ->
-            if (method.implAddress == null) {
-                Msg.error(this, "Method ${klass.name}->${method.name} has no implementation address!")
-                return@forEach
-            }
-            val fcnEntity = program.listing.getFunctionAt(program.address(method.implAddress))
-            if (fcnEntity == null) {
-                Msg.error(this, "Could not find method ${klass.name}->${method.name} at ${method.implAddress}")
-                return@forEach
+                "${it.first.name} ($type)"
+            }.let {
+                if (resolution.stack.size == 1) "" else "\n${indent}Def. Chain: ${it}"
             }
 
-            val encSignature = method.getSignature() ?: return@forEach
-            applySignature(typeResolver, encSignature, klass, method, fcnEntity)
-        }
+        return chain
+    }
+
+    private fun applyMethodInsights(
+        resolution: ResolvedMethod,
+        fcnEntity: Function
+    ) {
+        println("Applying method insights to ${resolution.concrete().name}...")
+        val method = resolution.concrete()
+        val chain = definitionChain(resolution, "        ")
+
+        fcnEntity.comment = """
+        
+        Member of: ${method.parent.name}$chain
+        
+        ${method.prototypeString()}
+        
+        """.trimIndent()
     }
 
     private fun applySignature(
@@ -188,14 +199,24 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
         )
     }
 
-    private fun applyPropertyInsights(property: OCProperty, getter: Function, setter: Function?) {
-        val declaration = property.declaration()
+    private fun applyPropertyInsights(resolution: ResolvedProperty, getter: Function, setter: Function?) {
+        val declaration = resolution.concrete().declaration()
+        val definitionChain = definitionChain(resolution, "        ")
+
+        println("Applying property insights to ${resolution.concrete().name}...")
 
         getter.addTag(PROPERTY_TAG_GETTER)
-        getter.setComment(declaration)
+        val comment = """
+        
+        Member of: ${resolution.concrete().parent.name}$definitionChain
+        
+        $declaration
+        """.trimIndent()
+
+        getter.comment = comment
 
         setter?.addTag(PROPERTY_TAG_SETTER)
-        setter?.setComment(declaration)
+        setter?.comment = comment
     }
 
     private fun processProperties(klass: OCClass, taskMonitor: TaskMonitor?) {
@@ -208,9 +229,11 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
             fm.functionTagManager.createFunctionTag(PROPERTY_TAG_SETTER, "Objective-C Property Setter Implementation")
         }
 
-        val baseMethods = klass.baseMethods?.associateBy { it.name } ?: return
+        val baseMethods = klass.baseInstanceMethods?.associateBy { it.name } ?: return
 
-        klass.resolvedProperties()?.forEach { property ->
+        klass.resolvedProperties().forEach {
+            val property = it.concrete()
+
             taskMonitor?.message = "Analyzing property: ${property.name}"
 
             val getterName = property.customGetter ?: property.name
@@ -222,7 +245,7 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
             val getter = fm.getFunctionAt(program.address(methodGetter.implAddress!!.toLong()))
             val setter = methodSetter?.let { fm.getFunctionAt(program.address(it.implAddress!!.toLong())) }
 
-            applyPropertyInsights(property, getter, setter)
+            applyPropertyInsights(it, getter, setter)
         }
     }
 
