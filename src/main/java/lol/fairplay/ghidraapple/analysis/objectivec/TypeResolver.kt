@@ -26,7 +26,7 @@ class TypeResolver(val program: Program) {
         return builder.getResult()
     }
 
-    fun tryResolveStructPtr(name: String): DataType? {
+    fun tryResolveDefinedStructPtr(name: String): DataType? {
         return PointerDataType(tryResolveDefinedStruct(name) ?: return null)
     }
 

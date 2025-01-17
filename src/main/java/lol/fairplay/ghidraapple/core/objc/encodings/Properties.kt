@@ -13,11 +13,28 @@ enum class PropertyAttribute(val code: Char) {
     WEAK('W'),
     STRONG('P'),
     NON_ATOMIC('N'),
-    OPTIONAL('?');
+    NULLABLE('?');
 
     companion object {
         fun fromCode(code: Char): PropertyAttribute? {
             return PropertyAttribute.entries.find {it.code == code}
+        }
+    }
+
+    fun annotationString(): String? {
+        return when (this) {
+            READ_ONLY -> "readonly"
+            BY_COPY -> "copy"
+            BY_REFERENCE -> "retain"
+            DYNAMIC -> "dynamic"
+            CUSTOM_GETTER -> "getter="
+            CUSTOM_SETTER -> "setter="
+            BACKING_IVAR -> "ivar="
+            WEAK -> "weak"
+            STRONG -> "strong"
+            NON_ATOMIC -> "nonatomic"
+            NULLABLE -> "nullable"
+            else -> null
         }
     }
 }
@@ -25,6 +42,8 @@ enum class PropertyAttribute(val code: Char) {
 data class EncodedProperty(
     val attributes: List<PropertyAttribute>,
     val type: Pair<TypeNode, List<SignatureTypeModifier>?>?,
+    val customGetter: String? = null,
+    val customSetter: String? = null,
     val backingIvar: String? = null,
 )
 
@@ -35,6 +54,8 @@ fun parseEncodedProperty(input: String): EncodedProperty {
     var type: Pair<TypeNode, List<SignatureTypeModifier>?>? = null
     var ivarName: String? = null
     val attributes = mutableListOf<PropertyAttribute>()
+    var customSetter: String? = null
+    var customGetter: String? = null
 
     for (a in stmts) {
         val signal = PropertyAttribute.fromCode(a[0])!!
@@ -57,10 +78,21 @@ fun parseEncodedProperty(input: String): EncodedProperty {
             PropertyAttribute.BACKING_IVAR -> {
                 ivarName = a.substring(1)
             }
+            PropertyAttribute.CUSTOM_GETTER, PropertyAttribute.CUSTOM_SETTER -> {
+                a.substring(1).let {
+                    if (signal == PropertyAttribute.CUSTOM_SETTER) {
+                        attributes.add(PropertyAttribute.CUSTOM_SETTER)
+                        customSetter = it
+                    } else {
+                        attributes.add(PropertyAttribute.CUSTOM_GETTER)
+                        customGetter = it
+                    }
+                }
+            }
             else -> attributes.add(signal)
         }
     }
 
-    return EncodedProperty(attributes, type, ivarName)
+    return EncodedProperty(attributes, type, customGetter, customSetter, ivarName)
 }
 

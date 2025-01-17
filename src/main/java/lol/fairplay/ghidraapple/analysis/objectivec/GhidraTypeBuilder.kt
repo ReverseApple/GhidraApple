@@ -1,30 +1,9 @@
 package lol.fairplay.ghidraapple.analysis.objectivec
 
-import ghidra.program.model.data.ArrayDataType
-import ghidra.program.model.data.BooleanDataType
-import ghidra.program.model.data.CategoryPath
-import ghidra.program.model.data.CharDataType
-import ghidra.program.model.data.DataType
-import ghidra.program.model.data.DoubleDataType
-import ghidra.program.model.data.FloatDataType
-import ghidra.program.model.data.IntegerDataType
-import ghidra.program.model.data.LongDataType
-import ghidra.program.model.data.LongDoubleDataType
-import ghidra.program.model.data.LongLongDataType
-import ghidra.program.model.data.PointerDataType
-import ghidra.program.model.data.ShortDataType
-import ghidra.program.model.data.StructureDataType
-import ghidra.program.model.data.UnionDataType
-import ghidra.program.model.data.UnsignedCharDataType
-import ghidra.program.model.data.UnsignedIntegerDataType
-import ghidra.program.model.data.UnsignedLongDataType
-import ghidra.program.model.data.UnsignedLongLongDataType
-import ghidra.program.model.data.UnsignedShortDataType
-import ghidra.program.model.data.VoidDataType
+import ghidra.program.model.data.*
 import ghidra.program.model.listing.Program
 import lol.fairplay.ghidraapple.core.objc.encodings.TypeNode
 import lol.fairplay.ghidraapple.core.objc.encodings.TypeNodeVisitor
-
 import java.security.SecureRandom
 
 fun getRandomHexString(length: Int): String {
@@ -57,13 +36,19 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
         return GhidraTypeBuilder(program)
     }
 
-    fun tryResolveDefinedStruct(name: String): DataType? {
+    fun getGAType(name: String): DataType? {
         val category = CategoryPath("/GA_OBJC")
         return program.dataTypeManager.getDataType(category, name)
     }
 
-    fun tryResolveStructPtr(name: String): DataType? {
-        return PointerDataType(tryResolveDefinedStruct(name) ?: return null)
+    fun createUnionDT(name: String): DataType {
+        val category = CategoryPath("/GA_OBJC")
+        return program.dataTypeManager.addDataType(UnionDataType(category, name), null)
+    }
+
+    fun createStructureDT(name: String): DataType {
+        val category = CategoryPath("/GA_OBJC")
+        return program.dataTypeManager.addDataType(StructureDataType(category, name, 0), null)
     }
 
     override fun visitStruct(struct: TypeNode.Struct) {
@@ -71,8 +56,13 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
             if (it.isEmpty()) "anon__${getRandomHexString(6)}" else it
         }
 
-        val ghidraStruct = (tryResolveDefinedStruct(name) ?: StructureDataType(name, 0)) as StructureDataType
+        var ghidraStruct = getGAType(name) as Structure?
+        if (ghidraStruct != null) {
+            result = ghidraStruct
+            return
+        }
 
+        ghidraStruct = createStructureDT(name) as Structure
         if (struct.fields == null) {
             result = ghidraStruct
             return
@@ -104,8 +94,8 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
             return
         }
 
-        val resolved = tryResolveStructPtr(obj.name)
-        result = resolved ?: idType
+        val objDT = getGAType(obj.name) ?: createStructureDT(obj.name)
+        result = PointerDataType(objDT, 8)
     }
 
     override fun visitUnion(union: TypeNode.Union) {
@@ -114,8 +104,13 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
             if (it.isEmpty()) "anon__${getRandomHexString(6)}" else it
         }
 
-        val ghidraUnion = UnionDataType(name)
+        var ghidraUnion = getGAType(name)
+        if (ghidraUnion != null) {
+            result = ghidraUnion
+            return
+        }
 
+        ghidraUnion = createUnionDT(name) as Union
         if (union.fields == null) {
             result = ghidraUnion
             return
@@ -149,8 +144,9 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
             'C' -> UnsignedCharDataType.dataType
             's' -> ShortDataType.dataType
             'S' -> UnsignedShortDataType.dataType
-            'i' -> IntegerDataType.dataType
-            'I' -> UnsignedIntegerDataType.dataType
+//            'i' -> IntegerDataType.dataType
+//            'I' -> UnsignedIntegerDataType.dataType
+            'i', 'I' -> Undefined4DataType.dataType
             'l' -> LongDataType.dataType
             'L' -> UnsignedLongDataType.dataType
             'q' -> LongLongDataType.dataType
@@ -160,7 +156,7 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
             'v' -> VoidDataType.dataType
             'B' -> BooleanDataType.dataType
             'D' -> LongDoubleDataType.dataType
-            '*' -> PointerDataType(CharDataType.dataType)
+            '*' -> PointerDataType(CharDataType.dataType, 8)
             else -> throw Exception("Unknown primitive type: ${primitive.type}")
         }
     }
@@ -169,7 +165,7 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
         val visitor = extend()
         pointer.pointee.accept(visitor)
 
-        result = PointerDataType(visitor.getResult())
+        result = PointerDataType(visitor.getResult(), 8)
     }
 
     override fun visitBitfield(bitfield: TypeNode.Bitfield) {
@@ -181,7 +177,7 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
     }
 
     override fun visitFunctionPointer(fnPtr: TypeNode.FunctionPointer) {
-        result = PointerDataType(VoidDataType.dataType)
+        result = PointerDataType(VoidDataType.dataType, 8)
     }
 
     override fun visitSelector(fnPtr: TypeNode.Selector) {

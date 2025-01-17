@@ -2,27 +2,16 @@ package lol.fairplay.ghidraapple.analysis.objectivec.modelling
 
 import ghidra.program.model.listing.Data
 import ghidra.program.model.listing.Program
-import ghidra.program.model.scalar.Scalar
 import ghidra.program.model.symbol.Namespace
+import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.deref
+import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.derefUntyped
+import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.get
+import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.longValue
 import lol.fairplay.ghidraapple.analysis.utilities.address
 import lol.fairplay.ghidraapple.analysis.utilities.dataAt
 import lol.fairplay.ghidraapple.analysis.utilities.tryResolveNamespace
-import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.get
-import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.longValue
-import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.deref
-import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.derefUntyped
-import lol.fairplay.ghidraapple.core.objc.encodings.EncodedSignature
-import lol.fairplay.ghidraapple.core.objc.encodings.EncodedSignatureType
-import lol.fairplay.ghidraapple.core.objc.encodings.EncodingLexer
-import lol.fairplay.ghidraapple.core.objc.encodings.TypeEncodingParser
-import lol.fairplay.ghidraapple.core.objc.encodings.parseEncodedProperty
-import lol.fairplay.ghidraapple.core.objc.encodings.parseSignature
-import lol.fairplay.ghidraapple.core.objc.modelling.OCClass
-import lol.fairplay.ghidraapple.core.objc.modelling.OCFieldContainer
-import lol.fairplay.ghidraapple.core.objc.modelling.OCIVar
-import lol.fairplay.ghidraapple.core.objc.modelling.OCMethod
-import lol.fairplay.ghidraapple.core.objc.modelling.OCProperty
-import lol.fairplay.ghidraapple.core.objc.modelling.OCProtocol
+import lol.fairplay.ghidraapple.core.objc.encodings.*
+import lol.fairplay.ghidraapple.core.objc.modelling.*
 
 
 class StructureParsing(val program: Program) {
@@ -39,6 +28,10 @@ class StructureParsing(val program: Program) {
     fun datResolve(address: Long, namespace: Namespace): Data? {
         val data = dataAt(program, program.address(address))
             ?: return null
+
+        if (data.primarySymbol == null) {
+            return null
+        }
 
         if (data.primarySymbol.parentNamespace.getName(true) == namespace.getName(true)) {
             return data
@@ -76,10 +69,10 @@ class StructureParsing(val program: Program) {
         val instanceProperties = parsePropertyList(struct[7].longValue(false))
 
         // I think only one of these are filled in at a time...?
-        val instanceMethods = parseMethodList(struct[3].longValue(false), true)
-        val classMethods = parseMethodList(struct[4].longValue(false), false)
-        val optionalInstanceMethods = parseMethodList(struct[5].longValue(false), true)
-        val optionalClassMethods = parseMethodList(struct[6].longValue(false), false)
+        val instanceMethods = parseMethodList(struct[3].longValue(false))
+        val classMethods = parseMethodList(struct[4].longValue(false))
+        val optionalInstanceMethods = parseMethodList(struct[5].longValue(false))
+        val optionalClassMethods = parseMethodList(struct[6].longValue(false))
 
         val methodListCoalesced = instanceMethods ?: classMethods ?: optionalInstanceMethods ?: optionalClassMethods
 
@@ -121,7 +114,9 @@ class StructureParsing(val program: Program) {
             name = dat[0].deref<String>(),
             attributes = encoding.attributes,
             type = encoding.type,
-            backingIvar = encoding.backingIvar
+            customGetter = encoding.customGetter,
+            customSetter = encoding.customSetter,
+            backingIvar = encoding.backingIvar,
         )
     }
 
@@ -140,7 +135,7 @@ class StructureParsing(val program: Program) {
         )
     }
 
-    fun parseClass(address: Long): OCClass? {
+    fun parseClass(address: Long, isMetaclass: Boolean = false): OCClass? {
         val klassRo = datResolve(address, nsClass ?: return null) ?: return null
 
         // get the class_t->data (class_rw_t *) field...
@@ -149,23 +144,47 @@ class StructureParsing(val program: Program) {
 
         val klass = OCClass(
             name = rwStruct[3].deref<String>(),
-            flags = rwStruct[0].longValue(false),
-            baseMethods = null,
+            flags = rwStruct[0].longValue(false).toULong(),
+            superclass = parseClass(superAddress),
+            baseClassMethods = null,
+            baseInstanceMethods = null,
             baseProtocols = null,
             instanceVariables = null,
-            baseProperties = null,
+            baseClassProperties = null,
+            baseInstanceProperties = null,
             weakIvarLayout = rwStruct[7].longValue(false),
-            superclass = parseClass(superAddress),
         )
 
-        parentStack.add(klass)
+        // Parse regular stuff.
+        if (!isMetaclass) {
+            parentStack.add(klass)
+        }
 
-        klass.baseMethods = parseMethodList(rwStruct[4].longValue(false))
+        // Parse the metaclass field only if we are not a metaclass.
+        val metaclass = if (!isMetaclass) {
+            parseClass(klassRo[0].longValue(false), isMetaclass = true)
+        } else {
+            null
+        }
+
+        klass.baseClassMethods = metaclass?.baseInstanceMethods
+        klass.baseClassProperties = metaclass?.baseInstanceProperties
+
+        klass.baseInstanceMethods = parseMethodList(rwStruct[4].longValue(false))
         klass.baseProtocols = parseProtocolList(rwStruct[5].longValue(false))
         klass.instanceVariables = parseIvarList(rwStruct[6].longValue(false))
-        klass.baseProperties = parsePropertyList(rwStruct[8].longValue(false))
+        klass.baseInstanceProperties = parsePropertyList(rwStruct[8].longValue(false))
 
-        parentStack.removeLast()
+        if (!isMetaclass) {
+            parentStack.removeLast()
+        }
+
+//        // add class-members to our baseProtocols
+//        klass.baseProtocols?.forEach { baseProtocol ->
+//            metaclass?.baseProtocols?.find { mp -> mp.name == baseProtocol.name }?.let { metaProtocol ->
+//                baseProtocol.classMethods
+//            }
+//        }
 
         return klass
     }
@@ -192,14 +211,13 @@ class StructureParsing(val program: Program) {
         return result.toList()
     }
 
-    fun parseMethod(dat: Data, instanceMethod: Boolean): OCMethod? {
+    fun parseMethod(dat: Data): OCMethod? {
         if (dat.dataType.name == "method_t") {
             return OCMethod(
                 parent = parentStack.last(),
                 name = dat[0].deref<String>(),
                 signature = parseSignature(dat[1].deref<String>(), EncodedSignatureType.METHOD_SIGNATURE),
                 implAddress = dat[2].longValue(false),
-                isInstanceMethod = instanceMethod
             )
         } else if (dat.dataType.name == "method_small_t") {
             val addresses = (0 until dat.numComponents).map {
@@ -213,23 +231,24 @@ class StructureParsing(val program: Program) {
             )
             val implementation = addresses[2]
 
+            val parent = parentStack.last()
+
             return OCMethod(
-                parent = parentStack.last(),
+                parent = parent,
                 name = name,
                 signature = signature,
                 implAddress = implementation.unsignedOffset,
-                isInstanceMethod = instanceMethod
             )
         } else {
             return null
         }
     }
 
-    fun parseMethodList(address: Long, instanceMethods: Boolean = true): List<OCMethod>? {
+    fun parseMethodList(address: Long): List<OCMethod>? {
         val struct = datResolve(address, nsMethodList ?: return null) ?: return null
         val result = mutableListOf<OCMethod>()
         for (i in 2 until struct.numComponents) {
-            result.add(parseMethod(struct[i], instanceMethods)!!)
+            result.add(parseMethod(struct[i])!!)
         }
         return result.toList()
     }

@@ -10,6 +10,7 @@ import ghidra.framework.plugintool.PluginTool
 import ghidra.framework.plugintool.util.PluginStatus
 import lol.fairplay.ghidraapple.GhidraApplePluginPackage
 import lol.fairplay.ghidraapple.analysis.objectivec.modelling.StructureParsing
+import lol.fairplay.ghidraapple.core.objc.modelling.OCClass
 
 
 @PluginInfo(
@@ -25,6 +26,22 @@ class ClassParserTestingPlugin(tool: PluginTool) : ProgramPlugin(tool) {
         createActions()
     }
 
+    private fun printClassInfo(klass: OCClass) {
+        println(klass)
+        println("inheritance: ${klass.getInheritance()?.joinToString(", ") { it.name }}")
+
+        println("Resolved methods:")
+        klass.resolvedMethods().forEach {
+            it.abstract().last().let { println("\t${it.name} FROM ${it.parent.name}")}
+        }
+
+        println("Resolved properties:")
+        klass.resolvedProperties().forEach {
+            val abstract = it.abstract().last()
+            println("\t${it.name} FROM ${abstract.parent.name} IVAR: ${ abstract.getBackingIvar()?.name ?: "None"}")
+        }
+    }
+
     private fun createActions() {
         val action = object : DockingAction("Analyze Class", name) {
             override fun actionPerformed(context: ActionContext?) {
@@ -34,7 +51,8 @@ class ClassParserTestingPlugin(tool: PluginTool) : ProgramPlugin(tool) {
                 if (data.dataType.name != "class_t") return
 
                 val parser = StructureParsing(currentProgram)
-                println(parser.parseClass(data.address.unsignedOffset))
+                val klass = parser.parseClass(data.address.unsignedOffset)
+                printClassInfo(klass!!)
             }
 
         }
