@@ -6,6 +6,7 @@ import ghidra.docking.settings.Settings
 import ghidra.framework.plugintool.ServiceProvider
 import ghidra.program.model.address.Address
 import ghidra.program.model.address.AddressSetView
+import ghidra.program.model.data.PointerDataType
 import ghidra.program.model.data.StructureDataType
 import ghidra.program.model.listing.Data
 import ghidra.program.model.listing.Function
@@ -87,8 +88,12 @@ fun parseObjCListSection(program: Program, sectionName: String): List<Data>? {
     val start = sectionBlock.start
 
     return (0 until entries).map {
-        val datAddress = program.listing
-            .getDataAt(start.add(it * 8))
+        val pointerAddress = start.add(it * 8)
+        var data = program.listing.getDataAt(pointerAddress)
+        if (!data.isPointer) {
+            data = program.listing.createData(pointerAddress, PointerDataType.dataType)
+        }
+        val datAddress = data
             .getPrimaryReference(0)
             .toAddress
         program.listing.getDefinedDataAt(datAddress)
