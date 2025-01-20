@@ -1,8 +1,6 @@
 package lol.fairplay.ghidraapple.core.objc.encodings
 
-
 class TypeEncodingParser(lexer: EncodingLexer) : EncodingParser(lexer) {
-
     fun parse(): TypeNode {
         return parseType()
     }
@@ -24,7 +22,7 @@ class TypeEncodingParser(lexer: EncodingLexer) : EncodingParser(lexer) {
             is Token.UnionOpen -> parseUnion()
             is Token.PointerType -> parsePointer()
             is Token.ObjectType -> parseObject()
-            is Token.SelectorType-> parseSelectorType()
+            is Token.SelectorType -> parseSelectorType()
             is Token.ClassObjectType -> parseClassObject()
             else -> throw IllegalArgumentException("Unexpected token: $currentToken")
         }
@@ -41,7 +39,6 @@ class TypeEncodingParser(lexer: EncodingLexer) : EncodingParser(lexer) {
     }
 
     private fun parseBlock(): TypeNode.Block {
-
         /**
          * In the context of method encodings, blocks are typically represented using angle brackets.
          * ``@?<...>``
@@ -61,7 +58,8 @@ class TypeEncodingParser(lexer: EncodingLexer) : EncodingParser(lexer) {
             types[0],
             types.slice(1 until types.size)
                 .let { if (it.isEmpty()) null else it }
-                ?.map { it to null })
+                ?.map { it to null },
+        )
     }
 
     private fun parseObject(): TypeNode {
@@ -105,9 +103,10 @@ class TypeEncodingParser(lexer: EncodingLexer) : EncodingParser(lexer) {
     private fun parseStructOrClassObject(): TypeNode {
         expectToken<Token.StructOpen>()
 
-        val identifier = expectOneOf(Token.Identifier::class, Token.Anonymous::class).let {
-            if (it is Token.Identifier) it.name else null
-        }
+        val identifier =
+            expectOneOf(Token.Identifier::class, Token.Anonymous::class).let {
+                if (it is Token.Identifier) it.name else null
+            }
 
         if (currentToken is Token.StructClose) {
             nextToken()
@@ -146,9 +145,10 @@ class TypeEncodingParser(lexer: EncodingLexer) : EncodingParser(lexer) {
     private fun parseUnion(): TypeNode.Union {
         expectToken<Token.UnionOpen>()
 
-        val unionName = expectOneOf(Token.Identifier::class, Token.Anonymous::class).let {
-            if (it is Token.Identifier) it.name else null
-        }
+        val unionName =
+            expectOneOf(Token.Identifier::class, Token.Anonymous::class).let {
+                if (it is Token.Identifier) it.name else null
+            }
 
         expectToken<Token.FieldSeparator>()
 

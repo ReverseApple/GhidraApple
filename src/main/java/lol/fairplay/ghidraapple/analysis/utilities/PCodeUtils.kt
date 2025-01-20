@@ -1,12 +1,12 @@
 package lol.fairplay.ghidraapple.analysis.utilities
 
 import ghidra.program.model.address.Address
+import ghidra.program.model.listing.Function
+import ghidra.program.model.listing.Program
 import ghidra.program.model.pcode.PcodeOp
 import ghidra.program.model.pcode.Varnode
-import ghidra.program.model.listing.Program
-import ghidra.program.model.listing.Function
 import ghidra.util.Msg
-import java.util.*
+import java.util.Optional
 
 /**
  * Retrieves a constant from a given Varnode, if applicable.
@@ -15,7 +15,6 @@ import java.util.*
  * @return An Optional containing the constant Address if found, or an empty Optional otherwise.
  */
 fun getConstantFromVarNode(varnode: Varnode): Optional<Address> {
-
     return when {
         varnode.isRegister && varnode.def != null -> getConstantFromPcodeOp(varnode.def)
         varnode.isConstant -> Optional.of(varnode.address)
@@ -36,7 +35,7 @@ fun getConstantFromPcodeOp(pcodeOp: PcodeOp): Optional<Address> {
         PcodeOp.CAST -> return getConstantFromVarNode(pcodeOp.inputs[0])
         PcodeOp.COPY -> return getConstantFromVarNode(pcodeOp.inputs[0])
         PcodeOp.PTRSUB -> {
-            val ptrSubInput = pcodeOp.inputs.first { !(it.isConstant && it.offset == 0L)}
+            val ptrSubInput = pcodeOp.inputs.first { !(it.isConstant && it.offset == 0L) }
             return getConstantFromVarNode(ptrSubInput)
         }
         PcodeOp.LOAD -> return Optional.empty()
@@ -45,15 +44,15 @@ fun getConstantFromPcodeOp(pcodeOp: PcodeOp): Optional<Address> {
         PcodeOp.INDIRECT -> return getConstantFromVarNode(pcodeOp.inputs[0])
         PcodeOp.CALL -> return Optional.empty()
         else -> {
-            Msg.error("getConstantFromPcodeOp",
-                "Unknown opcode ${pcodeOp.mnemonic} encountered at ${pcodeOp.seqnum.target}")
+            Msg.error(
+                "getConstantFromPcodeOp",
+                "Unknown opcode ${pcodeOp.mnemonic} encountered at ${pcodeOp.seqnum.target}",
+            )
             return Optional.empty()
         }
-
-
     }
-
 }
+
 /**
  * Helper method to convert any kind of address into the same address in the default
  * address space
@@ -65,8 +64,10 @@ fun Address.toDefaultAddressSpace(program: Program): Address {
     return program.addressFactory.defaultAddressSpace.getAddress(this.offset)
 }
 
-
-fun getFunctionForPCodeCall(program: Program, pcodeOp: PcodeOp?): Optional<Function> {
+fun getFunctionForPCodeCall(
+    program: Program,
+    pcodeOp: PcodeOp?,
+): Optional<Function> {
     if (pcodeOp != null && pcodeOp.opcode == PcodeOp.CALL) {
         val target = pcodeOp.inputs.getOrNull(0) ?: return Optional.empty()
         if (target.isAddress) {

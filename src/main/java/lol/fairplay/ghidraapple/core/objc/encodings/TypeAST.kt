@@ -1,7 +1,6 @@
 package lol.fairplay.ghidraapple.core.objc.encodings
 
 sealed class TypeNode {
-
     abstract fun accept(visitor: TypeNodeVisitor)
 
     data class Struct(val name: String?, val fields: List<Pair<String?, TypeNode>>?) : TypeNode() {
@@ -73,14 +72,24 @@ sealed class TypeNode {
 
 interface TypeNodeVisitor {
     fun visitStruct(struct: TypeNode.Struct)
+
     fun visitClassObject(classObject: TypeNode.ClassObject)
+
     fun visitObject(obj: TypeNode.Object)
+
     fun visitUnion(union: TypeNode.Union)
+
     fun visitArray(array: TypeNode.Array)
+
     fun visitPrimitive(primitive: TypeNode.Primitive)
+
     fun visitPointer(pointer: TypeNode.Pointer)
+
     fun visitBitfield(bitfield: TypeNode.Bitfield)
+
     fun visitBlock(block: TypeNode.Block)
+
     fun visitFunctionPointer(fnPtr: TypeNode.FunctionPointer)
+
     fun visitSelector(selector: TypeNode.Selector)
 }

@@ -3,9 +3,7 @@ package lol.fairplay.ghidraapple.core.objc.encodings
 import org.json.JSONArray
 import org.json.JSONObject
 
-
 class JSONConversionVisitor : TypeNodeVisitor {
-
     private var result: JSONObject? = null
 
     fun getJSON(): JSONObject? {
@@ -90,11 +88,12 @@ class JSONConversionVisitor : TypeNodeVisitor {
         val json = JSONObject()
         json.put("type", "Array")
 
-        val elementJson = let{
-            val visitor = extend()
-            array.elementType.accept(visitor)
-            visitor.getJSON()
-        }
+        val elementJson =
+            let {
+                val visitor = extend()
+                array.elementType.accept(visitor)
+                visitor.getJSON()
+            }
         json.put("elementType", elementJson)
         json.put("size", array.size)
 
@@ -111,11 +110,12 @@ class JSONConversionVisitor : TypeNodeVisitor {
     override fun visitPointer(pointer: TypeNode.Pointer) {
         val json = JSONObject()
         json.put("type", "Pointer")
-        val pointeeJson = let{
-            val visitor = extend()
-            pointer.pointee.accept(visitor)
-            visitor.getJSON()
-        }
+        val pointeeJson =
+            let {
+                val visitor = extend()
+                pointer.pointee.accept(visitor)
+                visitor.getJSON()
+            }
         json.put("pointee", pointeeJson)
         result = json
     }
@@ -144,5 +144,4 @@ class JSONConversionVisitor : TypeNodeVisitor {
         json.put("type", "Selector")
         result = json
     }
-
 }

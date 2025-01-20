@@ -12,7 +12,6 @@ import lol.fairplay.ghidraapple.core.objc.modelling.OCClass
 import lol.fairplay.ghidraapple.core.objc.modelling.OCFieldContainer
 import lol.fairplay.ghidraapple.core.objc.modelling.OCProtocol
 
-
 // reference code: ghidra.app.plugin.core.decompile.actions.PCodeDfgGraphTask
 
 class ClassAbstractionGraphTask(
@@ -20,7 +19,6 @@ class ClassAbstractionGraphTask(
     val graphService: GraphDisplayBroker,
     val classModel: OCClass,
 ) : Task("Graph Objective-C Class Abstraction", true, false, true) {
-
     lateinit var graph: AttributedGraph
 
     override fun run(monitor: TaskMonitor?) {
@@ -52,34 +50,36 @@ class ClassAbstractionGraphTask(
                 current.baseProtocols?.forEach { protocol ->
                     val protoVertex = getOrCreateProtoVertex(protocol.name)
                     createImplementsEdge(protoVertex, cVertex)
-                    if (!visited.contains(protocol.name))
+                    if (!visited.contains(protocol.name)) {
                         stack.add(protocol)
+                    }
                 }
                 current.superclass?.let {
                     val superVertex = getOrCreateClassVertex(it.name)
                     createInheritsEdge(superVertex, cVertex)
-                    if (!visited.contains(it.name))
+                    if (!visited.contains(it.name)) {
                         stack.add(it)
+                    }
                 }
             } else if (current is OCProtocol) {
                 val pVertex = getOrCreateProtoVertex(current.name)
                 current.protocols?.forEach { protocol ->
                     val protoVertex = getOrCreateProtoVertex(protocol.name)
                     createImplementsEdge(protoVertex, pVertex)
-                    if (!visited.contains(protocol.name))
+                    if (!visited.contains(protocol.name)) {
                         stack.add(protocol)
+                    }
                 }
             }
 
             visited.add(current.name)
         }
-
     }
 
     private fun getOrCreateProtoVertex(name: String): AttributedVertex {
         if (graph.getVertex(name) != null) return graph.getVertex(name)!!
 
-        val v =  graph.addVertex(name)
+        val v = graph.addVertex(name)
         v.setAttribute("color", "blue")
         return v
     }
@@ -91,15 +91,20 @@ class ClassAbstractionGraphTask(
         return v
     }
 
-    private fun createInheritsEdge(from: AttributedVertex, to: AttributedVertex) {
+    private fun createInheritsEdge(
+        from: AttributedVertex,
+        to: AttributedVertex,
+    ) {
         val newEdge = graph.addEdge(from, to)
         newEdge.description = "inherits"
     }
 
-    private fun createImplementsEdge(from: AttributedVertex, to: AttributedVertex) {
+    private fun createImplementsEdge(
+        from: AttributedVertex,
+        to: AttributedVertex,
+    ) {
         val newEdge = graph.addEdge(from, to)
         newEdge.setAttribute("color", "blue")
         newEdge.description = "implements"
     }
-
 }

@@ -10,7 +10,6 @@ import ghidra.program.model.listing.Program
 import ghidra.util.task.TaskMonitor
 
 class UniversalBinaryLoader : MachoLoader() {
-
     override fun getPreferredFileName(byteProvider: ByteProvider): String {
         val original = super.getPreferredFileName(byteProvider)
         val ubType = "universalbinary"
@@ -29,7 +28,7 @@ class UniversalBinaryLoader : MachoLoader() {
         project: Project?,
         options: MutableList<Option>?,
         messageLog: MessageLog?,
-        monitor: TaskMonitor?
+        monitor: TaskMonitor?,
     ) {
         super.postLoadProgramFixups(loadedPrograms, project, options, messageLog, monitor)
         if (loadedPrograms != null) {
@@ -52,17 +51,17 @@ class UniversalBinaryLoader : MachoLoader() {
                 // After renaming, the programs will be in folders named after their original
                 // names. To reduce redundancy, we move the programs to the parent folder.
                 val originalFolderPath = loaded.projectFolderPath
-                val newFolderPath = originalFolderPath
-                    .split("/")
-                    // Filter out, potentially, the last, empty, element (if the path ended in "/").
-                    .filterNot(String::isEmpty)
-                    .dropLast(1) // Drop the last path component, leaving a path to the parent folder.
-                    .joinToString("/")
+                val newFolderPath =
+                    originalFolderPath
+                        .split("/")
+                        // Filter out, potentially, the last, empty, element (if the path ended in "/").
+                        .filterNot(String::isEmpty)
+                        .dropLast(1) // Drop the last path component, leaving a path to the parent folder.
+                        .joinToString("/")
                 loaded.projectFolderPath = newFolderPath
                 // Now that the program is up one folder, we can delete the original one.
                 project?.projectData?.getFolder(originalFolderPath)?.delete()
             }
         }
     }
-
 }

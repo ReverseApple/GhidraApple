@@ -15,10 +15,15 @@ import lol.fairplay.ghidraapple.analysis.objectivec.modelling.StructureParsing
 import lol.fairplay.ghidraapple.analysis.utilities.address
 import lol.fairplay.ghidraapple.analysis.utilities.parseObjCListSection
 import lol.fairplay.ghidraapple.core.objc.encodings.EncodedSignature
-import lol.fairplay.ghidraapple.core.objc.modelling.*
+import lol.fairplay.ghidraapple.core.objc.modelling.OCClass
+import lol.fairplay.ghidraapple.core.objc.modelling.OCField
+import lol.fairplay.ghidraapple.core.objc.modelling.OCMethod
+import lol.fairplay.ghidraapple.core.objc.modelling.OCProtocol
+import lol.fairplay.ghidraapple.core.objc.modelling.ResolvedEntity
+import lol.fairplay.ghidraapple.core.objc.modelling.ResolvedMethod
+import lol.fairplay.ghidraapple.core.objc.modelling.ResolvedProperty
 
 class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTION_ANALYZER) {
-
     lateinit var program: Program
     lateinit var log: MessageLog
 
@@ -40,7 +45,12 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
         return program.memory.getBlock("__objc_classlist") != null
     }
 
-    override fun added(program: Program, set: AddressSetView, monitor: TaskMonitor, log: MessageLog): Boolean {
+    override fun added(
+        program: Program,
+        set: AddressSetView,
+        monitor: TaskMonitor,
+        log: MessageLog,
+    ): Boolean {
         this.log = log
 
         monitor.message = "Reading classes..."
@@ -54,11 +64,12 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
         klasses.forEach { klassData ->
             monitor.incrementProgress()
 
-            val model = runCatching {
-                parser.parseClass(klassData.address.unsignedOffset)
-            }.onFailure { exception ->
-                Msg.error(this, "Could not parse class at ${klassData.address.unsignedOffset}", exception)
-            }.getOrNull() ?: return@forEach
+            val model =
+                runCatching {
+                    parser.parseClass(klassData.address.unsignedOffset)
+                }.onFailure { exception ->
+                    Msg.error(this, "Could not parse class at ${klassData.address.unsignedOffset}", exception)
+                }.getOrNull() ?: return@forEach
 
             monitor.message = "Propagating signatures for ${model.name}..."
             propagateSignatures(model, monitor)
@@ -70,7 +81,10 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
         return true
     }
 
-    private fun propagateSignatures(klass: OCClass, taskMonitor: TaskMonitor?) {
+    private fun propagateSignatures(
+        klass: OCClass,
+        taskMonitor: TaskMonitor?,
+    ) {
         taskMonitor?.message = "Propagating signatures: ${klass.name}"
 
         val typeResolver = TypeResolver(program)
@@ -105,40 +119,43 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
 
     private fun <T : OCField> definitionChain(
         resolution: ResolvedEntity<T>,
-        indent: String
+        indent: String,
     ): String {
         // fixme: this is kind of sloppy
-        val chain = resolution.chain().reversed()
-            .joinToString(" -> ") {
-                val type = when (it.first) {
-                    is OCClass -> "Class"
-                    is OCProtocol -> "Protocol"
-                    else -> "Category"
-                }
+        val chain =
+            resolution.chain().reversed()
+                .joinToString(" -> ") {
+                    val type =
+                        when (it.first) {
+                            is OCClass -> "Class"
+                            is OCProtocol -> "Protocol"
+                            else -> "Category"
+                        }
 
-                "${it.first.name} ($type)"
-            }.let {
-                if (resolution.stack.size == 1) "" else "\n${indent}Origin: ${it}"
-            }
+                    "${it.first.name} ($type)"
+                }.let {
+                    if (resolution.stack.size == 1) "" else "\n${indent}Origin: $it"
+                }
 
         return chain
     }
 
     private fun applyMethodInsights(
         resolution: ResolvedMethod,
-        fcnEntity: Function
+        fcnEntity: Function,
     ) {
         println("Applying method insights to ${resolution.concrete().name}...")
         val method = resolution.concrete()
         val chain = definitionChain(resolution, "        ")
 
-        fcnEntity.comment = """
-        
-        Member of: ${method.parent.name}$chain
-        
-        ${method.prototypeString()}
-        
-        """.trimIndent()
+        fcnEntity.comment =
+            """
+            
+            Member of: ${method.parent.name}$chain
+            
+            ${method.prototypeString()}
+            
+            """.trimIndent()
     }
 
     private fun applySignature(
@@ -146,19 +163,21 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
         encSignature: EncodedSignature,
         klass: OCClass,
         method: OCMethod,
-        fcnEntity: Function
+        fcnEntity: Function,
     ) {
-        val returnDT = runCatching {
-            typeResolver.buildParsed(encSignature.returnType.first)
-        }.onFailure { exception ->
-            Msg.error(this, "Could not parse return type for ${klass.name}->${method.name}", exception)
-        }.getOrNull()
+        val returnDT =
+            runCatching {
+                typeResolver.buildParsed(encSignature.returnType.first)
+            }.onFailure { exception ->
+                Msg.error(this, "Could not parse return type for ${klass.name}->${method.name}", exception)
+            }.getOrNull()
 
         // starting at 2 to skip `self` and SEL.
         val parameters = mutableListOf<ParameterImpl>()
 
-        val recvType = typeResolver.tryResolveDefinedStructPtr(klass.name)
-            ?: program.dataTypeManager.getDataType("/_objc2_/ID")!!
+        val recvType =
+            typeResolver.tryResolveDefinedStructPtr(klass.name)
+                ?: program.dataTypeManager.getDataType("/_objc2_/ID")!!
 
         parameters.add(ParameterImpl("self", recvType, 0, program))
         parameters.add(ParameterImpl("selector", program.dataTypeManager.getDataType("/_objc2_/SEL")!!, 8, program))
@@ -166,21 +185,21 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
 
         // Reconstruct and apply parameter types.
         encSignature.parameters.forEachIndexed { i, (type, stackOffset, modifiers) ->
-            val paramDT = runCatching {
-                typeResolver.buildParsed(type)
-            }.onFailure { exception ->
-                Msg.error(
-                    this,
-                    "Could not parse argument ${i + 2} type for ${klass.name}->${method.name}",
-                    exception
-                )
-            }.getOrNull() ?: return@forEachIndexed
+            val paramDT =
+                runCatching {
+                    typeResolver.buildParsed(type)
+                }.onFailure { exception ->
+                    Msg.error(
+                        this,
+                        "Could not parse argument ${i + 2} type for ${klass.name}->${method.name}",
+                        exception,
+                    )
+                }.getOrNull() ?: return@forEachIndexed
 
             Msg.info(this, "Applying argument ${i + 2} type to function for ${klass.name}->${method.name}...")
 
             parameters.add(ParameterImpl(newNames[i], paramDT, stackOffset, program))
         }
-
 
         val returnVar = fcnEntity.getReturn()
         if (returnDT != null) {
@@ -195,23 +214,28 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
             parameters,
             Function.FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS,
             true,
-            SourceType.ANALYSIS
+            SourceType.ANALYSIS,
         )
     }
 
-    private fun applyPropertyInsights(resolution: ResolvedProperty, getter: Function, setter: Function?) {
+    private fun applyPropertyInsights(
+        resolution: ResolvedProperty,
+        getter: Function,
+        setter: Function?,
+    ) {
         val declaration = resolution.concrete().declaration()
         val definitionChain = definitionChain(resolution, "        ")
 
         println("Applying property insights to ${resolution.concrete().name}...")
 
         getter.addTag(PROPERTY_TAG_GETTER)
-        val comment = """
-        
-        Member of: ${resolution.concrete().parent.name}$definitionChain
-        
-        $declaration
-        """.trimIndent()
+        val comment =
+            """
+            
+            Member of: ${resolution.concrete().parent.name}$definitionChain
+            
+            $declaration
+            """.trimIndent()
 
         getter.comment = comment
 
@@ -219,8 +243,10 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
         setter?.comment = comment
     }
 
-    private fun processProperties(klass: OCClass, taskMonitor: TaskMonitor?) {
-
+    private fun processProperties(
+        klass: OCClass,
+        taskMonitor: TaskMonitor?,
+    ) {
         val fm = program.functionManager
         if (fm.functionTagManager.getFunctionTag(PROPERTY_TAG_GETTER) == null) {
             fm.functionTagManager.createFunctionTag(PROPERTY_TAG_GETTER, "Objective-C Property Getter Implementation")
@@ -259,41 +285,44 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
 
         val keywords = listOf("with", "for", "from", "to", "in", "at")
 
-        val baseNames = methodName.split(":")
-            .filter{ !it.isEmpty() }
-            .map { part ->
-            val ccSplit = splitCamelCase(part)
+        val baseNames =
+            methodName.split(":")
+                .filter { !it.isEmpty() }
+                .map { part ->
+                    val ccSplit = splitCamelCase(part)
 
-            val matchIndex = ccSplit.indexOfFirst {
-                it.lowercase() in keywords
-            }
-            val match = ccSplit.getOrNull(matchIndex) ?: return@map part
+                    val matchIndex =
+                        ccSplit.indexOfFirst {
+                            it.lowercase() in keywords
+                        }
+                    val match = ccSplit.getOrNull(matchIndex) ?: return@map part
 
-            when (match.lowercase()) {
-                "for" -> {
-                    if (part.startsWith(match)) {
-                        part.substringAfter(match).replaceFirstChar { it.lowercase() }
-                    } else {
-                        part.substringAfter(match).replaceFirstChar { it.lowercase() }
+                    when (match.lowercase()) {
+                        "for" -> {
+                            if (part.startsWith(match)) {
+                                part.substringAfter(match).replaceFirstChar { it.lowercase() }
+                            } else {
+                                part.substringAfter(match).replaceFirstChar { it.lowercase() }
+                            }
+                        }
+                        in keywords -> part.substringAfter(match).replaceFirstChar { it.lowercase() }
+                        else -> part
                     }
                 }
-                in keywords -> part.substringAfter(match).replaceFirstChar { it.lowercase() }
-                else -> part
+
+        val uniqueNames =
+            mutableMapOf<String, Int>(
+                "self" to 1,
+                "selector" to 1,
+            )
+
+        val result =
+            baseNames.map { name ->
+                val count = uniqueNames.getOrDefault(name, 0)
+                uniqueNames[name] = count + 1
+                if (count > 0) "${name}_$count" else name
             }
-        }
-
-        val uniqueNames = mutableMapOf<String, Int>(
-            "self" to 1,
-            "selector" to 1,
-        )
-
-        val result = baseNames.map { name ->
-            val count = uniqueNames.getOrDefault(name, 0)
-            uniqueNames[name] = count + 1
-            if (count > 0) "${name}_$count" else name
-        }
 
         return result
     }
-
 }

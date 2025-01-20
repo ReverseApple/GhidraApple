@@ -22,7 +22,8 @@ class ChooseMsgSendCalleeDialog(
     tool: Tool,
     private val program: Program,
     private val callsite: Address,
-    selector: String?, // TODO: Later we can add a selector to filter the functions
+    // TODO: Later we can add a selector to filter the functions
+    selector: String?,
 ) : DialogComponentProvider("Choose msgSend Callee", true, true, true, false) {
     private var functionsTable: GhidraFilterTable<Function>
 

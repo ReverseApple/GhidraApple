@@ -1,4 +1,4 @@
-package ghidra.app.plugin.core.decompile.actions;
+package ghidra.app.plugin.core.decompile.actions
 
 import docking.action.MenuData
 import ghidra.app.decompiler.ClangFuncNameToken
@@ -7,11 +7,9 @@ import ghidra.app.plugin.core.decompile.DecompilerActionContext
 import ghidra.program.model.pcode.PcodeOp
 import lol.fairplay.ghidraapple.GhidraApplePluginPackage
 import lol.fairplay.ghidraapple.actions.ChooseMsgSendCalleeDialog
-import lol.fairplay.ghidraapple.analysis.utilities.getConstantFromVarNode
 import lol.fairplay.ghidraapple.analysis.utilities.getFunctionForPCodeCall
 
-class ChooseMsgSendCalleeAction: AbstractDecompilerAction("Choose msgSend Callee") {
-
+class ChooseMsgSendCalleeAction : AbstractDecompilerAction("Choose msgSend Callee") {
     init {
         description = ""
         popupMenuData = MenuData(arrayOf("Choose Dynamic Dispatch Callee"), GhidraApplePluginPackage.PKG_NAME)
@@ -35,13 +33,12 @@ class ChooseMsgSendCalleeAction: AbstractDecompilerAction("Choose msgSend Callee
         if (func.program.memory.getBlock(func.entryPoint).name == "__objc_stubs") {
             return true
         }
-    return false
-
+        return false
     }
 
     private fun getPcodeOp(ctx: DecompilerActionContext): PcodeOp? {
         val location = ctx.location as DecompilerLocation
-        val pCodeOp = location.token.pcodeOp;
+        val pCodeOp = location.token.pcodeOp
         return pCodeOp
     }
 
@@ -51,16 +48,14 @@ class ChooseMsgSendCalleeAction: AbstractDecompilerAction("Choose msgSend Callee
         // For now we only support the renamed stub
 
         val pCodeOp = getPcodeOp(ctx)
-        with (ctx) {
+        with(ctx) {
             val func = getFunctionForPCodeCall(program, pCodeOp).get()
             if (func.name == "_objc_msgSend") {
                 // TODO: We can extract the selector here (if it is a constant) and use it to narrow down the search
-                tool.showDialog(ChooseMsgSendCalleeDialog(tool, program, location.address, null));
+                tool.showDialog(ChooseMsgSendCalleeDialog(tool, program, location.address, null))
             } else {
-                tool.showDialog(ChooseMsgSendCalleeDialog(tool, program, location.address, func.name));
+                tool.showDialog(ChooseMsgSendCalleeDialog(tool, program, location.address, func.name))
             }
-
         }
-
     }
 }

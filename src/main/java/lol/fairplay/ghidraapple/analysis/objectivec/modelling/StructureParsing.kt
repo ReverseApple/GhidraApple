@@ -10,12 +10,22 @@ import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.longValue
 import lol.fairplay.ghidraapple.analysis.utilities.address
 import lol.fairplay.ghidraapple.analysis.utilities.dataAt
 import lol.fairplay.ghidraapple.analysis.utilities.tryResolveNamespace
-import lol.fairplay.ghidraapple.core.objc.encodings.*
-import lol.fairplay.ghidraapple.core.objc.modelling.*
+import lol.fairplay.ghidraapple.core.objc.encodings.EncodedSignature
+import lol.fairplay.ghidraapple.core.objc.encodings.EncodedSignatureType
+import lol.fairplay.ghidraapple.core.objc.encodings.EncodingLexer
+import lol.fairplay.ghidraapple.core.objc.encodings.TypeEncodingParser
+import lol.fairplay.ghidraapple.core.objc.encodings.parseEncodedProperty
+import lol.fairplay.ghidraapple.core.objc.encodings.parseSignature
+import lol.fairplay.ghidraapple.core.objc.modelling.OCClass
+import lol.fairplay.ghidraapple.core.objc.modelling.OCFieldContainer
+import lol.fairplay.ghidraapple.core.objc.modelling.OCIVar
+import lol.fairplay.ghidraapple.core.objc.modelling.OCMethod
+import lol.fairplay.ghidraapple.core.objc.modelling.OCProperty
+import lol.fairplay.ghidraapple.core.objc.modelling.OCProtocol
 
-
-class StructureParsing(val program: Program) {
-
+class StructureParsing(
+    val program: Program,
+) {
     val nsIvarList = tryResolveNamespace(program, "objc", "ivar_list_t")
     val nsPropList = tryResolveNamespace(program, "objc", "objc_property_list")
     val nsProtoList = tryResolveNamespace(program, "objc", "protocol_list_t")
@@ -25,9 +35,13 @@ class StructureParsing(val program: Program) {
 
     private val parentStack = mutableListOf<OCFieldContainer>()
 
-    fun datResolve(address: Long, namespace: Namespace): Data? {
-        val data = dataAt(program, program.address(address))
-            ?: return null
+    fun datResolve(
+        address: Long,
+        namespace: Namespace,
+    ): Data? {
+        val data =
+            dataAt(program, program.address(address))
+                ?: return null
 
         if (data.primarySymbol == null) {
             return null
@@ -54,16 +68,17 @@ class StructureParsing(val program: Program) {
     fun parseProtocol(address: Long): OCProtocol? {
         val struct = datResolve(address, nsProtocol ?: return null) ?: return null
 
-        val protocol = OCProtocol(
-            name = struct[1].deref<String>(),
-            protocols = parseProtocolList(struct[2].longValue(false)),
-            instanceMethods = null,
-            classMethods = null,
-            optionalInstanceMethods = null,
-            optionalClassMethods = null,
-            instanceProperties = null,
-            extendedSignatures = null,
-        )
+        val protocol =
+            OCProtocol(
+                name = struct[1].deref<String>(),
+                protocols = parseProtocolList(struct[2].longValue(false)),
+                instanceMethods = null,
+                classMethods = null,
+                optionalInstanceMethods = null,
+                optionalClassMethods = null,
+                instanceProperties = null,
+                extendedSignatures = null,
+            )
 
         parentStack.add(protocol)
         val instanceProperties = parsePropertyList(struct[7].longValue(false))
@@ -76,22 +91,23 @@ class StructureParsing(val program: Program) {
 
         val methodListCoalesced = instanceMethods ?: classMethods ?: optionalInstanceMethods ?: optionalClassMethods
 
-        val extendedSignatures = if (struct[9].longValue(false) != 0L) {
-            val length = methodListCoalesced!!.size
-            val result = mutableListOf<EncodedSignature>()
-            val tblBase = struct[9].longValue(false)
+        val extendedSignatures =
+            if (struct[9].longValue(false) != 0L) {
+                val length = methodListCoalesced!!.size
+                val result = mutableListOf<EncodedSignature>()
+                val tblBase = struct[9].longValue(false)
 
-            for (i in 0 until length) {
-                val indexedAddress = program.address(tblBase + i * 8)
-                val sigAddr = program.listing.getDataAt(indexedAddress).getLong(0)
-                val sigString = program.listing.getDataAt(program.address(sigAddr)).value as String
-                result.add(parseSignature(sigString, EncodedSignatureType.METHOD_SIGNATURE))
+                for (i in 0 until length) {
+                    val indexedAddress = program.address(tblBase + i * 8)
+                    val sigAddr = program.listing.getDataAt(indexedAddress).getLong(0)
+                    val sigString = program.listing.getDataAt(program.address(sigAddr)).value as String
+                    result.add(parseSignature(sigString, EncodedSignatureType.METHOD_SIGNATURE))
+                }
+
+                result.toList()
+            } else {
+                null
             }
-
-            result.toList()
-        } else {
-            null
-        }
 
         protocol.extendedSignatures = extendedSignatures
         protocol.instanceMethods = instanceMethods
@@ -135,25 +151,29 @@ class StructureParsing(val program: Program) {
         )
     }
 
-    fun parseClass(address: Long, isMetaclass: Boolean = false): OCClass? {
+    fun parseClass(
+        address: Long,
+        isMetaclass: Boolean = false,
+    ): OCClass? {
         val klassRo = datResolve(address, nsClass ?: return null) ?: return null
 
         // get the class_t->data (class_rw_t *) field...
         val rwStruct = klassRo[4].derefUntyped(tolerant = true)
         val superAddress = klassRo[1].longValue(false)
 
-        val klass = OCClass(
-            name = rwStruct[3].deref<String>(),
-            flags = rwStruct[0].longValue(false).toULong(),
-            superclass = parseClass(superAddress),
-            baseClassMethods = null,
-            baseInstanceMethods = null,
-            baseProtocols = null,
-            instanceVariables = null,
-            baseClassProperties = null,
-            baseInstanceProperties = null,
-            weakIvarLayout = rwStruct[7].longValue(false),
-        )
+        val klass =
+            OCClass(
+                name = rwStruct[3].deref<String>(),
+                flags = rwStruct[0].longValue(false).toULong(),
+                superclass = parseClass(superAddress),
+                baseClassMethods = null,
+                baseInstanceMethods = null,
+                baseProtocols = null,
+                instanceVariables = null,
+                baseClassProperties = null,
+                baseInstanceProperties = null,
+                weakIvarLayout = rwStruct[7].longValue(false),
+            )
 
         // Parse regular stuff.
         if (!isMetaclass) {
@@ -161,11 +181,12 @@ class StructureParsing(val program: Program) {
         }
 
         // Parse the metaclass field only if we are not a metaclass.
-        val metaclass = if (!isMetaclass) {
-            parseClass(klassRo[0].longValue(false), isMetaclass = true)
-        } else {
-            null
-        }
+        val metaclass =
+            if (!isMetaclass) {
+                parseClass(klassRo[0].longValue(false), isMetaclass = true)
+            } else {
+                null
+            }
 
         klass.baseClassMethods = metaclass?.baseInstanceMethods
         klass.baseClassProperties = metaclass?.baseInstanceProperties
@@ -220,15 +241,17 @@ class StructureParsing(val program: Program) {
                 implAddress = dat[2].longValue(false),
             )
         } else if (dat.dataType.name == "method_small_t") {
-            val addresses = (0 until dat.numComponents).map {
-                dat[it].getPrimaryReference(0).toAddress
-            }
+            val addresses =
+                (0 until dat.numComponents).map {
+                    dat[it].getPrimaryReference(0).toAddress
+                }
 
             val name = dataAt(program, addresses[0])!!.deref<String>()
-            val signature = parseSignature(
-                dataAt(program, addresses[1])?.value as String,
-                EncodedSignatureType.METHOD_SIGNATURE
-            )
+            val signature =
+                parseSignature(
+                    dataAt(program, addresses[1])?.value as String,
+                    EncodedSignatureType.METHOD_SIGNATURE,
+                )
             val implementation = addresses[2]
 
             val parent = parentStack.last()

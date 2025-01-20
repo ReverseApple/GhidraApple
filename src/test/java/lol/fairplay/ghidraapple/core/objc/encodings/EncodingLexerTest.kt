@@ -3,7 +3,6 @@ package lol.fairplay.ghidraapple.core.objc.encodings
 import kotlin.test.Test
 
 class EncodingLexerTest {
-
     @Test
     fun test_Lexer() {
         val test = "v24@0:8@16"
@@ -25,12 +24,11 @@ class EncodingLexerTest {
     fun test_SignatureLexing() {
         val example = "B40@0:8@\"NSApplication\"16@\"NSUserActivity\"24@?<v@?@\"NSArray\">32"
         val lexer = EncodingLexer(example)
-        
+
         var token = lexer.getNextToken()
         while (token != Token.EndOfFile) {
             println(token)
             token = lexer.getNextToken()
         }
     }
-
 }

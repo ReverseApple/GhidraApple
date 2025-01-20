@@ -1,12 +1,10 @@
 package lol.fairplay.ghidraapple.analysis.utilities
 
-
 import ghidra.program.model.address.GenericAddress
 import ghidra.program.model.listing.Data
 import ghidra.program.model.scalar.Scalar
 
 object StructureHelpers {
-
     // allow components of the data object to be accessed using the subscript operator.
     operator fun Data.get(index: Int): Data {
         return this.getComponent(index)
@@ -39,8 +37,10 @@ object StructureHelpers {
     }
 
     fun Data.derefUntyped(tolerant: Boolean = false): Data {
-        return if (!tolerant) this.program.listing.getDataAt(this.value as GenericAddress?)
-        else this.program.listing.getDataContaining(this.value as GenericAddress?)
+        return if (!tolerant) {
+            this.program.listing.getDataAt(this.value as GenericAddress?)
+        } else {
+            this.program.listing.getDataContaining(this.value as GenericAddress?)
+        }
     }
 }
-

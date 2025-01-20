@@ -9,7 +9,6 @@ import lol.fairplay.ghidraapple.core.objc.encodings.TypeEncodingParser
 import lol.fairplay.ghidraapple.core.objc.encodings.TypeNode
 
 class TypeResolver(val program: Program) {
-
     private val dtm = program.dataTypeManager
 
     fun parseEncoded(encodedType: String): DataType? {
@@ -34,5 +33,4 @@ class TypeResolver(val program: Program) {
         val category = CategoryPath("/GA_OBJC")
         return program.dataTypeManager.getDataType(category, name)
     }
-
 }
