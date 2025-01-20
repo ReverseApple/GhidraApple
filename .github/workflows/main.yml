@@ -36,6 +36,10 @@ jobs:
         auth_token: ${{ secrets.GITHUB_TOKEN }}
         version: ${{ matrix.ghidra }}
 
+    - name: Linting with klint
+      run: gradle ktlintCheck
+
+
     - name: Build
       run: gradle buildExtension
 

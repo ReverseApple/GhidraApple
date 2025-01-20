@@ -3,7 +3,6 @@ package lol.fairplay.ghidraapple.core.objc.encodings
 import kotlin.reflect.KClass
 
 abstract class EncodingParser(val lexer: EncodingLexer) {
-
     protected var currentToken: Token
         get() = lexer.latestToken ?: lexer.getNextToken()
         private set(_) {}
@@ -31,5 +30,4 @@ abstract class EncodingParser(val lexer: EncodingLexer) {
     protected fun nextToken() {
         lexer.getNextToken()
     }
-
 }

@@ -12,7 +12,6 @@ import lol.fairplay.ghidraapple.GhidraApplePluginPackage
 import lol.fairplay.ghidraapple.analysis.objectivec.modelling.StructureParsing
 import lol.fairplay.ghidraapple.core.objc.modelling.OCClass
 
-
 @PluginInfo(
     status = PluginStatus.RELEASED,
     packageName = GhidraApplePluginPackage.PKG_NAME,
@@ -21,7 +20,6 @@ import lol.fairplay.ghidraapple.core.objc.modelling.OCClass
     shortDescription = "",
 )
 class ClassParserTestingPlugin(tool: PluginTool) : ProgramPlugin(tool) {
-
     init {
         createActions()
     }
@@ -32,7 +30,7 @@ class ClassParserTestingPlugin(tool: PluginTool) : ProgramPlugin(tool) {
 
         println("Resolved methods:")
         klass.resolvedMethods().forEach {
-            it.abstract().last().let { println("\t${it.name} FROM ${it.parent.name}")}
+            it.abstract().last().let { println("\t${it.name} FROM ${it.parent.name}") }
         }
 
         println("Resolved properties:")
@@ -43,21 +41,20 @@ class ClassParserTestingPlugin(tool: PluginTool) : ProgramPlugin(tool) {
     }
 
     private fun createActions() {
-        val action = object : DockingAction("Analyze Class", name) {
-            override fun actionPerformed(context: ActionContext?) {
-                if (currentProgram == null) return
+        val action =
+            object : DockingAction("Analyze Class", name) {
+                override fun actionPerformed(context: ActionContext?) {
+                    if (currentProgram == null) return
 
-                val data = currentProgram.listing.getDefinedDataAt(currentLocation.address) ?: return
-                if (data.dataType.name != "class_t") return
+                    val data = currentProgram.listing.getDefinedDataAt(currentLocation.address) ?: return
+                    if (data.dataType.name != "class_t") return
 
-                val parser = StructureParsing(currentProgram)
-                val klass = parser.parseClass(data.address.unsignedOffset)
-                printClassInfo(klass!!)
+                    val parser = StructureParsing(currentProgram)
+                    val klass = parser.parseClass(data.address.unsignedOffset)
+                    printClassInfo(klass!!)
+                }
             }
-
-        }
         action.menuBarData = MenuData(arrayOf("GhidraApple", "Analyze Class"))
         tool.addAction(action)
     }
-
 }

@@ -7,7 +7,6 @@ import ghidra.framework.plugintool.ServiceProvider
 import ghidra.program.model.address.Address
 import ghidra.program.model.address.AddressSetView
 import ghidra.program.model.data.PointerDataType
-import ghidra.program.model.data.StructureDataType
 import ghidra.program.model.listing.Data
 import ghidra.program.model.listing.Function
 import ghidra.program.model.listing.Program
@@ -56,7 +55,7 @@ fun dataBlocksForNamespace(
                 primarySymbol != null &&
                     parentNamespace != null &&
                     parentNamespace.getName(true) == ns.getName(true)
-        }
+            }
 
     return dataBlocks
 }
@@ -82,7 +81,10 @@ fun idealClassStructures(program: Program): Map<String, Data>? {
     return idealStructures
 }
 
-fun parseObjCListSection(program: Program, sectionName: String): List<Data>? {
+fun parseObjCListSection(
+    program: Program,
+    sectionName: String,
+): List<Data>? {
     val sectionBlock = program.memory.getBlock(sectionName) ?: return null
     val entries = sectionBlock.size / 8
     val start = sectionBlock.start
@@ -93,9 +95,10 @@ fun parseObjCListSection(program: Program, sectionName: String): List<Data>? {
         if (!data.isPointer) {
             data = program.listing.createData(pointerAddress, PointerDataType.dataType)
         }
-        val datAddress = data
-            .getPrimaryReference(0)
-            .toAddress
+        val datAddress =
+            data
+                .getPrimaryReference(0)
+                .toAddress
         program.listing.getDefinedDataAt(datAddress)
     }
 }

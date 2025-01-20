@@ -27,16 +27,15 @@ import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.analysis.utilities.getConstantFromVarNode
 import kotlin.jvm.optionals.getOrNull
 
-
 data class AllocInfo(val function: Function, val callsite: Address, val signature: FunctionSignature)
 
 class OCTypeInjectorAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.INSTRUCTION_ANALYZER) {
-
     lateinit var program: Program
 
     companion object {
         private const val NAME = "Objective-C Type Injection"
         private const val DESCRIPTION = ""
+
         // This has to run before the data type propagation (but not earlier), otherwise not all alloc calls are found?
         private val PRIORITY = AnalysisPriority.DATA_TYPE_PROPOGATION.before()
     }
@@ -52,10 +51,15 @@ class OCTypeInjectorAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.
         return allocFnSymbols().isNotEmpty()
     }
 
-    override fun added(program: Program, set: AddressSetView, taskMonitor: TaskMonitor, messageLog: MessageLog): Boolean {
+    override fun added(
+        program: Program,
+        set: AddressSetView,
+        taskMonitor: TaskMonitor,
+        messageLog: MessageLog,
+    ): Boolean {
         // Make sure that the alloc calls have the correct type signature setup
         // This has to happen in a separate transaction, otherwise the overrides later will not be applied
-        program.withTransaction<Exception>("Setup alloc signatures"){
+        program.withTransaction<Exception>("Setup alloc signatures") {
             allocFnSymbols().forEach {
                 val func = it.`object` as FunctionDB
                 val id = program.dataTypeManager.getDataType("/_objc2_/ID")
@@ -65,8 +69,6 @@ class OCTypeInjectorAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.
                 }
             }
         }
-
-
 
         // Get all calls to _objc_alloc in the AddressSet that should be analyzed
         val toAnalyze: Map<Function, List<Address>> = getAllocCallsitesInAddressSet(set)
@@ -80,22 +82,28 @@ class OCTypeInjectorAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.
         Msg.info(this, "Successfully analyzed ${results.size} callsites")
 
         results.forEach { (function, callsite, signature) ->
-                HighFunctionDBUtil.writeOverride(function, callsite, signature)
-            }
+            HighFunctionDBUtil.writeOverride(function, callsite, signature)
+        }
         return true
     }
 
-    private fun analyzeAllocCallsites(program: Program, taskMonitor: TaskMonitor, messageLog: MessageLog, toAnalyze: Map<Function, List<Address>>): List<AllocInfo> {
-        val objectLookUp: Map<Long, Symbol> = program.symbolTable.symbolIterator
-            .filter { it.name.startsWith("_OBJC_CLASS_\$_") || it.parentNamespace.name == "class_t" }
-            .filter { !it.isExternal }
-            .associate { it.address.offset to it }
+    private fun analyzeAllocCallsites(
+        program: Program,
+        taskMonitor: TaskMonitor,
+        messageLog: MessageLog,
+        toAnalyze: Map<Function, List<Address>>,
+    ): List<AllocInfo> {
+        val objectLookUp: Map<Long, Symbol> =
+            program.symbolTable.symbolIterator
+                .filter { it.name.startsWith("_OBJC_CLASS_\$_") || it.parentNamespace.name == "class_t" }
+                .filter { !it.isExternal }
+                .associate { it.address.offset to it }
 
         val decompiler = DecompInterface()
         decompiler.openProgram(program)
         decompiler.setSimplificationStyle("firstpass")
         decompiler.setOptions(
-            DecompileOptions().apply { this.isRespectReadOnly = true }
+            DecompileOptions().apply { this.isRespectReadOnly = true },
         )
 
         val result: MutableList<AllocInfo> = mutableListOf()
@@ -103,8 +111,7 @@ class OCTypeInjectorAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.
         taskMonitor.maximum = toAnalyze.size.toLong()
 
         for ((function, callsites) in toAnalyze) {
-
-            taskMonitor.message = "Analyzing alloc calls in ${function}"
+            taskMonitor.message = "Analyzing alloc calls in $function"
 
             val decompiled = decompiler.decompileFunction(function, 30, taskMonitor)
 
@@ -119,12 +126,13 @@ class OCTypeInjectorAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.
 
             Msg.debug(this, "Analyzing ${function.name} @ ${function.entryPoint}...")
 
-            val allocCalls: List<PcodeOpAST> = highFunction.pcodeOps.asSequence()
-                .filter { it.opcode == PcodeOp.CALL }
-                .filter { it.seqnum.target in callsites && it.inputs.size == 2 }
-                .toList()
-            if (allocCalls.size != callsites.size){
-                messageLog.appendMsg(NAME, "Couldn't find P-Code OP for some objc_alloc calls in ${function}")
+            val allocCalls: List<PcodeOpAST> =
+                highFunction.pcodeOps.asSequence()
+                    .filter { it.opcode == PcodeOp.CALL }
+                    .filter { it.seqnum.target in callsites && it.inputs.size == 2 }
+                    .toList()
+            if (allocCalls.size != callsites.size) {
+                messageLog.appendMsg(NAME, "Couldn't find P-Code OP for some objc_alloc calls in $function")
             }
 
             for (allocCall in allocCalls) {
@@ -144,18 +152,16 @@ class OCTypeInjectorAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.
                     continue
                 }
                 val allocatedSymbol = objectLookUp[const.offset]
-                if (allocatedSymbol != null){
+                if (allocatedSymbol != null) {
                     runCatching {
                         val ocType = getDataTypeFromSymbol(allocatedSymbol!!)
                         result.add(AllocInfo(function, allocCall.seqnum.target, generateFunctionSignatureForType(ocType)))
                     }.onFailure { error ->
                         Msg.error(this, "Failed to inject type for ${allocatedSymbol.name} in ${function.name}", error)
                     }
-                }
-                else {
+                } else {
                     messageLog.appendMsg(NAME, "Could not find symbol for constant $const in ${function.name}")
                 }
-
             }
             taskMonitor.incrementProgress()
         }
@@ -167,7 +173,7 @@ class OCTypeInjectorAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.
 
     private fun generateFunctionSignatureForType(type: DataType): FunctionSignature {
         val fsig = FunctionDefinitionDataType("tmpname")
-        fsig.returnType = type;
+        fsig.returnType = type
         fsig.arguments = arrayOf(ParameterDefinitionImpl("cls", type, null))
         return fsig
     }
@@ -176,20 +182,19 @@ class OCTypeInjectorAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.
      * Takes a symbol like `_OBJC_CLASS_$_CLCircularRegion` and returns the DataType for that class.
      */
     private fun getDataTypeFromSymbol(symbol: Symbol): DataType {
-
         val className = symbol.name.removePrefix("_OBJC_CLASS_\$_")
         val type = program.dataTypeManager.getDataType("/GA_OBJC/$className")
         return type
     }
 
-
     private fun allocFnSymbols(): List<FunctionSymbol> {
         val result = mutableListOf<FunctionSymbol>()
-        val allocNames = listOf(
-            "_objc_alloc",
-            "_objc_alloc_init",
-            "_objc_allocWithZone"
-        )
+        val allocNames =
+            listOf(
+                "_objc_alloc",
+                "_objc_alloc_init",
+                "_objc_allocWithZone",
+            )
         allocNames.forEach { name ->
             program.symbolTable.getSymbols(name).filterIsInstance<FunctionSymbol>().firstOrNull()?.let { result.add(it) }
         }
@@ -198,19 +203,19 @@ class OCTypeInjectorAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.
     }
 
     private fun getAllocCallsitesInAddressSet(set: AddressSetView? = null): Map<Function, List<Address>> {
-
         // TODO: We should also collect calls to the allocWithZone selector here
-        return allocFnSymbols().map { symbol -> program.referenceManager.getReferencesTo(symbol.address)
-            .filter { set == null || it.fromAddress in set }
-            .filter { it.referenceType.isCall }
-            .filter { program.functionManager.getFunctionContaining(it.fromAddress) != null}
-            .map { it.fromAddress}
+        return allocFnSymbols().map { symbol ->
+            program.referenceManager.getReferencesTo(symbol.address)
+                .filter { set == null || it.fromAddress in set }
+                .filter { it.referenceType.isCall }
+                .filter { program.functionManager.getFunctionContaining(it.fromAddress) != null }
+                .map { it.fromAddress }
         }
             .flatten()
             // Group all the callsites by the function they are in
             .groupBy {
-                address -> program.functionManager.getFunctionContaining(address)
+                    address ->
+                program.functionManager.getFunctionContaining(address)
             }
     }
-
 }

@@ -1,8 +1,6 @@
 package lol.fairplay.ghidraapple.core.objc.encodings
 
-
 class TypeStringify : TypeNodeVisitor {
-
     private lateinit var result: String
 
     companion object {
@@ -27,15 +25,15 @@ class TypeStringify : TypeNodeVisitor {
 
         if (struct.fields != null) {
             for ((name, node) in struct.fields) {
-
                 builder.append("\n")
                 val typeStr = getResult(node)
 
-                var field = if (name != null) {
-                    "$typeStr $name"
-                } else {
-                    typeStr
-                }
+                var field =
+                    if (name != null) {
+                        "$typeStr $name"
+                    } else {
+                        typeStr
+                    }
 
                 if (node is TypeNode.Bitfield) {
                     field += " : ${node.size}"
@@ -74,11 +72,12 @@ class TypeStringify : TypeNodeVisitor {
                 builder.append("\n")
                 val typeStr = getResult(node)
 
-                val field = if (name != null) {
-                    "$typeStr $name"
-                } else {
-                    typeStr
-                }
+                val field =
+                    if (name != null) {
+                        "$typeStr $name"
+                    } else {
+                        typeStr
+                    }
 
                 builder.append("${indent(field)};")
             }
@@ -94,25 +93,26 @@ class TypeStringify : TypeNodeVisitor {
     }
 
     override fun visitPrimitive(primitive: TypeNode.Primitive) {
-        result = when (primitive.type) {
-            'c' -> "char" // this could also be `BOOL`
-            'C' -> "unsigned char"
-            's' -> "short"
-            'S' -> "unsigned short"
-            'i' -> "int"
-            'I' -> "unsigned int"
-            'l' -> "long"
-            'L' -> "unsigned long"
-            'q' -> "long long"
-            'Q' -> "unsigned long long"
-            'f' -> "float"
-            'd' -> "double"
-            'v' -> "void"
-            'B' -> "bool"
-            'D' -> "long double"
-            '*' -> "char*"
-            else -> throw Exception("Unknown primitive type: ${primitive.type}")
-        }
+        result =
+            when (primitive.type) {
+                'c' -> "char" // this could also be `BOOL`
+                'C' -> "unsigned char"
+                's' -> "short"
+                'S' -> "unsigned short"
+                'i' -> "int"
+                'I' -> "unsigned int"
+                'l' -> "long"
+                'L' -> "unsigned long"
+                'q' -> "long long"
+                'Q' -> "unsigned long long"
+                'f' -> "float"
+                'd' -> "double"
+                'v' -> "void"
+                'B' -> "bool"
+                'D' -> "long double"
+                '*' -> "char*"
+                else -> throw Exception("Unknown primitive type: ${primitive.type}")
+            }
     }
 
     override fun visitPointer(pointer: TypeNode.Pointer) {

@@ -1,6 +1,27 @@
 package lol.fairplay.ghidraapple.analysis.objectivec
 
-import ghidra.program.model.data.*
+import ghidra.program.model.data.ArrayDataType
+import ghidra.program.model.data.BooleanDataType
+import ghidra.program.model.data.CategoryPath
+import ghidra.program.model.data.CharDataType
+import ghidra.program.model.data.DataType
+import ghidra.program.model.data.DoubleDataType
+import ghidra.program.model.data.FloatDataType
+import ghidra.program.model.data.LongDataType
+import ghidra.program.model.data.LongDoubleDataType
+import ghidra.program.model.data.LongLongDataType
+import ghidra.program.model.data.PointerDataType
+import ghidra.program.model.data.ShortDataType
+import ghidra.program.model.data.Structure
+import ghidra.program.model.data.StructureDataType
+import ghidra.program.model.data.Undefined4DataType
+import ghidra.program.model.data.Union
+import ghidra.program.model.data.UnionDataType
+import ghidra.program.model.data.UnsignedCharDataType
+import ghidra.program.model.data.UnsignedLongDataType
+import ghidra.program.model.data.UnsignedLongLongDataType
+import ghidra.program.model.data.UnsignedShortDataType
+import ghidra.program.model.data.VoidDataType
 import ghidra.program.model.listing.Program
 import lol.fairplay.ghidraapple.core.objc.encodings.TypeNode
 import lol.fairplay.ghidraapple.core.objc.encodings.TypeNodeVisitor
@@ -14,12 +35,10 @@ fun getRandomHexString(length: Int): String {
     return bytes.joinToString("") { "%02x".format(it) }
 }
 
-
 /**
  * Converts a ``TypeNode`` tree into a Ghidra ``DataType``
  */
 class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
-
     private lateinit var result: DataType
 
     fun getResult(): DataType {
@@ -52,9 +71,10 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
     }
 
     override fun visitStruct(struct: TypeNode.Struct) {
-        val name = (struct.name ?: "anon__${getRandomHexString(6)}").let{
-            if (it.isEmpty()) "anon__${getRandomHexString(6)}" else it
-        }
+        val name =
+            (struct.name ?: "anon__${getRandomHexString(6)}").let {
+                if (it.isEmpty()) "anon__${getRandomHexString(6)}" else it
+            }
 
         var ghidraStruct = getGAType(name) as Structure?
         if (ghidraStruct != null) {
@@ -99,10 +119,10 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
     }
 
     override fun visitUnion(union: TypeNode.Union) {
-
-        val name = (union.name ?: "anon__${getRandomHexString(6)}").let{
-            if (it.isEmpty()) "anon__${getRandomHexString(6)}" else it
-        }
+        val name =
+            (union.name ?: "anon__${getRandomHexString(6)}").let {
+                if (it.isEmpty()) "anon__${getRandomHexString(6)}" else it
+            }
 
         var ghidraUnion = getGAType(name)
         if (ghidraUnion != null) {
@@ -139,26 +159,27 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
     }
 
     override fun visitPrimitive(primitive: TypeNode.Primitive) {
-        result = when (primitive.type) {
-            'c' -> CharDataType.dataType // this could also be `BOOL`
-            'C' -> UnsignedCharDataType.dataType
-            's' -> ShortDataType.dataType
-            'S' -> UnsignedShortDataType.dataType
+        result =
+            when (primitive.type) {
+                'c' -> CharDataType.dataType // this could also be `BOOL`
+                'C' -> UnsignedCharDataType.dataType
+                's' -> ShortDataType.dataType
+                'S' -> UnsignedShortDataType.dataType
 //            'i' -> IntegerDataType.dataType
 //            'I' -> UnsignedIntegerDataType.dataType
-            'i', 'I' -> Undefined4DataType.dataType
-            'l' -> LongDataType.dataType
-            'L' -> UnsignedLongDataType.dataType
-            'q' -> LongLongDataType.dataType
-            'Q' -> UnsignedLongLongDataType.dataType
-            'f' -> FloatDataType.dataType
-            'd' -> DoubleDataType.dataType
-            'v' -> VoidDataType.dataType
-            'B' -> BooleanDataType.dataType
-            'D' -> LongDoubleDataType.dataType
-            '*' -> PointerDataType(CharDataType.dataType, 8)
-            else -> throw Exception("Unknown primitive type: ${primitive.type}")
-        }
+                'i', 'I' -> Undefined4DataType.dataType
+                'l' -> LongDataType.dataType
+                'L' -> UnsignedLongDataType.dataType
+                'q' -> LongLongDataType.dataType
+                'Q' -> UnsignedLongLongDataType.dataType
+                'f' -> FloatDataType.dataType
+                'd' -> DoubleDataType.dataType
+                'v' -> VoidDataType.dataType
+                'B' -> BooleanDataType.dataType
+                'D' -> LongDoubleDataType.dataType
+                '*' -> PointerDataType(CharDataType.dataType, 8)
+                else -> throw Exception("Unknown primitive type: ${primitive.type}")
+            }
     }
 
     override fun visitPointer(pointer: TypeNode.Pointer) {

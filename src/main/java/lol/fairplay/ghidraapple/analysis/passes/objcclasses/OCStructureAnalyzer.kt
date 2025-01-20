@@ -19,9 +19,7 @@ import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.derefUntyped
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.get
 import lol.fairplay.ghidraapple.analysis.utilities.parseObjCListSection
 
-
 class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYTE_ANALYZER) {
-
     companion object {
         private const val NAME = "Objective-C: Structures"
         private const val DESCRIPTION = ""
@@ -40,42 +38,53 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
     override fun canAnalyze(program: Program): Boolean {
         this.program = program
 
-        return program.memory.getBlock("__objc_classlist") != null
-                || program.memory.getBlock("__objc_protolist") != null
+        return program.memory.getBlock("__objc_classlist") != null ||
+            program.memory.getBlock("__objc_protolist") != null
     }
 
-    override fun added(program: Program, set: AddressSetView, monitor: TaskMonitor, log: MessageLog?): Boolean {
+    override fun added(
+        program: Program,
+        set: AddressSetView,
+        monitor: TaskMonitor,
+        log: MessageLog?,
+    ): Boolean {
         monitor.message = "Reading list sections..."
 
-        val classStructures = (parseObjCListSection(program, "__objc_classlist")?.mapNotNull { klassT ->
-            // class_t[4]->class_rw[3]->name
-            runCatching {
-                klassT[4].derefUntyped()[3].deref<String>() to klassT
-            }.onFailure {
-                Msg.error(this, "Failed to parse class data at ${klassT.address}")
-            }.getOrNull()
-        }?.toMap() ?: emptyMap()).toMutableMap()
+        val classStructures =
+            (
+                parseObjCListSection(program, "__objc_classlist")?.mapNotNull { klassT ->
+                    // class_t[4]->class_rw[3]->name
+                    runCatching {
+                        klassT[4].derefUntyped()[3].deref<String>() to klassT
+                    }.onFailure {
+                        Msg.error(this, "Failed to parse class data at ${klassT.address}")
+                    }.getOrNull()
+                }?.toMap() ?: emptyMap()
+            ).toMutableMap()
 
-
-        val protocolStructures = (parseObjCListSection(program, "__objc_protolist")?.associate { protoT ->
-            // protocol_t[1]->name
-            protoT[1].deref<String>() to protoT
-        } ?: emptyMap()).toMutableMap()
+        val protocolStructures =
+            (
+                parseObjCListSection(program, "__objc_protolist")?.associate { protoT ->
+                    // protocol_t[1]->name
+                    protoT[1].deref<String>() to protoT
+                } ?: emptyMap()
+            ).toMutableMap()
 
         // Some class symbols that are not inside the objc::class_t namespace are prefixed with `_OBJC_CLASS_$_`
         // These are not parsable, but are still useful for analysis purposes.
-        val externalClasses = program.symbolTable.symbolIterator.filter {
-            it.name.startsWith("_OBJC_CLASS_\$_")
-        }.mapNotNull {
-            val className = it.name.removePrefix("_OBJC_CLASS_\$_")
+        val externalClasses =
+            program.symbolTable.symbolIterator.filter {
+                it.name.startsWith("_OBJC_CLASS_\$_")
+            }.mapNotNull {
+                val className = it.name.removePrefix("_OBJC_CLASS_\$_")
 
-            // just for sanity, ensure it's not already in either of the structure mappings.
-            if (className !in classStructures && className !in protocolStructures) {
-                className
-            } else {
-                null
+                // just for sanity, ensure it's not already in either of the structure mappings.
+                if (className !in classStructures && className !in protocolStructures) {
+                    className
+                } else {
+                    null
+                }
             }
-        }
 
         buildStructureTypes(classStructures, protocolStructures, externalClasses, monitor)
 
@@ -86,9 +95,8 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
         klassData: Map<String, Data>,
         protoData: Map<String, Data>,
         externalClasses: List<String>,
-        taskMonitor: TaskMonitor?
+        taskMonitor: TaskMonitor?,
     ): Boolean {
-
         val parser = StructureParsing(program)
         val typeResolver = TypeResolver(program)
 
@@ -115,27 +123,28 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
             taskMonitor?.incrementProgress()
 
             // Attempt to parse the class into the analysis models.
-            val model = runCatching {
-                parser.parseClass(data.address.unsignedOffset)
-            }.onFailure {
-                Msg.error(this, "Could not parse class $name into a model: $it")
-            }.getOrNull() ?: return@forEach
+            val model =
+                runCatching {
+                    parser.parseClass(data.address.unsignedOffset)
+                }.onFailure {
+                    Msg.error(this, "Could not parse class $name into a model: $it")
+                }.getOrNull() ?: return@forEach
 
             // Create the instance variables for the structure.
             for (ivar in model.instanceVariables ?: return@forEach) {
-
-                var fieldType = runCatching {
-                    typeResolver.buildParsed(ivar.type)
-                }.onFailure {
-                    Msg.error(this, "Could not reconstruct type for ivar ${model.name}->${ivar.name}")
-                }.getOrNull() ?: continue
+                var fieldType =
+                    runCatching {
+                        typeResolver.buildParsed(ivar.type)
+                    }.onFailure {
+                        Msg.error(this, "Could not reconstruct type for ivar ${model.name}->${ivar.name}")
+                    }.getOrNull() ?: continue
 
                 (dataType as Structure).insertAtOffset(
                     ivar.offset.toInt(),
                     fieldType,
                     ivar.size,
                     ivar.name,
-                    null
+                    null,
                 )
             }
         }
@@ -143,5 +152,3 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
         return true
     }
 }
-
-

@@ -1,6 +1,5 @@
 package lol.fairplay.ghidraapple.core.objc.encodings
 
-
 enum class PropertyAttribute(val code: Char) {
     READ_ONLY('R'),
     BY_COPY('C'),
@@ -13,11 +12,12 @@ enum class PropertyAttribute(val code: Char) {
     WEAK('W'),
     STRONG('P'),
     NON_ATOMIC('N'),
-    NULLABLE('?');
+    NULLABLE('?'),
+    ;
 
     companion object {
         fun fromCode(code: Char): PropertyAttribute? {
-            return PropertyAttribute.entries.find {it.code == code}
+            return PropertyAttribute.entries.find { it.code == code }
         }
     }
 
@@ -46,7 +46,6 @@ data class EncodedProperty(
     val customSetter: String? = null,
     val backingIvar: String? = null,
 )
-
 
 fun parseEncodedProperty(input: String): EncodedProperty {
     println("Property: $input")
@@ -95,4 +94,3 @@ fun parseEncodedProperty(input: String): EncodedProperty {
 
     return EncodedProperty(attributes, type, customGetter, customSetter, ivarName)
 }
-

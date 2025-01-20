@@ -12,8 +12,11 @@ import ghidra.app.services.AnalyzerType
 import ghidra.app.util.importer.MessageLog
 import ghidra.program.model.address.AddressSetView
 import ghidra.program.model.lang.CompilerSpec
-import ghidra.program.model.listing.*
 import ghidra.program.model.listing.Function
+import ghidra.program.model.listing.ParameterImpl
+import ghidra.program.model.listing.Program
+import ghidra.program.model.listing.ReturnParameterImpl
+import ghidra.program.model.listing.Variable
 import ghidra.program.model.mem.MemoryBlock
 import ghidra.program.model.pcode.PcodeOp
 import ghidra.program.model.symbol.SourceType
@@ -31,7 +34,6 @@ import kotlin.jvm.optionals.getOrNull
 import kotlin.to
 
 class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTION_ANALYZER) {
-
     companion object {
         const val NAME = "Objective-C Selector Trampoline Analysis"
         const val DESCRIPTION = "Identify and rename Objective-C trampoline procedures."
@@ -48,99 +50,116 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
         setDefaultEnablement(true)
         setPriority(PRIORITY)
         setSupportsOneTimeAnalysis()
-
     }
 
     @Throws(CancelledException::class)
-    override fun added(program: Program, set: AddressSetView, monitor: TaskMonitor, log: MessageLog): Boolean {
+    override fun added(
+        program: Program,
+        set: AddressSetView,
+        monitor: TaskMonitor,
+        log: MessageLog,
+    ): Boolean {
         // Get all trampoline functions in the addressSet
         program.functionManager.functionTagManager.createFunctionTag(
             TRAMPOLINE_TAG,
-            TRAMPOLINE_TAG_DESC
+            TRAMPOLINE_TAG_DESC,
         )
 
-        val trampolineFunctions = program.functionManager
-            .getFunctions(set, true)
-            .filter { isPlausibleTrampoline(it) }.toList()
+        val trampolineFunctions =
+            program.functionManager
+                .getFunctions(set, true)
+                .filter { isPlausibleTrampoline(it) }.toList()
 
         monitor.maximum = trampolineFunctions.size.toLong()
 
-        val stubNamespace = program.symbolTable.getOrCreateNameSpace(
-            program.globalNamespace,
-            STUB_NAMESPACE_NAME,
-            SourceType.ANALYSIS)
+        val stubNamespace =
+            program.symbolTable.getOrCreateNameSpace(
+                program.globalNamespace,
+                STUB_NAMESPACE_NAME,
+                SourceType.ANALYSIS,
+            )
 
         trampolineFunctions.forEach {
             it.addTag(TRAMPOLINE_TAG)
             it.symbol.setNamespace(stubNamespace)
         }
         findAllSelectors(program, trampolineFunctions, monitor, log).forEach {
-            (func, selector) -> applySelectorToFunction(func, selector) }
+                (func, selector) ->
+            applySelectorToFunction(func, selector)
+        }
         return true
-
     }
 
     /**
      * Core of the trampoline analysis
      */
     private fun findAllSelectors(
-        program: Program, trampolineFunctions: List<Function>, monitor: TaskMonitor, log: MessageLog
+        program: Program,
+        trampolineFunctions: List<Function>,
+        monitor: TaskMonitor,
+        log: MessageLog,
     ): List<Pair<Function, String?>> {
-
 //        trampolineFunctions.filter { it.symbol.source  }
 
-        val configurer = DecompileConfigurer { decompiler: DecompInterface ->
-            decompiler.simplificationStyle = "normalize"
-            decompiler.toggleSyntaxTree(true)
-            decompiler.toggleCCode(false)
-            decompiler.setOptions(
-                DecompileOptions().apply {
-                    this.isRespectReadOnly = true
-                }
-            )
-        }
+        val configurer =
+            DecompileConfigurer { decompiler: DecompInterface ->
+                decompiler.simplificationStyle = "normalize"
+                decompiler.toggleSyntaxTree(true)
+                decompiler.toggleCCode(false)
+                decompiler.setOptions(
+                    DecompileOptions().apply {
+                        this.isRespectReadOnly = true
+                    },
+                )
+            }
 
-        val callback: DecompilerCallback<Pair<Function, String?>> = object : DecompilerCallback<Pair<Function, String?>>(program, configurer) {
-            @Throws(Exception::class)
-            override fun process(results: DecompileResults, m: TaskMonitor): Pair<Function, String?> {
+        val callback: DecompilerCallback<Pair<Function, String?>> =
+            object : DecompilerCallback<Pair<Function, String?>>(program, configurer) {
+                @Throws(Exception::class)
+                override fun process(
+                    results: DecompileResults,
+                    m: TaskMonitor,
+                ): Pair<Function, String?> {
 //                inspectFunction(program, results, monitor)
-                m.increment()
+                    m.increment()
 
-                if (results.highFunction == null) {
-                    println("function name: ${results.function.name}")
-                    return results.function to null
-                }
-
-                val callOp = results.highFunction.pcodeOps.iterator().asSequence()
-                    .singleOrNull { it.opcode == PcodeOp.CALLIND || it.opcode == PcodeOp.CALL }
-                if (callOp != null) {
-                    val selAddress = getConstantFromVarNode(callOp.inputs[2]).getOrNull()?.toDefaultAddressSpace(program)
-                    if (selAddress != null){
-                        val sel = program.listing.getDataAt(selAddress).value as? String
-                        if (sel != null){
-                            return results.function to sel
-                        }
+                    if (results.highFunction == null) {
+                        println("function name: ${results.function.name}")
+                        return results.function to null
                     }
 
-                } else {
-                    log.appendMsg(
-                        this@SelectorTrampolineAnalyzer.name,
-                        "Could not determine CallOp for function ${results.function.name}"
-                    )
+                    val callOp =
+                        results.highFunction.pcodeOps.iterator().asSequence()
+                            .singleOrNull { it.opcode == PcodeOp.CALLIND || it.opcode == PcodeOp.CALL }
+                    if (callOp != null) {
+                        val selAddress = getConstantFromVarNode(callOp.inputs[2]).getOrNull()?.toDefaultAddressSpace(program)
+                        if (selAddress != null) {
+                            val sel = program.listing.getDataAt(selAddress).value as? String
+                            if (sel != null) {
+                                return results.function to sel
+                            }
+                        }
+                    } else {
+                        log.appendMsg(
+                            this@SelectorTrampolineAnalyzer.name,
+                            "Could not determine CallOp for function ${results.function.name}",
+                        )
+                    }
+                    return results.function to null
                 }
-                return results.function to null
-
             }
-        }
 
         val results = ParallelDecompiler.decompileFunctions(callback, trampolineFunctions, monitor)
         callback.dispose()
         return results
     }
 
-    private fun applySelectorToFunction(func: Function, selector: String?) {
-        if (selector != null){
-            if (func.name != selector){
+    private fun applySelectorToFunction(
+        func: Function,
+        selector: String?,
+    ) {
+        if (selector != null) {
+            if (func.name != selector) {
                 // Change the function name based on the selector
                 // If it already had a name because symbol information was available, we don't want to overwrite it
                 // The name would be the same, but this way the SourceType.IMPORTED is preserved
@@ -150,21 +169,23 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
 
         // Fixup signature of the function
         fixTrampolineSignature(func, selector)
-
     }
 
-    private fun fixTrampolineSignature(func: Function, selector: String?) {
+    private fun fixTrampolineSignature(
+        func: Function,
+        selector: String?,
+    ) {
         // Get ID datatype
         val program = func.program
         val idDataType = program.dataTypeManager.getDataType("/_objc2_/ID")
-        val returnVariable = ReturnParameterImpl(idDataType, program);
+        val returnVariable = ReturnParameterImpl(idDataType, program)
 
         val arguments = mutableListOf<Variable>(ParameterImpl("recv", idDataType, program))
-        if (selector?.contains(':') == true){
+        if (selector?.contains(':') == true) {
             // We need to add a parameter for the selector otherwise Ghidra doesn't find the varargs in x2 and later
             // But we don't want the add clutter with a useless selector argument for selectors without arguments
             arguments.add(
-                ParameterImpl("sel", program.dataTypeManager.getDataType("/_objc2_/SEL"), program)
+                ParameterImpl("sel", program.dataTypeManager.getDataType("/_objc2_/SEL"), program),
             )
         }
 
@@ -203,7 +224,4 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
     private fun getStubsSegment(program: Program): MemoryBlock? {
         return program.memory.getBlock("__objc_stubs")
     }
-
-
-
 }
