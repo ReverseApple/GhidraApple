@@ -70,4 +70,12 @@ sourceSets {
         }
     }
 }
+
+idea {
+    module {
+        isDownloadJavadoc = true
+        isDownloadSources = true
+    }
+}
+
 // ----------------------END "DO NOT MODIFY" SECTION-------------------------------
