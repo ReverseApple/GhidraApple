@@ -20,7 +20,9 @@ import lol.fairplay.ghidraapple.core.objc.modelling.OCClass
     description = "",
     shortDescription = "",
 )
-class ClassParserTestingPlugin(tool: PluginTool) : ProgramPlugin(tool) {
+class ClassParserTestingPlugin(
+    tool: PluginTool,
+) : ProgramPlugin(tool) {
     init {
         createActions()
     }
