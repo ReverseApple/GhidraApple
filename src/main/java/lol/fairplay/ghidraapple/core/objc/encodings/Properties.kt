@@ -1,6 +1,8 @@
 package lol.fairplay.ghidraapple.core.objc.encodings
 
-enum class PropertyAttribute(val code: Char) {
+enum class PropertyAttribute(
+    val code: Char,
+) {
     READ_ONLY('R'),
     BY_COPY('C'),
     BY_REFERENCE('&'),
@@ -16,13 +18,11 @@ enum class PropertyAttribute(val code: Char) {
     ;
 
     companion object {
-        fun fromCode(code: Char): PropertyAttribute? {
-            return PropertyAttribute.entries.find { it.code == code }
-        }
+        fun fromCode(code: Char): PropertyAttribute? = PropertyAttribute.entries.find { it.code == code }
     }
 
-    fun annotationString(): String? {
-        return when (this) {
+    fun annotationString(): String? =
+        when (this) {
             READ_ONLY -> "readonly"
             BY_COPY -> "copy"
             BY_REFERENCE -> "retain"
@@ -36,7 +36,6 @@ enum class PropertyAttribute(val code: Char) {
             NULLABLE -> "nullable"
             else -> null
         }
-    }
 }
 
 data class EncodedProperty(

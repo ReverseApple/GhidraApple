@@ -6,13 +6,20 @@ import lol.fairplay.ghidraapple.core.objc.encodings.SignatureTypeModifier
 import lol.fairplay.ghidraapple.core.objc.encodings.TypeNode
 import lol.fairplay.ghidraapple.core.objc.encodings.TypeStringify
 
-open class OCFieldContainer(open val name: String)
+open class OCFieldContainer(
+    open val name: String,
+)
 
-abstract class OCField(open val name: String) {
+abstract class OCField(
+    open val name: String,
+) {
     abstract fun parent(): OCFieldContainer
 }
 
-open class ResolvedEntity<T : OCField>(val name: String, initial: T? = null) {
+open class ResolvedEntity<T : OCField>(
+    val name: String,
+    initial: T? = null,
+) {
     // stack order is concrete to abstract
     internal val stack = mutableListOf<T>()
 
@@ -36,12 +43,13 @@ open class ResolvedEntity<T : OCField>(val name: String, initial: T? = null) {
         other.stack.forEach { pushAbstract(it) }
     }
 
-    override fun toString(): String {
-        return "ResolvedEntity(name='$name', stack=$stack)"
-    }
+    override fun toString(): String = "ResolvedEntity(name='$name', stack=$stack)"
 }
 
-class ResolvedMethod(name: String, initial: OCMethod? = null) : ResolvedEntity<OCMethod>(name, initial) {
+class ResolvedMethod(
+    name: String,
+    initial: OCMethod? = null,
+) : ResolvedEntity<OCMethod>(name, initial) {
     fun bestSignature(): Pair<EncodedSignature?, OCFieldContainer> {
         val impl =
             stack.find {
@@ -51,7 +59,10 @@ class ResolvedMethod(name: String, initial: OCMethod? = null) : ResolvedEntity<O
     }
 }
 
-class ResolvedProperty(name: String, initial: OCProperty? = null) : ResolvedEntity<OCProperty>(name, initial)
+class ResolvedProperty(
+    name: String,
+    initial: OCProperty? = null,
+) : ResolvedEntity<OCProperty>(name, initial)
 
 data class OCClass(
     override val name: String,
@@ -68,22 +79,22 @@ data class OCClass(
     /**
      * Returns the list of superclasses from concrete to abstract.
      */
-    fun getInheritance(): List<OCClass> {
-        return if (superclass == null) {
+    fun getInheritance(): List<OCClass> =
+        if (superclass == null) {
             listOf()
         } else {
             listOf(superclass) + superclass.getInheritance()
         }
-    }
 
     fun isSwift(): Boolean = (flags and ClassFlags.IS_SWIFT.bit) != 0uL
 
     fun resolvedProperties(): List<ResolvedProperty> {
         // Initialize resolution mapping with the most concrete forms relative to this class.
         val propertyMapping =
-            baseProperties().associate {
-                it.name to ResolvedProperty(it.name, it)
-            }.toMutableMap()
+            baseProperties()
+                .associate {
+                    it.name to ResolvedProperty(it.name, it)
+                }.toMutableMap()
 
         // Then, obtain resolutions for protocol methods, and append to ours.
         baseProtocols?.forEach { protocol ->
@@ -110,9 +121,10 @@ data class OCClass(
 
     fun resolvedMethods(): List<ResolvedMethod> {
         val methodMapping =
-            baseMethods().associate {
-                it.name to ResolvedMethod(it.name, it)
-            }.toMutableMap()
+            baseMethods()
+                .associate {
+                    it.name to ResolvedMethod(it.name, it)
+                }.toMutableMap()
 
         // collect resolved methods from implemented protocols
         baseProtocols?.forEach { protocol ->
@@ -136,13 +148,9 @@ data class OCClass(
         return methodMapping.values.toList()
     }
 
-    fun baseMethods(): List<OCMethod> {
-        return (baseInstanceMethods ?: listOf()) + (baseClassMethods ?: listOf())
-    }
+    fun baseMethods(): List<OCMethod> = (baseInstanceMethods ?: listOf()) + (baseClassMethods ?: listOf())
 
-    fun baseProperties(): List<OCProperty> {
-        return (baseInstanceProperties ?: listOf()) + (baseClassProperties ?: listOf())
-    }
+    fun baseProperties(): List<OCProperty> = (baseInstanceProperties ?: listOf()) + (baseClassProperties ?: listOf())
 }
 
 data class OCProtocol(
@@ -158,9 +166,11 @@ data class OCProtocol(
 ) : OCFieldContainer(name) {
     fun resolvedProperties(): List<ResolvedProperty> {
         val propertyMapping =
-            instanceProperties?.associate {
-                it.name to ResolvedProperty(it.name, it)
-            }.orEmpty().toMutableMap()
+            instanceProperties
+                ?.associate {
+                    it.name to ResolvedProperty(it.name, it)
+                }.orEmpty()
+                .toMutableMap()
 
         protocols?.forEach { protocol ->
             protocol.resolvedProperties().forEach { propResolution ->
@@ -177,9 +187,10 @@ data class OCProtocol(
 
     fun resolvedMethods(): List<ResolvedMethod> {
         val methodMapping =
-            baseMethods().associate {
-                it.name to ResolvedMethod(it.name, it)
-            }.toMutableMap()
+            baseMethods()
+                .associate {
+                    it.name to ResolvedMethod(it.name, it)
+                }.toMutableMap()
 
         protocols?.forEach { protocol ->
             protocol.resolvedMethods().forEach { methodResolution ->
@@ -212,12 +223,10 @@ data class OCMethod(
 ) : OCField(name) {
     override fun parent(): OCFieldContainer = parent
 
-    override fun toString(): String {
-        return "OCMethod(name='$name', signature=${getSignature()}, implAddress=$implAddress)"
-    }
+    override fun toString(): String = "OCMethod(name='$name', signature=${getSignature()}, implAddress=$implAddress)"
 
-    fun isClassMethod(): Boolean {
-        return if (parent is OCClass) {
+    fun isClassMethod(): Boolean =
+        if (parent is OCClass) {
             (parent as OCClass).baseClassMethods?.contains(this) == true
         } else {
             val cond1 = (parent as OCProtocol).classMethods?.contains(this) == true
@@ -225,7 +234,6 @@ data class OCMethod(
 
             cond1 || cond2
         }
-    }
 
     fun getSignature(): EncodedSignature? {
         if (parent is OCProtocol && (parent as OCProtocol).extendedSignatures != null) {
@@ -279,9 +287,7 @@ data class OCIVar(
 ) : OCField(name) {
     override fun parent(): OCFieldContainer = ocClass
 
-    override fun toString(): String {
-        return "OCIVar(name='$name', offset=$offset, type=$type)"
-    }
+    override fun toString(): String = "OCIVar(name='$name', offset=$offset, type=$type)"
 }
 
 data class OCProperty(
@@ -295,17 +301,14 @@ data class OCProperty(
 ) : OCField(name) {
     override fun parent(): OCFieldContainer = parent
 
-    override fun toString(): String {
-        return "OCProperty(name='$name', attributes=$attributes, type=$type)"
-    }
+    override fun toString(): String = "OCProperty(name='$name', attributes=$attributes, type=$type)"
 
-    fun isClassProperty(): Boolean {
-        return if (parent is OCClass) {
+    fun isClassProperty(): Boolean =
+        if (parent is OCClass) {
             (parent as OCClass).baseClassProperties?.contains(this) == true
         } else {
             false
         }
-    }
 
     fun declaration(): String {
         val builder = StringBuilder()
@@ -327,8 +330,7 @@ data class OCProperty(
                         "setter=" -> "setter=$customSetter"
                         else -> it
                     }
-                }
-                .joinToString(", ", postfix = ") ") { it }
+                }.joinToString(", ", postfix = ") ") { it }
                 .let { builder.append(it) }
         }
         val typeString = TypeStringify.getResult(type!!.first)
@@ -338,11 +340,10 @@ data class OCProperty(
         return builder.toString()
     }
 
-    fun getBackingIvar(): OCIVar? {
-        return if (parent is OCClass) {
+    fun getBackingIvar(): OCIVar? =
+        if (parent is OCClass) {
             (parent as OCClass).instanceVariables?.find { it.name == backingIvar }
         } else {
             null
         }
-    }
 }

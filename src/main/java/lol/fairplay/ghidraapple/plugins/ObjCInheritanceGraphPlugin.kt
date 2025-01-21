@@ -21,7 +21,9 @@ import lol.fairplay.ghidraapple.graph.ClassAbstractionGraphTask
     description = "",
     shortDescription = "",
 )
-class ObjCInheritanceGraphPlugin(tool: PluginTool) : ProgramPlugin(tool) {
+class ObjCInheritanceGraphPlugin(
+    tool: PluginTool,
+) : ProgramPlugin(tool) {
     init {
         createActions()
     }
@@ -50,7 +52,5 @@ class ObjCInheritanceGraphPlugin(tool: PluginTool) : ProgramPlugin(tool) {
         tool.addAction(action)
     }
 
-    private fun sanitizeMenuPath(path: Array<String>): Array<String> {
-        return path.map { it.replace(Regex("\\s{2,}"), " ").trim() }.toTypedArray()
-    }
+    private fun sanitizeMenuPath(path: Array<String>): Array<String> = path.map { it.replace(Regex("\\s{2,}"), " ").trim() }.toTypedArray()
 }
