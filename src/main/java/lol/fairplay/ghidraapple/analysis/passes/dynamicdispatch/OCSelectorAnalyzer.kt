@@ -8,6 +8,7 @@ import ghidra.program.model.pcode.PcodeOp
 import ghidra.program.model.symbol.Reference
 import ghidra.program.model.symbol.SourceType
 import lol.fairplay.ghidraapple.analysis.passes.ObjectiveCDispatchTagAnalyzer
+import lol.fairplay.ghidraapple.analysis.utilities.addCollection
 import lol.fairplay.ghidraapple.analysis.utilities.getConstantFromVarNode
 import lol.fairplay.ghidraapple.analysis.utilities.toDefaultAddressSpace
 import kotlin.jvm.optionals.getOrNull
@@ -52,9 +53,7 @@ class OCSelectorAnalyzer :
                 SELECTOR_DATA,
             )
 
-        result.forEach { (ref, selector) ->
-            propMap.add(ref.fromAddress, selector)
-        }
+        propMap.addCollection(result.map { (ref, selector) -> ref.fromAddress to selector })
     }
 
     override fun prepare(

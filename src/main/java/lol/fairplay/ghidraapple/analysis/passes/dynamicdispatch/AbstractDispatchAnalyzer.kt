@@ -82,7 +82,7 @@ abstract class AbstractDispatchAnalyzer<CALLSITE_RESULT>(
      * This can be overridden to provide custom configuration
      * but the default one is probably fine for most cases
      */
-    protected fun configureDecompiler(): DecompileConfigurer =
+    open fun configureDecompiler(): DecompileConfigurer =
         DecompileConfigurer { decompiler: DecompInterface ->
             decompiler.simplificationStyle = "normalize"
             decompiler.toggleSyntaxTree(true)
