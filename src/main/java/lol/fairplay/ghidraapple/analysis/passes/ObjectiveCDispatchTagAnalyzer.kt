@@ -6,7 +6,6 @@ import ghidra.app.services.AnalyzerType
 import ghidra.app.util.importer.MessageLog
 import ghidra.program.model.address.AddressSetView
 import ghidra.program.model.listing.Function
-import ghidra.program.model.listing.FunctionManager
 import ghidra.program.model.listing.Program
 import ghidra.program.model.mem.MemoryBlock
 import ghidra.util.task.TaskMonitor
@@ -24,11 +23,12 @@ class ObjectiveCDispatchTagAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, Analyz
         const val OBJC_TRAMPOLINE = "OBJC_TRAMPOLINE"
         const val OBJC_DISPATCH_CLASS = "OBJC_DISPATCH_CLASS"
         const val OBJC_ALLOC = "OBJC_ALLOC"
+        val PRIORITY = AnalysisPriority.HIGHEST_PRIORITY
     }
 
     init {
         setDefaultEnablement(true)
-        setPriority(AnalysisPriority.HIGHEST_PRIORITY)
+        priority = PRIORITY
         setSupportsOneTimeAnalysis()
     }
 
@@ -71,9 +71,4 @@ class ObjectiveCDispatchTagAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, Analyz
     }
 
     private fun getStubsSegment(program: Program): MemoryBlock? = program.memory.getBlock("__objc_stubs")
-}
-
-fun FunctionManager.getFunctionsWithTag(tagName: String): List<Function> {
-    val tag = functionTagManager.getFunctionTag(tagName) ?: return emptyList()
-    return this.getFunctions(true).filter { it.tags.contains(tag) }
 }

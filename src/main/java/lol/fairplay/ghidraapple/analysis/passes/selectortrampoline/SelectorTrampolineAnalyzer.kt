@@ -24,8 +24,8 @@ import ghidra.program.model.util.StringPropertyMap
 import ghidra.util.exception.CancelledException
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.analysis.passes.ObjectiveCDispatchTagAnalyzer.Companion.OBJC_TRAMPOLINE
-import lol.fairplay.ghidraapple.analysis.passes.getFunctionsWithTag
 import lol.fairplay.ghidraapple.analysis.utilities.getConstantFromVarNode
+import lol.fairplay.ghidraapple.analysis.utilities.getFunctionsWithTag
 import lol.fairplay.ghidraapple.analysis.utilities.toDefaultAddressSpace
 import kotlin.Boolean
 import kotlin.Exception

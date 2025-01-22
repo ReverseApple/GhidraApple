@@ -9,12 +9,14 @@ import ghidra.program.model.address.AddressSetView
 import ghidra.program.model.data.PointerDataType
 import ghidra.program.model.listing.Data
 import ghidra.program.model.listing.Function
+import ghidra.program.model.listing.FunctionManager
 import ghidra.program.model.listing.Program
 import ghidra.program.model.symbol.Namespace
 import ghidra.program.model.symbol.RefType
 import ghidra.program.model.symbol.ReferenceManager
 import ghidra.program.model.symbol.SourceType
 import ghidra.program.model.symbol.Symbol
+import ghidra.program.model.util.StringPropertyMap
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.derefUntyped
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.get
 
@@ -150,3 +152,10 @@ fun <ROW_TYPE, COLUMN_TYPE> TableColumnDescriptor<ROW_TYPE>.addColumn(
         )
     }
 }
+
+fun FunctionManager.getFunctionsWithTag(tagName: String): List<Function> {
+    val tag = functionTagManager.getFunctionTag(tagName) ?: return emptyList()
+    return this.getFunctions(true).filter { it.tags.contains(tag) }
+}
+
+fun StringPropertyMap.toMap(): Map<Address, String> = this.propertyIterator.associateWith { this.get(it) }
