@@ -59,6 +59,8 @@ class ObjectiveCDispatchTagAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, Analyz
                 // so it needs to be handled differently in receiver type analysis
                 "_objc_msgSendSuper2" -> function.addTag(OBJC_DISPATCH_SELECTOR)
                 "_objc_alloc_init" -> function.addTag(OBJC_ALLOC)
+                "_objc_alloc" -> function.addTag(OBJC_ALLOC)
+                "_objc_allocWithZone" -> function.addTag(OBJC_ALLOC)
             }
         }
         return true

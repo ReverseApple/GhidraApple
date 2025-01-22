@@ -16,6 +16,7 @@ import ghidra.program.model.symbol.RefType
 import ghidra.program.model.symbol.ReferenceManager
 import ghidra.program.model.symbol.SourceType
 import ghidra.program.model.symbol.Symbol
+import ghidra.program.model.util.PropertyMap
 import ghidra.program.model.util.StringPropertyMap
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.derefUntyped
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.get
@@ -158,4 +159,16 @@ fun FunctionManager.getFunctionsWithTag(tagName: String): List<Function> {
     return this.getFunctions(true).filter { it.tags.contains(tag) }
 }
 
+fun FunctionManager.getFunctionsWithAnyTag(vararg tagNames: String): List<Function> {
+    val tags = tagNames.mapNotNull { functionTagManager.getFunctionTag(it) }.toSet()
+    if (tags.isEmpty()) return emptyList()
+    return this.getFunctions(true).filter { it.tags.intersect(tags).isNotEmpty() }
+}
+
 fun StringPropertyMap.toMap(): Map<Address, String> = this.propertyIterator.associateWith { this.get(it) }
+
+fun <T> PropertyMap<T>.addCollection(d: Collection<Pair<Address, T?>>) {
+    d.forEach { (address, value) -> this.add(address, value) }
+}
+
+fun Function.hasTag(tagName: String): Boolean = this.tags.any { it.name == tagName }
