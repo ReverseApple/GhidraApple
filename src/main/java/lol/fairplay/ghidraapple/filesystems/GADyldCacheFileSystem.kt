@@ -30,7 +30,7 @@ class GADyldCacheFileSystem(fileSystemName: String?, provider: ByteProvider?) :
             val headerOffsetInByteProvider = 0 // This is defined merely for explanatory benefit.
 
             // TODO: When Ghidra 11.4 returns (or whenever the [DyldCacheHeader] getters are implemented in a release),
-            //  remove this function and replace uses of this it with the implemented getters.
+            //  remove this function and replace uses of it with the implemented getters.
             fun getComponentBytes(componentName: String): ByteArray? {
                 val component =
                     rootHeaderDataType.components.firstOrNull { it.fieldName == componentName } ?: return null
