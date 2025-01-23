@@ -25,7 +25,7 @@ class GADyldCacheFileSystem(
     var osVersion: Dyld.Version? = null
 
     companion object {
-        const val ROOT_HEADER_OFFSET_IN_BYTE_PROVIDER = 0 // This is defined merely for explanatory benefit.
+        const val ROOT_HEADER_OFFSET_IN_BYTE_PROVIDER = 0L // This is defined merely for explanatory benefit.
     }
 
     // TODO: When Ghidra 11.4 returns (or whenever the [DyldCacheHeader] getters are implemented in a release),
@@ -37,7 +37,7 @@ class GADyldCacheFileSystem(
         val component =
             rootHeaderDataType.components.firstOrNull { it.fieldName == componentName } ?: return null
         return this.provider.readBytes(
-            (ROOT_HEADER_OFFSET_IN_BYTE_PROVIDER + component.offset).toLong(),
+            ROOT_HEADER_OFFSET_IN_BYTE_PROVIDER + component.offset,
             component.length.toLong(),
         )
     }
