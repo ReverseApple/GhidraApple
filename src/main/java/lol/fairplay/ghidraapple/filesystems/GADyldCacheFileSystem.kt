@@ -22,13 +22,16 @@ class GADyldCacheFileSystem(
     var platform: Dyld.Platform? = null
     var osVersion: Dyld.Version? = null
 
+    companion object {
+        const val ROOT_HEADER_OFFSET_IN_BYTE_PROVIDER = 0 // This is defined merely for explanatory benefit.
+    }
+
     override fun open(monitor: TaskMonitor?) {
         super.open(monitor)
         val rootHeader = this.splitDyldCache.getDyldCacheHeader(0)
         val rootHeaderDataType = rootHeader.toDataType() as StructureDataType? ?: return
 
         val fsByteProvider = this.provider // This is defined merely to avoid scope confusion in the below blocks.
-        val rootHeaderOffsetInByteProvider = 0 // This is defined merely for explanatory benefit.
 
         // TODO: When Ghidra 11.4 returns (or whenever the [DyldCacheHeader] getters are implemented in a release),
         //  remove this function and replace uses of it with the implemented getters.
@@ -36,7 +39,7 @@ class GADyldCacheFileSystem(
             val component =
                 rootHeaderDataType.components.firstOrNull { it.fieldName == componentName } ?: return null
             return fsByteProvider.readBytes(
-                (rootHeaderOffsetInByteProvider + component.offset).toLong(),
+                (ROOT_HEADER_OFFSET_IN_BYTE_PROVIDER + component.offset).toLong(),
                 component.length.toLong(),
             )
         }
