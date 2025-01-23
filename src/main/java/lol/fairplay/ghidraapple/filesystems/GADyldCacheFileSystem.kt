@@ -8,6 +8,7 @@ import ghidra.formats.gfilesystem.factory.GFileSystemBaseFactory
 import ghidra.program.model.data.StructureDataType
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.core.objc.modelling.Dyld
+import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.reflect.KClass
@@ -22,7 +23,8 @@ class GADyldCacheFileSystem(
     fileSystemName: String?,
     provider: ByteProvider?,
 ) : DyldCacheFileSystem(fileSystemName, provider) {
-    private var rootHeader: DyldCacheHeader? = null
+    private val rootHeader: DyldCacheHeader
+        get() = this.splitDyldCache?.getDyldCacheHeader(0) ?: throw IOException("Failed to get root header.")
     var platform: Dyld.Platform? = null
     var osVersion: Dyld.Version? = null
 
@@ -54,8 +56,7 @@ class GADyldCacheFileSystem(
     // TODO: When Ghidra 11.4 returns (or whenever the [DyldCacheHeader] getters are implemented in a release),
     //  remove this function (and helper function(s)) and replace uses of them with the implemented getters.
     private fun getComponentBytes(componentName: String): ByteArray? {
-        if (this.rootHeader == null) this.rootHeader = this.splitDyldCache.getDyldCacheHeader(0) ?: return null
-        val rootHeaderDataType = this.rootHeader!!.toDataType() as StructureDataType? ?: return null
+        val rootHeaderDataType = this.rootHeader.toDataType() as StructureDataType? ?: return null
         val component =
             rootHeaderDataType.components.firstOrNull { it.fieldName == componentName } ?: return null
         return this.provider.readBytes(
