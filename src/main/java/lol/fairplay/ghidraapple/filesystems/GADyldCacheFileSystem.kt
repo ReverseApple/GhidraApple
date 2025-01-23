@@ -10,6 +10,8 @@ import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.core.objc.modelling.Dyld
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.reflect.KClass
+import kotlin.reflect.cast
 
 @FileSystemInfo(
     type = "ga${DyldCacheFileSystem.DYLD_CACHE_FSTYPE}",
@@ -26,8 +28,29 @@ class GADyldCacheFileSystem(
     var platform: Dyld.Platform? = null
     var osVersion: Dyld.Version? = null
 
+    private fun <T : Any> getComponentValue(
+        componentName: String,
+        byteOrder: ByteOrder = ByteOrder.LITTLE_ENDIAN,
+        type: KClass<T>,
+    ): T {
+        val byteBuffer = ByteBuffer.wrap(getComponentBytes(componentName)!!).order(byteOrder)
+        return type.cast(
+            when (type) {
+                Long::class -> byteBuffer.long
+                ULong::class -> byteBuffer.long.toULong()
+                Int::class -> byteBuffer.int
+                UInt::class -> byteBuffer.int.toUInt()
+                Short::class -> byteBuffer.short
+                UShort::class -> byteBuffer.short.toUShort()
+                Float::class -> byteBuffer.float
+                Double::class -> byteBuffer.double
+                else -> throw IllegalArgumentException("Unsupported type: ${type.simpleName}")
+            },
+        )
+    }
+
     // TODO: When Ghidra 11.4 returns (or whenever the [DyldCacheHeader] getters are implemented in a release),
-    //  remove this function and replace uses of it with the implemented getters.
+    //  remove this function (and helper function(s)) and replace uses of them with the implemented getters.
     private fun getComponentBytes(componentName: String): ByteArray? {
         if (this.rootHeader == null) this.rootHeader = this.splitDyldCache.getDyldCacheHeader(0) ?: return null
         val rootHeaderDataType = this.rootHeader!!.toDataType() as StructureDataType? ?: return null
@@ -41,34 +64,13 @@ class GADyldCacheFileSystem(
 
     override fun open(monitor: TaskMonitor?) {
         super.open(monitor)
-
-        this.platform =
-            Dyld.Platform.getPlatform(
-                // This is a little-endian integer that's never above 255, so getting just the first byte should be ok.
-                getComponentBytes("platform")!![0].toUInt(),
-            )
-
-        this.osVersion =
-            Dyld.Version(
-                ByteBuffer
-                    .wrap(getComponentBytes("osVersion")!!)
-                    .order(ByteOrder.LITTLE_ENDIAN)
-                    .int
-                    .toUInt(),
-            )
+        this.platform = Dyld.Platform.getPlatform(getComponentValue(componentName = "platform", type = Int::class).toUInt())
+        this.osVersion = Dyld.Version(getComponentValue(componentName = "osVersion", type = Int::class).toUInt())
     }
 
     private fun getOptimizationsHeaderBytes(): ByteArray? {
-        val optimizationsHeaderOffset =
-            ByteBuffer
-                .wrap(getComponentBytes("objcOptsOffset")!!)
-                .order(ByteOrder.LITTLE_ENDIAN)
-                .long
-        val optimizationsHeaderLength =
-            ByteBuffer
-                .wrap(getComponentBytes("objcOptsSize")!!)
-                .order(ByteOrder.LITTLE_ENDIAN)
-                .long
+        val optimizationsHeaderOffset = getComponentValue(componentName = "objcOptsOffset", type = Long::class)
+        val optimizationsHeaderLength = getComponentValue(componentName = "objcOptsSize", type = Long::class)
         val actualOffset = rootHeaderOffsetInByteProvider!! + optimizationsHeaderOffset
         if (actualOffset >= this.provider.length()) return null
         return this.provider.readBytes(actualOffset, optimizationsHeaderLength)
