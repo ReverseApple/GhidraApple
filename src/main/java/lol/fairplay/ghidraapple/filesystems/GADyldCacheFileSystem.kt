@@ -21,23 +21,20 @@ class GADyldCacheFileSystem(
     provider: ByteProvider?,
 ) : DyldCacheFileSystem(fileSystemName, provider) {
     private var rootHeader: DyldCacheHeader? = null
+    private val rootHeaderOffsetInByteProvider: Long?
+        get() = rootHeader?.baseAddress
     var platform: Dyld.Platform? = null
     var osVersion: Dyld.Version? = null
-
-    companion object {
-        const val ROOT_HEADER_OFFSET_IN_BYTE_PROVIDER = 0L // This is defined merely for explanatory benefit.
-    }
 
     // TODO: When Ghidra 11.4 returns (or whenever the [DyldCacheHeader] getters are implemented in a release),
     //  remove this function and replace uses of it with the implemented getters.
     private fun getComponentBytes(componentName: String): ByteArray? {
-        val rootHeaderDataType =
-            (this.rootHeader ?: this.splitDyldCache.getDyldCacheHeader(0))
-                .toDataType() as StructureDataType? ?: return null
+        if (this.rootHeader == null) this.rootHeader = this.splitDyldCache.getDyldCacheHeader(0) ?: return null
+        val rootHeaderDataType = this.rootHeader!!.toDataType() as StructureDataType? ?: return null
         val component =
             rootHeaderDataType.components.firstOrNull { it.fieldName == componentName } ?: return null
         return this.provider.readBytes(
-            ROOT_HEADER_OFFSET_IN_BYTE_PROVIDER + component.offset,
+            rootHeaderOffsetInByteProvider!! + component.offset,
             component.length.toLong(),
         )
     }
@@ -72,11 +69,8 @@ class GADyldCacheFileSystem(
                 .wrap(getComponentBytes("objcOptsSize")!!)
                 .order(ByteOrder.LITTLE_ENDIAN)
                 .long
-        val actualOffset = ROOT_HEADER_OFFSET_IN_BYTE_PROVIDER + optimizationsHeaderOffset
+        val actualOffset = rootHeaderOffsetInByteProvider!! + optimizationsHeaderOffset
         if (actualOffset >= this.provider.length()) return null
-        return this.provider.readBytes(
-            ROOT_HEADER_OFFSET_IN_BYTE_PROVIDER + optimizationsHeaderOffset,
-            optimizationsHeaderLength,
-        )
+        return this.provider.readBytes(actualOffset, optimizationsHeaderLength)
     }
 }
