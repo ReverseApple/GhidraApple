@@ -10,7 +10,7 @@ import ghidra.program.model.listing.Program
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.filesystems.GADyldCacheFileSystem
 
-class GADyldCacheLoader: DyldCacheExtractLoader() {
+class GADyldCacheLoader : DyldCacheExtractLoader() {
     override fun getName(): String {
         // We need a new name to differentiate our loader from the built-in one.
         return "(GhidraApple) " + super.getName()
@@ -22,7 +22,7 @@ class GADyldCacheLoader: DyldCacheExtractLoader() {
         options: MutableList<Option>?,
         program: Program?,
         monitor: TaskMonitor?,
-        log: MessageLog?
+        log: MessageLog?,
     ) {
         super.load(provider, loadSpec, options, program, monitor, log)
         if (provider == null || program == null) return
