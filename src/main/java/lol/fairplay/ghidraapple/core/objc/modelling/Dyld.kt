@@ -1,7 +1,10 @@
 package lol.fairplay.ghidraapple.core.objc.modelling
 
 class Dyld {
-    enum class Platform(val value: UInt, val prettyName: String? = null) {
+    enum class Platform(
+        val value: UInt,
+        val prettyName: String? = null,
+    ) {
         UNKNOWN(0u),
         MACOS(1u, "macOS"),
         IOS(2u, "iOS"),
@@ -14,19 +17,21 @@ class Dyld {
         WATCHOSSIMULATOR(9u, "watchOS (Simulator)"),
         DRIVERKIT(10u),
         VISIONOS(11u, "visionOS"),
-        VISIONOSSIMULATOR(12u, "visionOS (Simulator)");
+        VISIONOSSIMULATOR(12u, "visionOS (Simulator)"),
+        ;
 
         companion object {
-            fun getPlatform(value: UInt): Platform? {
-                return entries.firstOrNull { it.value == value }
-            }
+            fun getPlatform(value: UInt): Platform? = entries.firstOrNull { it.value == value }
         }
     }
 
-    class Version(version: UInt) {
+    class Version(
+        version: UInt,
+    ) {
         val major = (version shr 16) and 0xffffu
         val minor = (version shr 8) and 0xffu
         val patch = version and 0xffu
+
         override fun toString(): String {
             var minorAppended = false
             var version = "$major"
