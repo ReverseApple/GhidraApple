@@ -60,4 +60,23 @@ class GADyldCacheFileSystem(
                     .toUInt(),
             )
     }
+
+    private fun getOptimizationsHeaderBytes(): ByteArray? {
+        val optimizationsHeaderOffset =
+            ByteBuffer
+                .wrap(getComponentBytes("objcOptsOffset")!!)
+                .order(ByteOrder.LITTLE_ENDIAN)
+                .long
+        val optimizationsHeaderLength =
+            ByteBuffer
+                .wrap(getComponentBytes("objcOptsSize")!!)
+                .order(ByteOrder.LITTLE_ENDIAN)
+                .long
+        val actualOffset = ROOT_HEADER_OFFSET_IN_BYTE_PROVIDER + optimizationsHeaderOffset
+        if (actualOffset >= this.provider.length()) return null
+        return this.provider.readBytes(
+            ROOT_HEADER_OFFSET_IN_BYTE_PROVIDER + optimizationsHeaderOffset,
+            optimizationsHeaderLength,
+        )
+    }
 }
