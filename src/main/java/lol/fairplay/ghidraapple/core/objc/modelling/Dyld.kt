@@ -28,9 +28,13 @@ class Dyld {
         val minor = (version shr 8) and 0xffu
         val patch = version and 0xffu
         override fun toString(): String {
+            var minorAppended = false
             var version = "$major"
-            if (minor != 0u && patch == 0u) version += ".$minor"
-            if (patch != 0u) version += ".$patch"
+            if ((minor != 0u && patch == 0u) || (minor == 0u && patch != 0u)) {
+                version += ".$minor"
+                minorAppended = true
+            }
+            if (patch != 0u && minorAppended) version += ".$patch"
             return version
         }
     }
