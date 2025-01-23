@@ -23,10 +23,12 @@ class GADyldCacheFileSystem(
     provider: ByteProvider?,
 ) : DyldCacheFileSystem(fileSystemName, provider) {
     private var rootHeader: DyldCacheHeader? = null
-    private val rootHeaderOffsetInByteProvider: Long?
-        get() = rootHeader?.baseAddress
     var platform: Dyld.Platform? = null
     var osVersion: Dyld.Version? = null
+
+    companion object {
+        const val ROOT_HEADER_OFFSET_IN_BYTE_PROVIDER = 0L // This is defined merely for explanatory benefit.
+    }
 
     private fun <T : Any> getComponentValue(
         componentName: String,
@@ -57,7 +59,7 @@ class GADyldCacheFileSystem(
         val component =
             rootHeaderDataType.components.firstOrNull { it.fieldName == componentName } ?: return null
         return this.provider.readBytes(
-            rootHeaderOffsetInByteProvider!! + component.offset,
+            ROOT_HEADER_OFFSET_IN_BYTE_PROVIDER + component.offset,
             component.length.toLong(),
         )
     }
@@ -71,7 +73,7 @@ class GADyldCacheFileSystem(
     private fun getOptimizationsHeaderBytes(): ByteArray? {
         val optimizationsHeaderOffset = getComponentValue(componentName = "objcOptsOffset", type = Long::class)
         val optimizationsHeaderLength = getComponentValue(componentName = "objcOptsSize", type = Long::class)
-        val actualOffset = rootHeaderOffsetInByteProvider!! + optimizationsHeaderOffset
+        val actualOffset = ROOT_HEADER_OFFSET_IN_BYTE_PROVIDER + optimizationsHeaderOffset
         if (actualOffset >= this.provider.length()) return null
         return this.provider.readBytes(actualOffset, optimizationsHeaderLength)
     }
