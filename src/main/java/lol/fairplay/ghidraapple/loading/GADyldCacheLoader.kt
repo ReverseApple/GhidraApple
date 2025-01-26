@@ -38,5 +38,26 @@ class GADyldCacheLoader : DyldCacheExtractLoader() {
         val cachePlatform = fileSystem.platform?.prettyName ?: "unknownOS"
         val cacheVersion = fileSystem.osVersion ?: "?.?.?"
         infoOptions.setString("Dyld Cache Platform", "$cachePlatform $cacheVersion")
+
+        val memory = program.memory
+        val addressFactory = program.addressFactory
+
+        var index = 0
+        fileSystem.getMappings().forEach { (mapping, bytes) ->
+            try {
+                val baseAddress = addressFactory.defaultAddressSpace.getAddress(mapping.address)
+                val block =
+                    memory.createInitializedBlock(
+                        "DSC Mapping ${++index}",
+                        baseAddress,
+                        mapping.size,
+                        (0).toByte(),
+                        monitor,
+                        false,
+                    )
+                block.putBytes(baseAddress, bytes)
+            } catch (_: Exception) {
+            }
+        }
     }
 }

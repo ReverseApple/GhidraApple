@@ -2,6 +2,7 @@ package lol.fairplay.ghidraapple.filesystems
 
 import ghidra.app.util.bin.ByteProvider
 import ghidra.app.util.bin.format.macho.dyld.DyldCacheHeader
+import ghidra.app.util.bin.format.macho.dyld.DyldCacheMappingInfo
 import ghidra.file.formats.ios.dyldcache.DyldCacheFileSystem
 import ghidra.formats.gfilesystem.annotations.FileSystemInfo
 import ghidra.formats.gfilesystem.factory.GFileSystemBaseFactory
@@ -27,6 +28,14 @@ class GADyldCacheFileSystem(
         get() = this.splitDyldCache?.getDyldCacheHeader(0) ?: throw IOException("Failed to get root header.")
     var platform: Dyld.Platform? = null
     var osVersion: Dyld.Version? = null
+
+    fun getMappings(): Map<DyldCacheMappingInfo, ByteArray> {
+        val map = mutableMapOf<DyldCacheMappingInfo, ByteArray>()
+        for (mappingInfo in this.rootHeader.mappingInfos) {
+            map[mappingInfo] = this.provider.readBytes(mappingInfo.fileOffset, mappingInfo.size)
+        }
+        return map
+    }
 
     companion object {
         const val ROOT_HEADER_OFFSET_IN_BYTE_PROVIDER = 0L // This is defined merely for explanatory benefit.
@@ -69,13 +78,5 @@ class GADyldCacheFileSystem(
         super.open(monitor)
         this.platform = Dyld.Platform.getPlatform(getComponentValue(componentName = "platform", type = Int::class).toUInt())
         this.osVersion = Dyld.Version(getComponentValue(componentName = "osVersion", type = Int::class).toUInt())
-    }
-
-    private fun getOptimizationsHeaderBytes(): ByteArray? {
-        val optimizationsHeaderOffset = getComponentValue(componentName = "objcOptsOffset", type = Long::class)
-        val optimizationsHeaderLength = getComponentValue(componentName = "objcOptsSize", type = Long::class)
-        val actualOffset = ROOT_HEADER_OFFSET_IN_BYTE_PROVIDER + optimizationsHeaderOffset
-        if (actualOffset >= this.provider.length()) return null
-        return this.provider.readBytes(actualOffset, optimizationsHeaderLength)
     }
 }
