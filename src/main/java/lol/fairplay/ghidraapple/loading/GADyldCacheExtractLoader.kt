@@ -14,7 +14,7 @@ import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-class GADyldCacheLoader : DyldCacheExtractLoader() {
+class GADyldCacheExtractLoader : DyldCacheExtractLoader() {
     override fun getName(): String {
         // We need a new name to differentiate our loader from the built-in one.
         return "(GhidraApple) " + super.getName()
