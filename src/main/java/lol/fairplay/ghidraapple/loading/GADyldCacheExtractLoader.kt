@@ -10,7 +10,6 @@ import ghidra.program.model.address.Address
 import ghidra.program.model.listing.Program
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.filesystems.GADyldCacheFileSystem
-import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -19,10 +18,6 @@ class GADyldCacheExtractLoader : DyldCacheExtractLoader() {
         // We need a new name to differentiate our loader from the built-in one.
         return "(GhidraApple) " + super.getName()
     }
-
-    @Suppress("ktlint:standard:backing-property-naming")
-    private var _fileSystem: GADyldCacheFileSystem? = null
-    private val fileSystem get() = _fileSystem ?: throw IOException("Failed to get filesystem.")
 
     @OptIn(ExperimentalStdlibApi::class)
     override fun load(
@@ -43,17 +38,18 @@ class GADyldCacheExtractLoader : DyldCacheExtractLoader() {
         val fileSystem = FileSystemService.getInstance().getFilesystem(provider.fsrl.fs, null).filesystem
         if (fileSystem !is GADyldCacheFileSystem) return
 
-        this._fileSystem = fileSystem
-
-        markupDyldCacheSource(program)
-        repointSelectorReferences(program)
+        markupDyldCacheSource(program, fileSystem)
+        repointSelectorReferences(program, fileSystem)
     }
 
     /**
      * At times, it might be useful to know what dyld shared cache a dylib came from. This function adds the platform
      * of the source shared cache to the program info (visible in the "About Program" dialog).
      */
-    private fun markupDyldCacheSource(program: Program) {
+    private fun markupDyldCacheSource(
+        program: Program,
+        fileSystem: GADyldCacheFileSystem,
+    ) {
         val infoOptions = program.getOptions(Program.PROGRAM_INFO)
         val cachePlatform = fileSystem.platform?.prettyName ?: "unknownOS"
         val cacheVersion = fileSystem.osVersion ?: "?.?.?"
@@ -65,7 +61,10 @@ class GADyldCacheExtractLoader : DyldCacheExtractLoader() {
      * that array. However, those same strings should still exist in the extracted dylib. This function will iterate
      * over the selector pointers and point them to the same strings where they exist inside the dylib.
      */
-    private fun repointSelectorReferences(program: Program) {
+    private fun repointSelectorReferences(
+        program: Program,
+        fileSystem: GADyldCacheFileSystem,
+    ) {
         val memory = program.memory
         val addressFactory = program.addressFactory
 
