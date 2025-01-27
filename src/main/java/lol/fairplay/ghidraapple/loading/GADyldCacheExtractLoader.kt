@@ -19,7 +19,6 @@ class GADyldCacheExtractLoader : DyldCacheExtractLoader() {
         return "(GhidraApple) " + super.getName()
     }
 
-    @OptIn(ExperimentalStdlibApi::class)
     override fun load(
         provider: ByteProvider?,
         loadSpec: LoadSpec?,
