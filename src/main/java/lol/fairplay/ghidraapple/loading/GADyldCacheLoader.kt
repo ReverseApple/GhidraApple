@@ -6,9 +6,13 @@ import ghidra.app.util.importer.MessageLog
 import ghidra.app.util.opinion.DyldCacheExtractLoader
 import ghidra.app.util.opinion.LoadSpec
 import ghidra.formats.gfilesystem.FileSystemService
+import ghidra.program.model.address.Address
 import ghidra.program.model.listing.Program
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.filesystems.GADyldCacheFileSystem
+import java.io.IOException
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 class GADyldCacheLoader : DyldCacheExtractLoader() {
     override fun getName(): String {
@@ -16,6 +20,11 @@ class GADyldCacheLoader : DyldCacheExtractLoader() {
         return "(GhidraApple) " + super.getName()
     }
 
+    @Suppress("ktlint:standard:backing-property-naming")
+    private var _fileSystem: GADyldCacheFileSystem? = null
+    private val fileSystem get() = _fileSystem ?: throw IOException("Failed to get filesystem.")
+
+    @OptIn(ExperimentalStdlibApi::class)
     override fun load(
         provider: ByteProvider?,
         loadSpec: LoadSpec?,
@@ -28,36 +37,90 @@ class GADyldCacheLoader : DyldCacheExtractLoader() {
         if (provider == null || program == null) return
 
         // The executable format is named after the loader. However, Ghidra performs some checks against this name to
-        // enable certain analyzers (so we have to give it a name it expects: the name of the built-in loader).
-        program.executableFormat = super.getName()
+        // enable certain analyzers (so we have to give it a name it expects: the name of a built-in loader).
+        program.executableFormat = MACH_O_NAME
 
         val fileSystem = FileSystemService.getInstance().getFilesystem(provider.fsrl.fs, null).filesystem
         if (fileSystem !is GADyldCacheFileSystem) return
 
+        this._fileSystem = fileSystem
+
+        markupDyldCacheSource(program)
+        repointSelectorReferences(program)
+    }
+
+    /**
+     * At times, it might be useful to know what dyld shared cache a dylib came from. This function adds the platform
+     * of the source shared cache to the program info (visible in the "About Program" dialog).
+     */
+    private fun markupDyldCacheSource(program: Program) {
         val infoOptions = program.getOptions(Program.PROGRAM_INFO)
         val cachePlatform = fileSystem.platform?.prettyName ?: "unknownOS"
         val cacheVersion = fileSystem.osVersion ?: "?.?.?"
-        infoOptions.setString("Dyld Cache Platform", "$cachePlatform $cacheVersion")
+        infoOptions.setString("Dyld Shared Cache Platform", "$cachePlatform $cacheVersion")
+    }
 
+    /**
+     * The dyld shared cache building process puts all selectors into an array and points all selector pointers into
+     * that array. However, those same strings should still exist in the extracted dylib. This function will iterate
+     * over the selector pointers and point them to the same strings where they exist inside the dylib.
+     */
+    private fun repointSelectorReferences(program: Program) {
         val memory = program.memory
         val addressFactory = program.addressFactory
 
-        var index = 0
-        fileSystem.getMappings().forEach { (mapping, bytes) ->
-            try {
-                val baseAddress = addressFactory.defaultAddressSpace.getAddress(mapping.address)
-                val block =
-                    memory.createInitializedBlock(
-                        "DSC Mapping ${++index}",
-                        baseAddress,
-                        mapping.size,
-                        (0).toByte(),
-                        monitor,
-                        false,
-                    )
-                block.putBytes(baseAddress, bytes)
-            } catch (_: Exception) {
+        val selRefs = memory.blocks.firstOrNull { it.name == "__objc_selrefs" }
+        val methName = memory.blocks.firstOrNull { it.name == "__objc_methname" }
+        if (selRefs == null || methName == null) return
+
+        fun findStringInMethName(string: String): Address? {
+            var currentAddress = methName.addressRange.minAddress
+            val stringBytes = string.toByteArray()
+            do {
+                run happy_path@{
+                    // It must be the start of a string (i.e. a null-terminated string precedes it).
+                    if (memory.getByte(currentAddress.subtract(1)) != 0x00.toByte()) return@happy_path
+                    //
+                    for (i in stringBytes.indices) {
+                        if (methName.getByte(currentAddress.add(i.toLong())) != stringBytes[i]) return@happy_path
+                    }
+                    return currentAddress
+                }
+                currentAddress = currentAddress.add(1)
+            } while // Iterate until the string cannot fit
+            (currentAddress <= methName.addressRange.maxAddress.subtract(string.length.toLong()))
+
+            return null // There was no match.
+        }
+
+        val pointerSize = addressFactory.defaultAddressSpace.pointerSize
+
+        var currentAddress = selRefs.addressRange.minAddress
+
+        while (currentAddress <= selRefs.addressRange.maxAddress) {
+            run happy_path@{
+                // Get the given pointer.
+                val pointerBytes = ByteArray(pointerSize)
+                val bytesCopied = memory.getBytes(currentAddress, pointerBytes)
+                if (bytesCopied != pointerSize) return@happy_path
+                val pointerValue = ByteBuffer.wrap(pointerBytes).order(ByteOrder.LITTLE_ENDIAN).long
+
+                // Find the string it is pointing to.
+                val string = fileSystem.readMappedCString(pointerValue) ?: return@happy_path
+
+                // Find the same string in `__objc_methname`.
+                val inDylibAddress = findStringInMethName(string) ?: return@happy_path
+
+                // Re-point the pointer.
+                val newPointerBytes =
+                    ByteBuffer
+                        .allocate(pointerSize)
+                        .order(ByteOrder.LITTLE_ENDIAN)
+                        .putLong(inDylibAddress.offset)
+                        .array()
+                memory.setBytes(currentAddress, newPointerBytes)
             }
+            currentAddress = currentAddress.add(pointerSize.toLong())
         }
     }
 }

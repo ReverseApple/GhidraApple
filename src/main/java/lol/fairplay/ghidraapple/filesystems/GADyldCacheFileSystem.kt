@@ -2,7 +2,6 @@ package lol.fairplay.ghidraapple.filesystems
 
 import ghidra.app.util.bin.ByteProvider
 import ghidra.app.util.bin.format.macho.dyld.DyldCacheHeader
-import ghidra.app.util.bin.format.macho.dyld.DyldCacheMappingInfo
 import ghidra.file.formats.ios.dyldcache.DyldCacheFileSystem
 import ghidra.formats.gfilesystem.annotations.FileSystemInfo
 import ghidra.formats.gfilesystem.factory.GFileSystemBaseFactory
@@ -28,14 +27,6 @@ class GADyldCacheFileSystem(
         get() = this.splitDyldCache?.getDyldCacheHeader(0) ?: throw IOException("Failed to get root header.")
     var platform: Dyld.Platform? = null
     var osVersion: Dyld.Version? = null
-
-    fun getMappings(): Map<DyldCacheMappingInfo, ByteArray> {
-        val map = mutableMapOf<DyldCacheMappingInfo, ByteArray>()
-        for (mappingInfo in this.rootHeader.mappingInfos) {
-            map[mappingInfo] = this.provider.readBytes(mappingInfo.fileOffset, mappingInfo.size)
-        }
-        return map
-    }
 
     companion object {
         const val ROOT_HEADER_OFFSET_IN_BYTE_PROVIDER = 0L // This is defined merely for explanatory benefit.
@@ -72,6 +63,23 @@ class GADyldCacheFileSystem(
             ROOT_HEADER_OFFSET_IN_BYTE_PROVIDER + component.offset,
             component.length.toLong(),
         )
+    }
+
+    fun readMappedCString(start: Long): String? {
+        for (mappingInfo in this.rootHeader.mappingInfos) {
+            if (start < mappingInfo.address || start > (mappingInfo.address + mappingInfo.size)) continue
+            var string = ""
+            var currentAddress = mappingInfo.fileOffset + (start - mappingInfo.address)
+            string_builder@ do {
+                val byte = this.provider.readByte(currentAddress)
+                if (byte == 0x00.toByte()) break@string_builder
+                string += byte.toInt().toChar()
+                currentAddress++
+            } while // Don't keep reading outside mapped sections.
+            (currentAddress <= (mappingInfo.address + mappingInfo.size))
+            return string.takeIf { it != "" }
+        }
+        return null // No match.
     }
 
     override fun open(monitor: TaskMonitor?) {
