@@ -10,6 +10,7 @@ import ghidra.app.services.AbstractAnalyzer
 import ghidra.app.services.AnalysisPriority
 import ghidra.app.services.AnalyzerType
 import ghidra.app.util.importer.MessageLog
+import ghidra.program.model.address.Address
 import ghidra.program.model.address.AddressSetView
 import ghidra.program.model.lang.CompilerSpec
 import ghidra.program.model.listing.Function
@@ -68,7 +69,8 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
         val trampolineFunctions =
             program.functionManager
                 .getFunctions(set, true)
-                .filter { isPlausibleTrampoline(it) }.toList()
+                .filter { isPlausibleTrampoline(it) }
+                .toList()
 
         monitor.maximum = trampolineFunctions.size.toLong()
 
@@ -83,8 +85,7 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
             it.addTag(TRAMPOLINE_TAG)
             it.symbol.setNamespace(stubNamespace)
         }
-        findAllSelectors(program, trampolineFunctions, monitor, log).forEach {
-                (func, selector) ->
+        findAllSelectors(program, trampolineFunctions, monitor, log).forEach { (func, selector) ->
             applySelectorToFunction(func, selector)
         }
         return true
@@ -129,12 +130,19 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
                     }
 
                     val callOp =
-                        results.highFunction.pcodeOps.iterator().asSequence()
+                        results.highFunction.pcodeOps
+                            .iterator()
+                            .asSequence()
                             .singleOrNull { it.opcode == PcodeOp.CALLIND || it.opcode == PcodeOp.CALL }
                     if (callOp != null) {
                         val selAddress = getConstantFromVarNode(callOp.inputs[2]).getOrNull()?.toDefaultAddressSpace(program)
                         if (selAddress != null) {
-                            val sel = program.listing.getDataAt(selAddress).value as? String
+                            // This is either a string or a pointer to a string. We need to handle both cases.
+                            val selMaybePointer = program.listing.getDataAt(selAddress).value
+                            val sel: String? =
+                                (selMaybePointer as? Address)?.let {
+                                    program.listing.getDataAt(it)?.value as? String
+                                } ?: (selMaybePointer as? String)
                             if (sel != null) {
                                 return results.function to sel
                             }
@@ -221,7 +229,5 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
         return getStubsSegment(program) != null
     }
 
-    private fun getStubsSegment(program: Program): MemoryBlock? {
-        return program.memory.getBlock("__objc_stubs")
-    }
+    private fun getStubsSegment(program: Program): MemoryBlock? = program.memory.getBlock("__objc_stubs")
 }
