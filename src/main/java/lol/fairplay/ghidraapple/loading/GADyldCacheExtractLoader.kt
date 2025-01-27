@@ -78,7 +78,7 @@ class GADyldCacheExtractLoader : DyldCacheExtractLoader() {
                 run happy_path@{
                     // It must be the start of a string (i.e. a null-terminated string precedes it).
                     if (memory.getByte(currentAddress.subtract(1)) != 0x00.toByte()) return@happy_path
-                    //
+                    // Loop through bytes to match string.
                     for (i in stringBytes.indices) {
                         if (methName.getByte(currentAddress.add(i.toLong())) != stringBytes[i]) return@happy_path
                     }
