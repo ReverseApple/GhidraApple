@@ -10,7 +10,6 @@ import ghidra.app.services.AbstractAnalyzer
 import ghidra.app.services.AnalysisPriority
 import ghidra.app.services.AnalyzerType
 import ghidra.app.util.importer.MessageLog
-import ghidra.program.model.address.Address
 import ghidra.program.model.address.AddressSetView
 import ghidra.program.model.lang.CompilerSpec
 import ghidra.program.model.listing.Function
@@ -137,12 +136,7 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
                     if (callOp != null) {
                         val selAddress = getConstantFromVarNode(callOp.inputs[2]).getOrNull()?.toDefaultAddressSpace(program)
                         if (selAddress != null) {
-                            // This is either a string or a pointer to a string. We need to handle both cases.
-                            val selMaybePointer = program.listing.getDataAt(selAddress).value
-                            val sel: String? =
-                                (selMaybePointer as? Address)?.let {
-                                    program.listing.getDataAt(it)?.value as? String
-                                } ?: (selMaybePointer as? String)
+                            val sel = program.listing.getDataAt(selAddress).value as? String
                             if (sel != null) {
                                 return results.function to sel
                             }

@@ -120,5 +120,8 @@ class GADyldCacheExtractLoader : DyldCacheExtractLoader() {
             }
             currentAddress = currentAddress.add(pointerSize.toLong())
         }
+
+        // Tell Ghidra that these pointers won't be updating anymore so it can perform optimizations.
+        selRefs.isWrite = false
     }
 }
