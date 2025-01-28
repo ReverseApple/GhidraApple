@@ -58,7 +58,8 @@ class GADyldCacheExtractLoader : DyldCacheExtractLoader() {
     /**
      * The dyld shared cache building process puts all selectors into an array and points all selector pointers into
      * that array. However, those same strings should still exist in the extracted dylib. This function will iterate
-     * over the selector pointers and point them to the same strings where they exist inside the dylib.
+     * over the selector pointers and re-point them to the same strings where they exist inside the dylib. This will
+     * avoid us having to map the entire selector array into the Program's memory.
      */
     private fun repointSelectorReferences(
         program: Program,
