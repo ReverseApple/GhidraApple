@@ -2,6 +2,7 @@ package lol.fairplay.ghidraapple.filesystems
 
 import ghidra.app.util.bin.ByteProvider
 import ghidra.app.util.bin.format.macho.dyld.DyldCacheHeader
+import ghidra.app.util.bin.format.macho.dyld.DyldCacheMappingInfo
 import ghidra.file.formats.ios.dyldcache.DyldCacheFileSystem
 import ghidra.formats.gfilesystem.annotations.FileSystemInfo
 import ghidra.formats.gfilesystem.factory.GFileSystemBaseFactory
@@ -23,13 +24,22 @@ class GADyldCacheFileSystem(
     fileSystemName: String?,
     provider: ByteProvider?,
 ) : DyldCacheFileSystem(fileSystemName, provider) {
-    private val rootHeader: DyldCacheHeader
+    val rootHeader: DyldCacheHeader
         get() = this.splitDyldCache?.getDyldCacheHeader(0) ?: throw IOException("Failed to get root header.")
     var platform: Dyld.Platform? = null
     var osVersion: Dyld.Version? = null
 
     companion object {
         const val ROOT_HEADER_OFFSET_IN_BYTE_PROVIDER = 0L // This is defined merely for explanatory benefit.
+    }
+
+    // TODO: Remove this when no longer needed.
+    fun getMappings(): Map<DyldCacheMappingInfo, ByteArray> {
+        val map = mutableMapOf<DyldCacheMappingInfo, ByteArray>()
+        for (mappingInfo in this.rootHeader.mappingInfos) {
+            map[mappingInfo] = this.provider.readBytes(mappingInfo.fileOffset, mappingInfo.size)
+        }
+        return map
     }
 
     private fun <T : Any> getComponentValue(
