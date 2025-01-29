@@ -1,12 +1,12 @@
-package ghidra.app.plugin.core.decompile.actions
+package lol.fairplay.ghidraapple.actions.choosemsg
 
 import docking.action.MenuData
 import ghidra.app.decompiler.ClangFuncNameToken
 import ghidra.app.decompiler.DecompilerLocation
 import ghidra.app.plugin.core.decompile.DecompilerActionContext
+import ghidra.app.plugin.core.decompile.actions.AbstractDecompilerAction
 import ghidra.program.model.pcode.PcodeOp
 import lol.fairplay.ghidraapple.GhidraApplePluginPackage
-import lol.fairplay.ghidraapple.actions.ChooseMsgSendCalleeDialog
 import lol.fairplay.ghidraapple.analysis.utilities.getFunctionForPCodeCall
 
 class ChooseMsgSendCalleeAction : AbstractDecompilerAction("Choose msgSend Callee") {

@@ -10,13 +10,22 @@ import ghidra.program.model.data.PointerDataType
 import ghidra.program.model.listing.Data
 import ghidra.program.model.listing.Function
 import ghidra.program.model.listing.Program
+import ghidra.program.model.mem.Memory
+import ghidra.program.model.pcode.PcodeOp
+import ghidra.program.model.pcode.PcodeOpAST
+import ghidra.program.model.pcode.Varnode
 import ghidra.program.model.symbol.Namespace
 import ghidra.program.model.symbol.RefType
+import ghidra.program.model.symbol.Reference
+import ghidra.program.model.symbol.ReferenceIterator
+import ghidra.program.model.symbol.ReferenceIteratorAdapter
 import ghidra.program.model.symbol.ReferenceManager
 import ghidra.program.model.symbol.SourceType
 import ghidra.program.model.symbol.Symbol
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.derefUntyped
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.get
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 /**
  * Converts a given long value to an Address object using the default address space.
@@ -141,3 +150,90 @@ fun <ROW_TYPE, COLUMN_TYPE> TableColumnDescriptor<ROW_TYPE>.addColumn(
         addHiddenColumn(column)
     }
 }
+
+/**
+ * Returns a [ByteArray] of the given [size], taken from the given [address].
+ *
+ * @throws [IllegalStateException] If a [ByteArray] of the given [size] cannot be taken from the given [address].
+ */
+fun Memory.getBytes(
+    address: Address,
+    size: Int,
+): ByteArray {
+    val bytes = ByteArray(size)
+    val bytesGotten = getBytes(address, bytes)
+    if (bytesGotten != size) throw IllegalStateException("Unable to get $size bytes at 0x$address.")
+    return bytes
+}
+
+fun Memory.getByteOrder(): ByteOrder = if (isBigEndian) ByteOrder.BIG_ENDIAN else ByteOrder.LITTLE_ENDIAN
+
+/**
+ * Gets the bytes of a [Varnode] within the given [program]. Only works in simple cases.
+ */
+fun Varnode.getBytes(program: Program): ByteArray =
+    when {
+        address.isMemoryAddress ->
+            program.memory.getBytes(address, size)
+
+        address.isConstantAddress ->
+            ByteBuffer
+                // We allocate as much space as we need and will truncate later.
+                .allocate(Long.SIZE_BYTES)
+                .order(program.memory.getByteOrder())
+                .putLong(address.offset)
+                .let {
+                    when (it.order()) {
+                        ByteOrder.LITTLE_ENDIAN -> it.array().copyOfRange(0, size)
+                        // We just did [putLong], so the position should be at the end.
+                        ByteOrder.BIG_ENDIAN -> it.array().copyOfRange(it.position() - size, it.position())
+                        // This should never happen, but it's here to make the compiler happy.
+                        else -> throw IllegalStateException("Unsupported byte order: ${it.order()}!")
+                    }
+                }
+
+        address.isUniqueAddress ->
+            def.inputs
+                // If they're all the same, we can probably just continue.
+                .let { inputs -> if (inputs.all { it.address == inputs.first()?.address }) inputs else null }
+                // Take the first one.
+                ?.first()
+                // TODO: This sometimes results in a buffer overflow :(
+                ?.getBytes(program) ?: ByteArray(0)
+        else -> throw IllegalStateException("Unexpected Varnode.")
+    }
+
+/**
+ * Gets the bytes that this operation puts into the output [Varnode].
+ */
+fun PcodeOpAST.getOutputBytes(program: Program): ByteArray? {
+    if (!isAssignment) return null
+    return when (opcode) {
+        PcodeOp.COPY -> inputs[0].getBytes(program).copyOfRange(0, output.size)
+        PcodeOp.SUBPIECE ->
+            inputs[0]
+                .getBytes(program)
+                .let {
+                    val fromIndex =
+                        inputs[1]
+                            .apply { assert(isConstant) }
+                            .address.offset
+                            .toInt()
+                    it.copyOfRange(fromIndex, fromIndex + output.size)
+                }
+        else -> null
+    }
+}
+
+/**
+ * Gets an iterator of references in the program to the symbol with the given name.
+ */
+fun Program.getReferencesToSymbol(symbolName: String): ReferenceIterator =
+    symbolTable.getSymbols(symbolName).firstOrNull()?.let {
+        referenceManager.getReferencesTo(it.address)
+    } ?: ReferenceIteratorAdapter(emptyList<Reference>().iterator())
+
+/**
+ * Gets the label at the given address in the program, if one exists.
+ */
+fun Program.getLabelAtAddress(address: Address): String? = listing.getCodeUnitAt(address)?.label
