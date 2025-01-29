@@ -1,9 +1,14 @@
+<<<<<<< HEAD
 // This cannot be used inside the `plugins` block, but can (and is) used elsewhere and
 //  should match the version used inside the `plugins` block.
 val kotlinVersion = "1.9.23"
 
 plugins {
     kotlin("jvm") version "1.9.23"
+=======
+plugins {
+    kotlin("jvm") version "2.1.10"
+>>>>>>> 8398e32 (Make build system more Kotlin-y.)
     id("org.jlleitschuh.gradle.ktlint") version "12.1.2"
     id("idea")
 }
