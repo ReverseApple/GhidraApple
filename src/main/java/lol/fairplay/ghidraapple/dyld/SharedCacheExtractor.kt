@@ -29,7 +29,8 @@ import kotlin.collections.plus
 
 class SharedCacheExtractor(
     private val dscFileSystem: GADyldCacheFileSystem,
-    private val maxDylibSize: Int = 1024 * 1024 * 100, // 100 MiB
+    // 100 MiB default
+    private val maxDylibSize: Int = 1024 * 1024 * 100,
 ) {
     fun extractDylib(originalDyibByteProvider: ByteProvider): ByteProvider {
         var bufferForExtractedDylib: ByteBuffer = ByteBuffer.allocate(maxDylibSize)
