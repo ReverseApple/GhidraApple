@@ -204,7 +204,7 @@ data class OCProtocol(
 
 data class OCCategory(
     override val name: String,
-    var contents: List<OCCategoryClassEntry>
+    var contents: List<OCCategoryClassEntry>,
 ) : OCFieldContainer(name)
 
 data class OCCategoryClassEntry(
