@@ -3,11 +3,8 @@
 package lol.fairplay.ghidraapple.loading
 
 import ghidra.app.util.Option
-import ghidra.app.util.bin.BinaryReader
-import ghidra.app.util.bin.ByteArrayProvider
 import ghidra.app.util.bin.ByteProvider
 import ghidra.app.util.bin.format.macho.MachHeader
-import ghidra.app.util.bin.format.macho.Section
 import ghidra.app.util.bin.format.macho.commands.*
 import ghidra.app.util.importer.MessageLog
 import ghidra.app.util.opinion.DyldCacheExtractLoader
@@ -16,6 +13,7 @@ import ghidra.formats.gfilesystem.FileSystemService
 import ghidra.program.model.address.Address
 import ghidra.program.model.listing.Program
 import ghidra.util.task.TaskMonitor
+import lol.fairplay.ghidraapple.dyld.SharedCacheExtractor
 import lol.fairplay.ghidraapple.filesystems.GADyldCacheFileSystem
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -43,176 +41,14 @@ class GADyldCacheExtractLoader : DyldCacheExtractLoader() {
         val fileSystem = FileSystemService.getInstance().getFilesystem(provider.fsrl.fs, null).filesystem
         if (fileSystem !is GADyldCacheFileSystem) return
 
-        val newByteProvider = extractDyldFromDSC(provider, fileSystem)
+        val extractor = SharedCacheExtractor(fileSystem)
+        val newByteProvider = extractor.extractDylib(provider)
         super.load(newByteProvider, loadSpec, options, program, monitor, log)
+
         markupDyldCacheSource(program, fileSystem)
         repointSelectorReferences(program, fileSystem)
         addDylibsToProgram(program, fileSystem, provider)
         mapDyldSharedCacheToProgram(program, fileSystem, monitor)
-    }
-
-    /**
-     * The dyld project includes a library called `dsc_extractor`. The logic of this function is largely copied from
-     * that library. The logic is copied to avoid having to link in the dyld project to this plugin.
-     */
-    private fun extractDyldFromDSC(
-        provider: ByteProvider,
-        fileSystem: GADyldCacheFileSystem,
-    ): ByteProvider {
-        val machHeader = MachHeader(provider).parse()
-
-        // [toMutableList] implicitly makes a copy, so we don't have to worry about mutating the original list.
-        val segmentsToCopy = machHeader.allSegments.toMutableList()
-        segmentsToCopy.removeIf { it.segmentName == "__LINKEDIT" } // __LINKEDIT is handled separately
-
-        val newBytes =
-            segmentsToCopy.fold(byteArrayOf()) { acc, segment ->
-                acc +
-                    provider.readBytes(
-                        segment.fileOffset,
-                        segment.fileSize,
-                    )
-            }
-
-        val newProvider = ByteArrayProvider(newBytes) // TODO: Make this use [copyOf] when done.
-
-        val newReader = BinaryReader(newProvider, true)
-        newReader.pointerIndex = machHeader.size // Skip past the header
-
-        var cumulativeFileSize = 0L
-        var exportsTrieOffset = 0
-        var exportsTrieSize = 0
-
-        var textOffsetInCache: Long? = null
-
-        var symTab: SymbolTableCommand? = null
-        var dynamicSymTab: DynamicSymbolTableCommand? = null
-        var functionStarts: FunctionStartsCommand? = null
-        var dataInCode: DataInCodeCommand? = null
-        repeat(machHeader.numberOfCommands) {
-            val commandStartIndex = newReader.pointerIndex
-            val command =
-                LoadCommandFactory
-                    .getLoadCommand(newReader, machHeader, fileSystem.splitDyldCache)
-
-            newReader.pointerIndex -= command.commandSize // Pull the pointer back to the start of the command.
-
-            // `dsc_extractor` matches on the command type, we match on the command class (and type if necessary).
-            when (command) {
-                is SegmentCommand -> {
-                    val newFileOffset = cumulativeFileSize
-                    val newFileSize = command.vMsize
-
-                    if (command.segmentName == "__TEXT") {
-                        textOffsetInCache =
-                            command.vMaddress - fileSystem.rootHeader.unslidLoadAddress()
-                    }
-
-                    // We're lucky Ghidra gives us this "serialization" method.
-                    val newCommandBytes =
-                        SegmentCommand.create(
-                            machHeader.magic,
-                            command.segmentName,
-                            command.vMaddress,
-                            command.vMsize,
-                            newFileOffset,
-                            newFileSize,
-                            command.maxProtection,
-                            command.initProtection,
-                            command.numberOfSections,
-                            command.flags,
-                        )
-                    newCommandBytes.copyInto(newBytes, newReader.pointerIndex.toInt())
-
-                    newReader.pointerIndex += newCommandBytes.size
-                    repeat(command.numberOfSections) {
-                        val section = Section(newReader, machHeader.is32bit)
-                        // Pull the pointer back to before the section.
-                        newReader.pointerIndex -= section.toDataType().length
-                        val newOffset =
-                            section.offset.takeIf { it == 0 }
-                                ?: (cumulativeFileSize + section.address + command.vMaddress).toInt()
-
-                        fun Section.serialize(newOffset: Int): ByteArray {
-                            val buffer =
-                                ByteBuffer
-                                    .allocate(this.toDataType().length)
-                                    .order(ByteOrder.LITTLE_ENDIAN)
-                            buffer.put(this.sectionName.toByteArray())
-                            repeat(this.sectionName.length - 16) { buffer.put(0x00) }
-                            buffer.put(this.segmentName.toByteArray())
-                            repeat(this.segmentName.length - 16) { buffer.put(0x00) }
-                            if (machHeader.is32bit) {
-                                buffer.putInt(this.address.toInt())
-                                buffer.putInt(this.size.toInt())
-                            } else {
-                                buffer.putLong(this.address)
-                                buffer.putLong(this.size)
-                            }
-                            buffer.putInt(newOffset)
-                            buffer.putInt(this.align)
-                            buffer.putInt(this.relocationOffset)
-                            buffer.putInt(this.numberOfRelocations)
-                            buffer.putInt(reserved1)
-                            buffer.putInt(reserved2)
-                            if (!machHeader.is32bit) buffer.putInt(reserved3)
-                            return buffer.array()
-                        }
-                        val sectionBytes = section.serialize(newOffset)
-                        sectionBytes.copyInto(newBytes, newReader.pointerIndex.toInt())
-                        newReader.pointerIndex += sectionBytes.size // Push the pointer forwards.
-                    }
-                    cumulativeFileSize += newFileSize
-                    newReader.pointerIndex -= command.commandSize // Pull the pointer back to the start of the command.
-                }
-                is DyldInfoCommand -> {
-                    if (command.commandType != LoadCommandTypes.LC_DYLD_INFO_ONLY) return@repeat
-
-                    fun DyldInfoCommand.serializeForExtractor(): ByteArray {
-                        val buffer = ByteBuffer.allocate(this.commandSize).order(ByteOrder.LITTLE_ENDIAN)
-                        buffer.putInt(command.commandType)
-                        buffer.putInt(command.commandSize)
-                        // rebase offset and size
-                        buffer.putInt(0)
-                        buffer.putInt(0)
-                        // bind offset and size
-                        buffer.putInt(0)
-                        buffer.putInt(0)
-                        // weak bind offset and size
-                        buffer.putInt(0)
-                        buffer.putInt(0)
-                        // lazy bind offset and size
-                        buffer.putInt(0)
-                        buffer.putInt(0)
-                        // export offset and size
-                        buffer.putInt(0)
-                        buffer.putInt(0)
-                        return buffer.array()
-                    }
-                    exportsTrieOffset = command.exportOffset
-                    exportsTrieSize = command.exportSize
-                    command.serializeForExtractor().copyInto(newBytes, newReader.pointerIndex.toInt())
-                }
-                is DyldExportsTrieCommand -> {
-                    fun DyldExportsTrieCommand.serializeForExtractor(): ByteArray {
-                        val buffer = ByteBuffer.allocate(this.commandSize).order(ByteOrder.LITTLE_ENDIAN)
-                        buffer.putInt(command.commandType)
-                        buffer.putInt(command.commandSize)
-                        // data offset and size
-                        buffer.putInt(0)
-                        buffer.putInt(0)
-                        return buffer.array()
-                    }
-                    exportsTrieOffset = command.linkerDataOffset
-                    exportsTrieSize = command.linkerDataSize
-                    command.serializeForExtractor().copyInto(newBytes, newReader.pointerIndex.toInt())
-                }
-                else -> return@repeat
-            }
-
-            newReader.pointerIndex = commandStartIndex + command.commandSize
-        }
-        return ByteArrayProvider(newBytes)
     }
 
     /**
