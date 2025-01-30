@@ -113,6 +113,8 @@ class LinkeditOptimizer(
         var cumulativeFileSize = 0L
         var depIndex = 0
 
+        originalDylibReader.pointerIndex = machHeader.toDataType().length.toLong() // Start reading after the header.
+
         repeat(machHeader.numberOfCommands) {
             val commandStartIndex = originalDylibReader.pointerIndex
             val command =
@@ -144,6 +146,16 @@ class LinkeditOptimizer(
                             command.numberOfSections,
                             command.flags,
                         )
+
+                    // The [SegmentCommand.create] method does not include the correct command size if the segment
+                    //  has sections (which they basically all do), so we need to copy the original size back into
+                    //  the bytes before writing them to the new dylib buffer.
+                    ByteBuffer
+                        .allocate(Int.SIZE_BYTES)
+                        .order(ByteOrder.LITTLE_ENDIAN)
+                        .putInt(command.commandSize)
+                        .array()
+                        .copyInto(newCommandBytes, Int.SIZE_BYTES * 1)
 
                     bufferForExtractedDylib.put(commandStartIndex.toInt(), newCommandBytes)
 
@@ -256,6 +268,10 @@ class LinkeditOptimizer(
                 }
                 else -> return@repeat
             }
+
+            // Not sure why this is needed, but it seems to break without this. This ensures our reader points to
+            //  the start of the next command on our next go around.
+            originalDylibReader.pointerIndex = commandStartIndex + command.commandSize
         }
     }
 
