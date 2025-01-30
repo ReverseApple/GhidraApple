@@ -5,10 +5,6 @@ val kotlinVersion = "1.9.23"
 
 plugins {
     kotlin("jvm") version "1.9.23"
-=======
-plugins {
-    kotlin("jvm") version "2.1.10"
->>>>>>> 8398e32 (Make build system more Kotlin-y.)
     id("org.jlleitschuh.gradle.ktlint") version "12.1.2"
     id("idea")
 }
