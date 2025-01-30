@@ -107,16 +107,16 @@ class LinkeditOptimizer(
 
     fun optimizeLoadCommands() {
         val machHeader = MachHeader(originalDyibByteProvider).parse()
-        val dylibReader = BinaryReader(originalDyibByteProvider, true)
+        val originalDylibReader = BinaryReader(originalDyibByteProvider, true)
 
         var cumulativeFileSize = 0L
         var depIndex = 0
 
         repeat(machHeader.numberOfCommands) {
-            val commandStartIndex = dylibReader.pointerIndex
+            val commandStartIndex = originalDylibReader.pointerIndex
             val command =
                 LoadCommandFactory
-                    .getLoadCommand(dylibReader, machHeader, dscFileSystem.splitDyldCache)
+                    .getLoadCommand(originalDylibReader, machHeader, dscFileSystem.splitDyldCache)
 
             // `dsc_extractor` matches on the command type, we match on the command class (and type if necessary).
             when (command) {
@@ -146,10 +146,10 @@ class LinkeditOptimizer(
 
                     bufferForExtractedDylib.put(commandStartIndex.toInt(), newCommandBytes)
 
-                    dylibReader.pointerIndex += commandStartIndex + newCommandBytes.size
+                    originalDylibReader.pointerIndex = commandStartIndex + newCommandBytes.size
                     repeat(command.numberOfSections) {
-                        val sectionStartIndex = dylibReader.pointerIndex
-                        val section = Section(dylibReader, machHeader.is32bit)
+                        val sectionStartIndex = originalDylibReader.pointerIndex
+                        val section = Section(originalDylibReader, machHeader.is32bit)
                         val newOffset =
                             section.offset.takeIf { it == 0 }
                                 ?: (cumulativeFileSize + section.address + command.vMaddress).toInt()
