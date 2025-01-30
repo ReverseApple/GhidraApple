@@ -173,9 +173,9 @@ class LinkeditOptimizer(
                                     .allocate(this.toDataType().length)
                                     .order(ByteOrder.LITTLE_ENDIAN)
                             buffer.put(this.sectionName.toByteArray())
-                            repeat(this.sectionName.length - 16) { buffer.put(0x00) }
+                            repeat(16 - this.sectionName.length) { buffer.put(0x00) }
                             buffer.put(this.segmentName.toByteArray())
-                            repeat(this.segmentName.length - 16) { buffer.put(0x00) }
+                            repeat(16 - this.segmentName.length) { buffer.put(0x00) }
                             if (machHeader.is32bit) {
                                 buffer.putInt(this.address.toInt())
                                 buffer.putInt(this.size.toInt())
