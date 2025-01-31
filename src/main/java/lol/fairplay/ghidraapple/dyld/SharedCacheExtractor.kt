@@ -12,6 +12,7 @@ import ghidra.app.util.bin.format.macho.commands.DynamicLinkerCommand
 import ghidra.app.util.bin.format.macho.commands.DynamicSymbolTableCommand
 import ghidra.app.util.bin.format.macho.commands.FunctionStartsCommand
 import ghidra.app.util.bin.format.macho.commands.LinkEditDataCommand
+import ghidra.app.util.bin.format.macho.commands.LoadCommand
 import ghidra.app.util.bin.format.macho.commands.LoadCommandFactory
 import ghidra.app.util.bin.format.macho.commands.LoadCommandTypes
 import ghidra.app.util.bin.format.macho.commands.SegmentCommand
@@ -292,25 +293,21 @@ class LinkeditOptimizer(
         val originalDynamicSymbolTableCommandCopy =
             originalDynamicSymbolTableCommand ?: return
 
-        fun writeLinkerData(
-            command: LinkEditDataCommand,
+        // This function makes heavy use of the original load commands, and the offsets to them. This should be
+        //  fine, as we didn't adjust the offsets previously. It's also what `dsc_extractor` seems to do.
+
+        fun <T : LoadCommand> writeDataToLinkedit(
+            command: T,
             pointerAlignAfter: Boolean = true,
+            preWriteCommandFixup: (T) -> Unit,
         ) {
-            val offsetForLinkerData = bufferForNewLinkeditSegment.position()
-            command.let {
-                bufferForNewLinkeditSegment.put(
-                    originalDyibByteProvider.readBytes(
-                        it.linkerDataOffset.toLong(),
-                        it.linkerDataSize.toLong(),
-                    ),
-                )
-                bufferForExtractedDylib
-                    .position(it.startIndex.toInt())
-                    .putInt(it.commandType)
-                    .putInt(it.commandSize)
-                    .putInt(originalLinkeditSegmentCommandCopy.fileOffset.toInt() + offsetForLinkerData)
-                    .putInt(it.linkerDataSize)
-            }
+            preWriteCommandFixup(command)
+            bufferForNewLinkeditSegment.put(
+                originalDyibByteProvider.readBytes(
+                    command.linkerDataOffset.toLong(),
+                    command.linkerDataSize.toLong(),
+                ),
+            )
             if (pointerAlignAfter) {
                 val pointerSize = if (MachHeader(originalDyibByteProvider).is32bit) 4 else 8
                 while (
@@ -326,27 +323,104 @@ class LinkeditOptimizer(
             }
         }
 
-        // This function makes heavy use of the original load commands, and the offsets to them. This should be
-        //  fine, as we didn't adjust the offsets previously. It's also what `dsc_extractor` seems to do.
+        fun writeLinkeditCommandData(
+            command: LinkEditDataCommand,
+            pointerAlignAfter: Boolean = true,
+        ) {
+            writeDataToLinkedit(command, pointerAlignAfter) {
+                val offsetForLinkeditCommandData = bufferForNewLinkeditSegment.position()
+                bufferForExtractedDylib
+                    .position(it.startIndex.toInt())
+                    .putInt(it.commandType)
+                    .putInt(it.commandSize)
+                    .putInt(originalLinkeditSegmentCommandCopy.fileOffset.toInt() + offsetForLinkeditCommandData)
+                    .putInt(it.linkerDataSize)
+            }
+        }
 
-        originalFunctionStartsCommand?.let { writeLinkerData(it) }
-        originalDataInCodeCommand?.let { writeLinkerData(it) }
-//
-//        // Write the Symbol Table
-//        // TODO: Include exports in the symbol table
-//
-//        writeLinkerData(originalSymbolTableCommandCopy, pointerAlignAfter = false)
-//        writeLinkerData(originalDynamicSymbolTableCommandCopy, pointerAlignAfter = false)
-//
-//        var symbolTableStrings = "\u0000" // Per `dsc_extractor`: the first entry is always an empty string.
-//
-//        // TODO: Build symbol strings
-//
-//        val pointerSize = if (MachHeader(originalDyibByteProvider).is32bit) 4 else 8
-//        while (symbolTableStrings.length % pointerSize != 0) symbolTableStrings += "\u0000"
-//
-//        val stringPoolOffset = bufferForExtractedDylib.position()
-//
-//        bufferForExtractedDylib.put(symbolTableStrings.toByteArray())
+        originalFunctionStartsCommand?.let { writeLinkeditCommandData(it) }
+        originalDataInCodeCommand?.let { writeLinkeditCommandData(it) }
+
+        // Write the Symbol Table
+        // TODO: Include exports in the symbol table
+
+        val offsetForSymbolTable = bufferForNewLinkeditSegment.position()
+        writeDataToLinkedit(originalSymbolTableCommandCopy, pointerAlignAfter = false) {
+            // No fixup yet, because we don't know all we need to know.
+        }
+
+        val offsetForDynamicSymbolTable = bufferForNewLinkeditSegment.position()
+
+        writeDataToLinkedit(originalDynamicSymbolTableCommandCopy, pointerAlignAfter = false) {
+            // Same here. We'll fix them both up at the end.
+        }
+
+        var symbolTableStringPool = "\u0000" // Per `dsc_extractor`: the first entry is always an empty string.
+
+        // TODO: Build symbol strings
+
+        // We need to pointer-align the string pool size.
+        val pointerSize = if (MachHeader(originalDyibByteProvider).is32bit) 4 else 8
+        while (symbolTableStringPool.length % pointerSize != 0) symbolTableStringPool += "\u0000"
+
+        val offsetForStringPool = bufferForExtractedDylib.position()
+
+        bufferForExtractedDylib.put(symbolTableStringPool.toByteArray())
+
+        // Now we can finally fix up the symbol table command.
+        originalSymbolTableCommandCopy.let {
+            bufferForExtractedDylib
+                .position(it.startIndex.toInt())
+                .putInt(it.commandType)
+                .putInt(it.commandSize)
+                .putInt(offsetForSymbolTable)
+                .putInt((it.numberOfSymbols))
+                .putInt(offsetForStringPool)
+                .putInt(symbolTableStringPool.length)
+        }
+
+        // We can also finally fix up the dynamic symbol table command.
+        originalDynamicSymbolTableCommandCopy.let {
+            bufferForExtractedDylib
+                .position(it.startIndex.toInt())
+                .putInt(it.commandType)
+                .putInt(it.commandSize)
+                .putInt(it.localSymbolIndex)
+                .putInt(it.localSymbolCount)
+                .putInt(it.externalSymbolIndex)
+                .putInt(it.externalSymbolCount)
+                .putInt(it.undefinedSymbolIndex)
+                .putInt(it.undefinedSymbolIndex)
+                .putInt(it.tableOfContentsOffset)
+                .putInt(it.tableOfContentsSize)
+                .putInt(it.moduleTableOffset)
+                .putInt(it.moduleTableSize)
+                .putInt(it.referencedSymbolTableOffset)
+                .putInt(it.referencedSymbolTableSize)
+                .putInt(offsetForDynamicSymbolTable)
+                .putInt(it.indirectSymbolTableSize)
+                .putInt(0)
+                .putInt(0)
+                .putInt(0)
+                .putInt(0)
+        }
+
+        // Finally, we fix up the original `__LINKEDIT` segment command.
+        originalLinkeditSegmentCommandCopy.let {
+            // This is not the calculation that `dsc_extractor` does, but it's easier on us to do it this way.
+            val newLinkEditFileSize = bufferForNewLinkeditSegment.position()
+            bufferForExtractedDylib
+                .position(it.startIndex.toInt())
+                .putInt(it.commandType)
+                .putInt(it.commandSize)
+                .apply {
+                    put(it.segmentName.toByteArray())
+                    repeat(16 - it.segmentName.length) { put(0x00) }
+                }.putInt(it.vMaddress.toInt())
+                .putInt(((newLinkEditFileSize + 4095) and (4096).inv()))
+                .putInt(it.fileOffset.toInt())
+                .putInt(newLinkEditFileSize)
+            // Keep everything else the same.
+        }
     }
 }
