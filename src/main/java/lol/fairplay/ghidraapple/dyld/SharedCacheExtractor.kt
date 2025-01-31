@@ -296,7 +296,7 @@ class LinkeditOptimizer(
             command: LinkEditDataCommand,
             pointerAlignAfter: Boolean = true,
         ) {
-            val offsetForLinkerData = bufferForExtractedDylib.position()
+            val offsetForLinkerData = bufferForNewLinkeditSegment.position()
             command.let {
                 bufferForNewLinkeditSegment.put(
                     originalDyibByteProvider.readBytes(
@@ -331,26 +331,22 @@ class LinkeditOptimizer(
 
         originalFunctionStartsCommand?.let { writeLinkerData(it) }
         originalDataInCodeCommand?.let { writeLinkerData(it) }
-
 //
 //        // Write the Symbol Table
 //        // TODO: Include exports in the symbol table
 //
-//        val newSymbolTableOffset = bufferForNewLinkeditSegment.position()
+//        writeLinkerData(originalSymbolTableCommandCopy, pointerAlignAfter = false)
+//        writeLinkerData(originalDynamicSymbolTableCommandCopy, pointerAlignAfter = false)
 //
-//        originalSymbolTableCommandCopy.let {
-//            bufferForNewLinkeditSegment.put(
-//                originalDyibByteProvider.readBytes(
-//                    it.linkerDataOffset.toLong(),
-//                    it.linkerDataSize.toLong(),
-//                ),
-//            )
-//            bufferForExtractedDylib
-//                .position(it.startIndex.toInt())
-//                .putInt(it.commandType)
-//                .putInt(it.commandSize)
-//                .putInt(originalLinkeditSegmentCommandCopy.fileOffset.toInt() + newSymbolTableOffset)
-//                .putInt(it.linkerDataSize)
-//        }
+//        var symbolTableStrings = "\u0000" // Per `dsc_extractor`: the first entry is always an empty string.
+//
+//        // TODO: Build symbol strings
+//
+//        val pointerSize = if (MachHeader(originalDyibByteProvider).is32bit) 4 else 8
+//        while (symbolTableStrings.length % pointerSize != 0) symbolTableStrings += "\u0000"
+//
+//        val stringPoolOffset = bufferForExtractedDylib.position()
+//
+//        bufferForExtractedDylib.put(symbolTableStrings.toByteArray())
     }
 }
