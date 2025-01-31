@@ -42,7 +42,7 @@ class SharedCacheExtractor(
 
         val positionWhereLINKEDITShouldStart = bufferForExtractedDylib.position()
 
-        val bufferForNewLinkeditSection = ByteBuffer.allocate(1 shl 20)
+        val bufferForNewLinkeditSegment = ByteBuffer.allocate(1 shl 20)
 
         val linkeditOptimizer =
             LinkeditOptimizer(
@@ -52,11 +52,11 @@ class SharedCacheExtractor(
             )
         linkeditOptimizer.optimizeLoadCommands()
 
-        linkeditOptimizer.optimizeLinkedit(bufferForNewLinkeditSection)
+        linkeditOptimizer.optimizeLinkedit(bufferForNewLinkeditSegment)
 
         bufferForExtractedDylib
             .position(positionWhereLINKEDITShouldStart)
-            .put(bufferForNewLinkeditSection.array())
+            .put(bufferForNewLinkeditSegment.array())
 
         val finalBytes = ByteArray(bufferForExtractedDylib.position())
         bufferForExtractedDylib.get(0, finalBytes)
@@ -281,11 +281,10 @@ class LinkeditOptimizer(
     }
 
     /**
-     * Builds a new `__LINKEDIT` section and writes it to [bufferForExtractedDylib], moving the position of the
-     *  buffer to the end of the newly-written `__LINKEDIT` section.
+     * Builds a new `__LINKEDIT` segment in [bufferForNewLinkeditSegment].
      */
-    fun optimizeLinkedit(bufferForNewLinkeditSection: ByteBuffer) {
-        // Copy the segment commands into new values to stop the compiler from complaining when we use them again later.
+    fun optimizeLinkedit(bufferForNewLinkeditSegment: ByteBuffer) {
+        // Copy the segment commands into new values to stop the compiler from complaining when we use them later.
         val originalLinkeditSegmentCommandCopy =
             originalLinkeditSegmentCommand ?: return
         val originalSymbolTableCommandCopy =
@@ -293,55 +292,65 @@ class LinkeditOptimizer(
         val originalDynamicSymbolTableCommandCopy =
             originalDynamicSymbolTableCommand ?: return
 
-        // *** Write the LC_FUNCTION_STARTS section (if applicable) ***
-
-        val newFunctionStartsOffset = bufferForNewLinkeditSection.position()
-        originalFunctionStartsCommand?.let {
-            bufferForNewLinkeditSection.put(
-                originalDyibByteProvider.readBytes(
-                    it.linkerDataOffset.toLong(),
-                    it.linkerDataSize.toLong(),
-                ),
-            )
-            bufferForExtractedDylib
-                .position(it.startIndex.toInt())
-                .putInt(it.commandType)
-                .putInt(it.commandSize)
-                .putInt(originalLinkeditSegmentCommandCopy.fileOffset.toInt() + newFunctionStartsOffset)
-                .putInt(it.linkerDataSize)
-        }
-
-        // *** Pointer-Align the Buffer ***
-
-        val pointerSize = if (MachHeader(originalDyibByteProvider).is32bit) 4 else 8
-        while (
-            (
-                (
-                    originalLinkeditSegmentCommandCopy.fileOffset +
-                        bufferForNewLinkeditSection.position()
-                ) % pointerSize
-            ).toInt() != 0
+        fun writeLinkerData(
+            command: LinkEditDataCommand,
+            pointerAlignAfter: Boolean = true,
         ) {
-            bufferForNewLinkeditSection.put(0x00)
-        }
-
-        // *** Write the LC_DATA_IN_CODE section (if applicable) ***
-
-        val newDataInCodeOffset = bufferForNewLinkeditSection.position()
-        originalDataInCodeCommand?.let {
-            val dataInCodeBytes =
-                originalDyibByteProvider.readBytes(
-                    it.linkerDataOffset.toLong(),
-                    it.linkerDataSize.toLong(),
+            val offsetForLinkerData = bufferForExtractedDylib.position()
+            command.let {
+                bufferForNewLinkeditSegment.put(
+                    originalDyibByteProvider.readBytes(
+                        it.linkerDataOffset.toLong(),
+                        it.linkerDataSize.toLong(),
+                    ),
                 )
-            bufferForNewLinkeditSection.put(dataInCodeBytes)
-            bufferForExtractedDylib
-                .position(it.startIndex.toInt())
-                .putInt(it.commandType)
-                .putInt(it.commandSize)
-                .putInt(originalLinkeditSegmentCommandCopy.fileOffset.toInt() + newDataInCodeOffset)
-                .putInt(it.linkerDataSize)
+                bufferForExtractedDylib
+                    .position(it.startIndex.toInt())
+                    .putInt(it.commandType)
+                    .putInt(it.commandSize)
+                    .putInt(originalLinkeditSegmentCommandCopy.fileOffset.toInt() + offsetForLinkerData)
+                    .putInt(it.linkerDataSize)
+            }
+            if (pointerAlignAfter) {
+                val pointerSize = if (MachHeader(originalDyibByteProvider).is32bit) 4 else 8
+                while (
+                    (
+                        (
+                            originalLinkeditSegmentCommandCopy.fileOffset +
+                                bufferForNewLinkeditSegment.position()
+                        ) % pointerSize
+                    ).toInt() != 0
+                ) {
+                    bufferForNewLinkeditSegment.put(0x00)
+                }
+            }
         }
-        // TODO: Finish building out __LINKEDIT section.
+
+        // This function makes heavy use of the original load commands, and the offsets to them. This should be
+        //  fine, as we didn't adjust the offsets previously. It's also what `dsc_extractor` seems to do.
+
+        originalFunctionStartsCommand?.let { writeLinkerData(it) }
+        originalDataInCodeCommand?.let { writeLinkerData(it) }
+
+//
+//        // Write the Symbol Table
+//        // TODO: Include exports in the symbol table
+//
+//        val newSymbolTableOffset = bufferForNewLinkeditSegment.position()
+//
+//        originalSymbolTableCommandCopy.let {
+//            bufferForNewLinkeditSegment.put(
+//                originalDyibByteProvider.readBytes(
+//                    it.linkerDataOffset.toLong(),
+//                    it.linkerDataSize.toLong(),
+//                ),
+//            )
+//            bufferForExtractedDylib
+//                .position(it.startIndex.toInt())
+//                .putInt(it.commandType)
+//                .putInt(it.commandSize)
+//                .putInt(originalLinkeditSegmentCommandCopy.fileOffset.toInt() + newSymbolTableOffset)
+//                .putInt(it.linkerDataSize)
+//        }
     }
 }
