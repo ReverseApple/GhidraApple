@@ -33,9 +33,13 @@ class SharedCacheExtractor(
     private val maxDylibSize: Int = 1024 * 1024 * 100,
 ) {
     fun extractDylib(originalDyibByteProvider: ByteProvider): ByteProvider {
-        var bufferForExtractedDylib: ByteBuffer = ByteBuffer.allocate(maxDylibSize)
+        var bufferForExtractedDylib: ByteBuffer = ByteBuffer.allocate(maxDylibSize).order(ByteOrder.LITTLE_ENDIAN)
 
-        copyAllSegmentsExceptLINKEDIT(originalDyibByteProvider, bufferForExtractedDylib)
+        copyAllSegmentsExceptLINKEDIT(
+            originalDyibByteProvider,
+            bufferForExtractedDylib,
+        )
+
         val positionWhereLINKEDITShouldStart = bufferForExtractedDylib.position()
 
         val bufferForNewLinkeditSection = ByteBuffer.allocate(1 shl 20)
@@ -47,11 +51,12 @@ class SharedCacheExtractor(
                 bufferForExtractedDylib,
             )
         linkeditOptimizer.optimizeLoadCommands()
+
         linkeditOptimizer.optimizeLinkedit(bufferForNewLinkeditSection)
 
         bufferForExtractedDylib
             .position(positionWhereLINKEDITShouldStart)
-            .put(bufferForNewLinkeditSection)
+            .put(bufferForNewLinkeditSection.array())
 
         val finalBytes = ByteArray(bufferForExtractedDylib.position())
         bufferForExtractedDylib.get(0, finalBytes)
@@ -92,14 +97,12 @@ class LinkeditOptimizer(
     private val originalDyibByteProvider: ByteProvider,
     private val bufferForExtractedDylib: ByteBuffer,
 ) {
-    var linkedit: Pair<SegmentCommand, Int>? = null
-
+    var originalLinkeditSegmentCommand: SegmentCommand? = null
     var textOffsetInCache: Long? = null
-
-    var symTab: Pair<SymbolTableCommand, Int>? = null
-    var dynamicSymTab: Pair<DynamicSymbolTableCommand, Int>? = null
-    var functionStarts: Pair<FunctionStartsCommand, Int>? = null
-    var dataInCode: Pair<DataInCodeCommand, Int>? = null
+    var originalSymbolTableCommand: SymbolTableCommand? = null
+    var originalDynamicSymbolTableCommand: DynamicSymbolTableCommand? = null
+    var originalFunctionStartsCommand: FunctionStartsCommand? = null
+    var originalDataInCodeCommand: DataInCodeCommand? = null
 
     var exportsTrieOffset = 0
     var exportsTrieSize = 0
@@ -107,19 +110,21 @@ class LinkeditOptimizer(
     var reexportDeps = setOf<Int>()
 
     fun optimizeLoadCommands() {
-        val machHeader = MachHeader(originalDyibByteProvider).parse()
+        val originalMachHeader = MachHeader(originalDyibByteProvider).parse()
         val originalDylibReader = BinaryReader(originalDyibByteProvider, true)
 
         var cumulativeFileSize = 0L
         var depIndex = 0
 
-        originalDylibReader.pointerIndex = machHeader.toDataType().length.toLong() // Start reading after the header.
+        originalDylibReader.pointerIndex = originalMachHeader.toDataType().length.toLong() // Start reading after the header.
 
-        repeat(machHeader.numberOfCommands) {
-            val commandStartIndex = originalDylibReader.pointerIndex
+        repeat(originalMachHeader.numberOfCommands) {
             val command =
-                LoadCommandFactory
-                    .getLoadCommand(originalDylibReader, machHeader, dscFileSystem.splitDyldCache)
+                LoadCommandFactory.getLoadCommand(originalDylibReader, originalMachHeader, null)
+
+            // Not sure why this is needed, but it seems to break without this. This ensures our reader points to
+            //  the start of the next command on our next go around.
+            originalDylibReader.pointerIndex = command.startIndex + command.commandSize
 
             // `dsc_extractor` matches on the command type, we match on the command class (and type if necessary).
             when (command) {
@@ -132,10 +137,14 @@ class LinkeditOptimizer(
                             command.vMaddress - dscFileSystem.rootHeader.unslidLoadAddress()
                     }
 
+                    if (command.segmentName == "__LINKEDIT") {
+                        originalLinkeditSegmentCommand = command
+                    }
+
                     // We're lucky Ghidra gives us this "serialization" method.
                     val newCommandBytes =
                         SegmentCommand.create(
-                            machHeader.magic,
+                            originalMachHeader.magic,
                             command.segmentName,
                             command.vMaddress,
                             command.vMsize,
@@ -157,12 +166,12 @@ class LinkeditOptimizer(
                         .array()
                         .copyInto(newCommandBytes, Int.SIZE_BYTES * 1)
 
-                    bufferForExtractedDylib.put(commandStartIndex.toInt(), newCommandBytes)
+                    bufferForExtractedDylib.put(command.startIndex.toInt(), newCommandBytes)
 
-                    originalDylibReader.pointerIndex = commandStartIndex + newCommandBytes.size
+                    originalDylibReader.pointerIndex = command.startIndex + newCommandBytes.size
                     repeat(command.numberOfSections) {
                         val sectionStartIndex = originalDylibReader.pointerIndex
-                        val section = Section(originalDylibReader, machHeader.is32bit)
+                        val section = Section(originalDylibReader, originalMachHeader.is32bit)
                         val newOffset =
                             section.offset.takeIf { it == 0 }
                                 ?: (cumulativeFileSize + section.address + command.vMaddress).toInt()
@@ -176,7 +185,7 @@ class LinkeditOptimizer(
                             repeat(16 - this.sectionName.length) { buffer.put(0x00) }
                             buffer.put(this.segmentName.toByteArray())
                             repeat(16 - this.segmentName.length) { buffer.put(0x00) }
-                            if (machHeader.is32bit) {
+                            if (originalMachHeader.is32bit) {
                                 buffer.putInt(this.address.toInt())
                                 buffer.putInt(this.size.toInt())
                             } else {
@@ -189,7 +198,7 @@ class LinkeditOptimizer(
                             buffer.putInt(this.numberOfRelocations)
                             buffer.putInt(reserved1)
                             buffer.putInt(reserved2)
-                            if (!machHeader.is32bit) buffer.putInt(reserved3)
+                            if (!originalMachHeader.is32bit) buffer.putInt(reserved3)
                             return buffer.array()
                         }
                         val sectionBytes = section.serialize(newOffset)
@@ -223,7 +232,7 @@ class LinkeditOptimizer(
                     }
                     exportsTrieOffset = command.exportOffset
                     exportsTrieSize = command.exportSize
-                    bufferForExtractedDylib.put(commandStartIndex.toInt(), command.serializeForExtractor())
+                    bufferForExtractedDylib.put(command.startIndex.toInt(), command.serializeForExtractor())
                 }
                 is DyldExportsTrieCommand -> {
                     fun DyldExportsTrieCommand.serializeForExtractor(): ByteArray {
@@ -237,12 +246,12 @@ class LinkeditOptimizer(
                     }
                     exportsTrieOffset = command.linkerDataOffset
                     exportsTrieSize = command.linkerDataSize
-                    bufferForExtractedDylib.put(commandStartIndex.toInt(), command.serializeForExtractor())
+                    bufferForExtractedDylib.put(command.startIndex.toInt(), command.serializeForExtractor())
                 }
-                is SymbolTableCommand -> this.symTab = Pair(command, commandStartIndex.toInt())
-                is DynamicSymbolTableCommand -> this.dynamicSymTab = Pair(command, commandStartIndex.toInt())
-                is FunctionStartsCommand -> this.functionStarts = Pair(command, commandStartIndex.toInt())
-                is DataInCodeCommand -> this.dataInCode = Pair(command, commandStartIndex.toInt())
+                is SymbolTableCommand -> this.originalSymbolTableCommand = command
+                is DynamicSymbolTableCommand -> this.originalDynamicSymbolTableCommand = command
+                is FunctionStartsCommand -> this.originalFunctionStartsCommand = command
+                is DataInCodeCommand -> this.originalDataInCodeCommand = command
                 is DynamicLinkerCommand -> {
                     val handledLinkCommands =
                         arrayOf(
@@ -268,10 +277,6 @@ class LinkeditOptimizer(
                 }
                 else -> return@repeat
             }
-
-            // Not sure why this is needed, but it seems to break without this. This ensures our reader points to
-            //  the start of the next command on our next go around.
-            originalDylibReader.pointerIndex = commandStartIndex + command.commandSize
         }
     }
 
@@ -280,53 +285,62 @@ class LinkeditOptimizer(
      *  buffer to the end of the newly-written `__LINKEDIT` section.
      */
     fun optimizeLinkedit(bufferForNewLinkeditSection: ByteBuffer) {
-        if (linkedit == null) return
-        if (symTab == null) return
-        if (dynamicSymTab == null) return
+        // Copy the segment commands into new values to stop the compiler from complaining when we use them again later.
+        val originalLinkeditSegmentCommandCopy =
+            originalLinkeditSegmentCommand ?: return
+        val originalSymbolTableCommandCopy =
+            originalSymbolTableCommand ?: return
+        val originalDynamicSymbolTableCommandCopy =
+            originalDynamicSymbolTableCommand ?: return
 
-        val linkeditSegmentCommand = linkedit!!.first
-        val linkeditBaseOffset = linkedit!!.second
+        // *** Write the LC_FUNCTION_STARTS section (if applicable) ***
 
         val newFunctionStartsOffset = bufferForNewLinkeditSection.position()
-        functionStarts?.let {
-            val functionStartsCommand = it.first
-            val functionStartsOffset = it.second
-            val baseOffset = linkeditBaseOffset + functionStartsCommand.linkerDataOffset
-            val newFunctionStartsSize = functionStartsCommand.linkerDataSize
-            bufferForExtractedDylib.put(
-                originalDyibByteProvider
-                    .readBytes(baseOffset.toLong(), (baseOffset + newFunctionStartsSize).toLong()),
+        originalFunctionStartsCommand?.let {
+            bufferForNewLinkeditSection.put(
+                originalDyibByteProvider.readBytes(
+                    it.linkerDataOffset.toLong(),
+                    it.linkerDataSize.toLong(),
+                ),
             )
-//            bufferForExtractedDylib
-//                .position(functionStartsOffset)
-//                .putInt(functionStartsCommand.commandType)
-//                .putInt(functionStartsCommand.commandSize)
-//                .putInt(linkeditBaseOffset.toInt())
-//                .putInt(newFunctionStartsSize)
+            bufferForExtractedDylib
+                .position(it.startIndex.toInt())
+                .putInt(it.commandType)
+                .putInt(it.commandSize)
+                .putInt(originalLinkeditSegmentCommandCopy.fileOffset.toInt() + newFunctionStartsOffset)
+                .putInt(it.linkerDataSize)
         }
+
+        // *** Pointer-Align the Buffer ***
+
         val pointerSize = if (MachHeader(originalDyibByteProvider).is32bit) 4 else 8
         while (
-            (linkeditSegmentCommand.fileOffset + bufferForNewLinkeditSection.position() % pointerSize).toInt() != 0
+            (
+                (
+                    originalLinkeditSegmentCommandCopy.fileOffset +
+                        bufferForNewLinkeditSection.position()
+                ) % pointerSize
+            ).toInt() != 0
         ) {
             bufferForNewLinkeditSection.put(0x00)
         }
 
-        val newDataInCodeOffset = bufferForExtractedDylib.position()
-        dataInCode?.let {
-            val dataInCodeCommand = it.first
-            val dataInCodeOffset = it.second
-            val baseOffset = linkeditBaseOffset + dataInCodeCommand.linkerDataOffset
-            val newFunctionStartsSize = dataInCodeCommand.linkerDataSize
-            bufferForExtractedDylib.put(
-                originalDyibByteProvider
-                    .readBytes(baseOffset.toLong(), (baseOffset + newFunctionStartsSize).toLong()),
-            )
-//            bufferForExtractedDylib
-//                .position(functionStartsOffset)
-//                .putInt(functionStartsCommand.commandType)
-//                .putInt(functionStartsCommand.commandSize)
-//                .putInt(linkeditBaseOffset!!.toInt())
-//                .putInt(newFunctionStartsSize)
+        // *** Write the LC_DATA_IN_CODE section (if applicable) ***
+
+        val newDataInCodeOffset = bufferForNewLinkeditSection.position()
+        originalDataInCodeCommand?.let {
+            val dataInCodeBytes =
+                originalDyibByteProvider.readBytes(
+                    it.linkerDataOffset.toLong(),
+                    it.linkerDataSize.toLong(),
+                )
+            bufferForNewLinkeditSection.put(dataInCodeBytes)
+            bufferForExtractedDylib
+                .position(it.startIndex.toInt())
+                .putInt(it.commandType)
+                .putInt(it.commandSize)
+                .putInt(originalLinkeditSegmentCommandCopy.fileOffset.toInt() + newDataInCodeOffset)
+                .putInt(it.linkerDataSize)
         }
         // TODO: Finish building out __LINKEDIT section.
     }
