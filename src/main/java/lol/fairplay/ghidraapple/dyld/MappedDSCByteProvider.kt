@@ -8,7 +8,7 @@ import java.io.IOException
 import java.util.TreeMap
 
 /**
- * A byte provider representing a dyld cache mapped into virtual memory.
+ * A [ByteProvider] representing a dyld (shared) cache mapped into virtual memory.
  */
 class MappedDSCByteProvider(
     val splitDyldCache: SplitDyldCache,
