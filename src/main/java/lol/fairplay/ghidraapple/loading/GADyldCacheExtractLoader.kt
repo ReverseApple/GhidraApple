@@ -48,7 +48,7 @@ class GADyldCacheExtractLoader : DyldCacheExtractLoader() {
         markupDyldCacheSource(program, fileSystem)
         repointSelectorReferences(program, fileSystem)
         addDylibsToProgram(program, fileSystem, provider)
-        mapDyldSharedCacheToProgram(program, fileSystem, monitor)
+//        mapDyldSharedCacheToProgram(program, fileSystem, monitor)
     }
 
     /**
