@@ -4,12 +4,15 @@ import ghidra.app.util.bin.BinaryReader
 import ghidra.app.util.bin.ByteArrayProvider
 import ghidra.app.util.bin.ByteProvider
 import ghidra.app.util.bin.format.macho.MachHeader
+import ghidra.app.util.bin.format.macho.MachHeaderFlags
 import ghidra.app.util.bin.format.macho.Section
 import ghidra.app.util.bin.format.macho.commands.DataInCodeCommand
 import ghidra.app.util.bin.format.macho.commands.DyldExportsTrieCommand
 import ghidra.app.util.bin.format.macho.commands.DyldInfoCommand
+import ghidra.app.util.bin.format.macho.commands.DyldInfoCommandConstants
 import ghidra.app.util.bin.format.macho.commands.DynamicLinkerCommand
 import ghidra.app.util.bin.format.macho.commands.DynamicSymbolTableCommand
+import ghidra.app.util.bin.format.macho.commands.ExportTrie
 import ghidra.app.util.bin.format.macho.commands.FunctionStartsCommand
 import ghidra.app.util.bin.format.macho.commands.LinkEditDataCommand
 import ghidra.app.util.bin.format.macho.commands.LoadCommand
@@ -17,6 +20,8 @@ import ghidra.app.util.bin.format.macho.commands.LoadCommandFactory
 import ghidra.app.util.bin.format.macho.commands.LoadCommandTypes
 import ghidra.app.util.bin.format.macho.commands.SegmentCommand
 import ghidra.app.util.bin.format.macho.commands.SymbolTableCommand
+import ghidra.formats.gfilesystem.FSRL
+import lol.fairplay.ghidraapple.filesystems.DSCFileSystem
 import lol.fairplay.ghidraapple.filesystems.GADyldCacheFileSystem
 import java.io.IOException
 import java.nio.ByteBuffer
@@ -27,6 +32,314 @@ import kotlin.collections.plus
  * The dyld project includes a library called `dsc_extractor`. The logic in this file is largely copied from
  * that library. The logic is copied as `dsc_extractor` is not portable to non-Apple platforms.
  */
+
+class DSCExtractor(
+    private val dscFileSystem: DSCFileSystem,
+    // 100 MiB default
+    private val maxDylibSize: Int = 1024 * 1024 * 100,
+) {
+    @OptIn(ExperimentalStdlibApi::class)
+    fun extractDylibAtAddress(
+        startAddress: Long,
+        fsrl: FSRL,
+    ): ByteProvider {
+        // TODO: See if we can utilize an automatically-resizing data structure for the buffer(s).
+
+        val bufferForExtractedDylib: ByteBuffer = ByteBuffer.allocate(maxDylibSize).order(ByteOrder.LITTLE_ENDIAN)
+
+        val mappedCacheProvider = dscFileSystem.mappedCacheProvider!!
+
+        val machHeader =
+            MachHeader(mappedCacheProvider, startAddress)
+                .parse(mappedCacheProvider.splitDyldCache)
+
+        var textOffsetInCache = 0L
+
+        for (segment in machHeader.allSegments) {
+            if (segment.segmentName == "__TEXT") {
+                textOffsetInCache =
+                    segment.vMaddress -
+                    mappedCacheProvider.splitDyldCache
+                        .getDyldCacheHeader(0)
+                        .unslidLoadAddress()
+            }
+            if (segment.segmentName == "__LINKEDIT") continue
+            val segmentBytes = mappedCacheProvider.readBytes(segment.vMaddress, segment.vMsize)
+            bufferForExtractedDylib.put(segmentBytes)
+        }
+        val offsetForNewLinkeditSegment = bufferForExtractedDylib.position()
+
+        val bufferForNewLinkeditSegment = ByteBuffer.allocate(1 shl 20)
+
+        val linkeditOptimizer = LinkeditOptimizerNew(mappedCacheProvider, bufferForExtractedDylib)
+
+        linkeditOptimizer.optimizeLoadCommands()
+        linkeditOptimizer.optimizeLinkedit(machHeader, bufferForNewLinkeditSegment, textOffsetInCache)
+
+        bufferForExtractedDylib
+            .position(offsetForNewLinkeditSegment)
+            .put(bufferForNewLinkeditSegment.array())
+
+        val finalBytes = ByteArray(bufferForExtractedDylib.position())
+        bufferForExtractedDylib.get(0, finalBytes)
+        val testMachHeader = MachHeader(ByteArrayProvider(finalBytes)).parse()
+        return ByteArrayProvider(finalBytes, fsrl)
+    }
+}
+
+class LinkeditOptimizerNew(
+    val mappedCacheProvider: MappedDSCByteProvider,
+    val newDyibBuffer: ByteBuffer,
+) {
+    private var linkeditSegmentCommand: SegmentCommand? = null
+    private var linkeditBaseAddressInCache: Long = 0L
+    var exportsTrie: ExportTrie? = null
+
+    var symbolTableCommand: SymbolTableCommand? = null
+    var dynamicSymbolTableCommand: DynamicSymbolTableCommand? = null
+    var functionStartsCommand: FunctionStartsCommand? = null
+    var dataInCodeCommand: DataInCodeCommand? = null
+
+    var reexportedDependencies = setOf<Int>()
+
+    fun fixupSegmentCommand(
+        commandStartIndex: Long,
+        machHeader: MachHeader,
+        name: String? = null,
+        vmAddr: Long? = null,
+        vmSize: Long? = null,
+        fileOffset: Long? = null,
+        fileSize: Long? = null,
+        maxProt: Int? = null,
+        initProt: Int? = null,
+        numSections: Int? = null,
+        flags: Int? = null,
+    ) {
+        val readerForNewDylib = BinaryReader(ByteArrayProvider(newDyibBuffer.array()), true)
+        readerForNewDylib.pointerIndex = commandStartIndex
+        val oldSegmentCommand = SegmentCommand(readerForNewDylib, machHeader.is32bit)
+        val newCommandBytes =
+            SegmentCommand.create(
+                machHeader.magic,
+                name ?: oldSegmentCommand.segmentName,
+                vmAddr ?: oldSegmentCommand.vMaddress,
+                vmSize ?: oldSegmentCommand.vMsize,
+                fileOffset ?: oldSegmentCommand.fileOffset,
+                fileSize ?: oldSegmentCommand.fileOffset,
+                maxProt ?: oldSegmentCommand.maxProtection,
+                initProt ?: oldSegmentCommand.initProtection,
+                numSections ?: oldSegmentCommand.numberOfSections,
+                flags ?: oldSegmentCommand.flags,
+            )
+        // The [SegmentCommand.create] method does not include the correct command size if the segment
+        //  has sections (which they basically all do), so we need to copy the original size back into
+        //  the bytes before writing them to the new dylib buffer.
+        ByteBuffer
+            .allocate(Int.SIZE_BYTES)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .putInt(oldSegmentCommand.commandSize)
+            .array()
+            .copyInto(newCommandBytes, Int.SIZE_BYTES * 1)
+
+        // Write the new command bytes into the buffer.
+        newDyibBuffer.put(oldSegmentCommand.startIndex.toInt(), newCommandBytes)
+    }
+
+    fun optimizeLoadCommands() {
+        val indexOfFlags = Int.SIZE_BYTES * 6
+        val oldFlags = newDyibBuffer.getInt(indexOfFlags)
+        newDyibBuffer.putInt(indexOfFlags, oldFlags and MachHeaderFlags.MH_DYLIB_IN_CACHE.inv())
+
+        var cumulativeFileSize = 0L
+        var depIndex = 0
+
+        val machHeader =
+            MachHeader(
+                ByteArrayProvider(newDyibBuffer.array()),
+            ).parse(mappedCacheProvider.splitDyldCache)
+
+        for (command in machHeader.loadCommands) {
+            when (command) {
+                is SegmentCommand -> {
+                    if (command.segmentName == "__LINKEDIT") {
+                        linkeditSegmentCommand = command
+                        linkeditBaseAddressInCache = command.vMaddress
+                        linkeditBaseAddressInCache -= command.fileOffset
+                    }
+
+                    fixupSegmentCommand(
+                        command.startIndex,
+                        machHeader,
+                        fileOffset = cumulativeFileSize,
+                        fileSize = command.vMsize,
+                    )
+
+                    command.sections.forEachIndexed { index, section ->
+                        if (section.offset != 0) {
+                            val sectionStartIndex =
+                                command.startIndex + command.commandSize + (section.toDataType().length * index)
+                            newDyibBuffer
+                                .position(
+                                    sectionStartIndex.toInt() +
+                                        (16 * 2) + // skip names
+                                        (if (machHeader.is32bit) 8 else 4) * 2, // skip address and size
+                                ).putInt((cumulativeFileSize + (section.address - command.vMaddress)).toInt())
+                        }
+                    }
+
+                    cumulativeFileSize += command.fileSize
+                }
+                is DyldInfoCommand -> {
+                    fun DyldInfoCommand.serializeForExtractor(): ByteArray {
+                        val buffer =
+                            ByteBuffer
+                                .allocate(this.commandSize)
+                                .order(ByteOrder.LITTLE_ENDIAN)
+                                .putInt(command.commandType)
+                                .putInt(command.commandSize)
+                                // rebase offset and size
+                                .putInt(0)
+                                .putInt(0)
+                                // bind offset and size
+                                .putInt(0)
+                                .putInt(0)
+                                // weak bind offset and size
+                                .putInt(0)
+                                .putInt(0)
+                                // lazy bind offset and size
+                                .putInt(0)
+                                .putInt(0)
+                                // export offset and size
+                                .putInt(0)
+                                .putInt(0)
+                        return buffer.array()
+                    }
+                    exportsTrie = command.exportTrie
+                    newDyibBuffer.put(command.startIndex.toInt(), command.serializeForExtractor())
+                }
+                is DyldExportsTrieCommand -> {
+                    fun DyldExportsTrieCommand.serializeForExtractor(): ByteArray {
+                        val buffer =
+                            ByteBuffer
+                                .allocate(this.commandSize)
+                                .order(ByteOrder.LITTLE_ENDIAN)
+                                .putInt(command.commandType)
+                                .putInt(command.commandSize)
+                                // data offset and size
+                                .putInt(0)
+                                .putInt(0)
+                        return buffer.array()
+                    }
+                    exportsTrie = command.exportTrie
+                    newDyibBuffer.put(command.startIndex.toInt(), command.serializeForExtractor())
+                }
+                is SymbolTableCommand -> this.symbolTableCommand = command
+                is DynamicSymbolTableCommand -> this.dynamicSymbolTableCommand = command
+                is FunctionStartsCommand -> this.functionStartsCommand = command
+                is DataInCodeCommand -> this.dataInCodeCommand = command
+                is DynamicLinkerCommand -> {
+                    val handledLinkCommands =
+                        arrayOf(
+                            LoadCommandTypes.LC_LOAD_DYLIB,
+                            LoadCommandTypes.LC_LOAD_WEAK_DYLIB,
+                            LoadCommandTypes.LC_REEXPORT_DYLIB,
+                            LoadCommandTypes.LC_LOAD_UPWARD_DYLIB,
+                            // Some link-ish load commands aren't handled, but we are copying this logic from
+                            //  `dsc_extractor`, so I guess we have to trust it.
+                        )
+                    if (command.commandType !in handledLinkCommands) return
+                    depIndex++
+                    if (command.commandType == LoadCommandTypes.LC_REEXPORT_DYLIB) reexportedDependencies += depIndex
+                }
+                is LinkEditDataCommand -> {
+                    if (command.commandType == LoadCommandTypes.LC_SEGMENT_SPLIT_INFO) {
+                        // TODO: Fix this.
+                        // `dsc_extractor` removes this command when encountering it. I haven't figured out how to
+                        //  cleanly remove load  commands at the moment, so we'll just throw. Thankfully, it seems
+                        //  that the only time we'll encounter this is on iOS 9 caches.
+                        throw IOException("Unexpected `LC_SEGMENT_SPLIT_INFO` command.")
+                    }
+                }
+            }
+        }
+    }
+
+    fun optimizeLinkedit(
+        machHeader: MachHeader,
+        newLinkeditSegmentBuffer: ByteBuffer,
+        textOffsetInCache: Long,
+        // TODO: Handle `localSymbolsCache`
+    ) {
+        // Copy the segment commands into new values to stop the compiler from complaining when we use them later.
+        var newLinkeditSegmentCommand =
+            linkeditSegmentCommand?.let {
+                val readerForNewDylib = BinaryReader(ByteArrayProvider(newDyibBuffer.array()), true)
+                readerForNewDylib.pointerIndex = it.startIndex
+                val newSegmentCommand = SegmentCommand(readerForNewDylib, machHeader.is32bit)
+                return@let newSegmentCommand
+            } ?: return
+        val symbolTableCommandCopy =
+            symbolTableCommand ?: return
+        val dynamicSymbolTableCommandCopy =
+            dynamicSymbolTableCommand ?: return
+
+        fun <T : LoadCommand> writeDataToLinkedit(
+            command: T,
+            pointerAlignAfter: Boolean = true,
+            preWriteCommandFixup: (T) -> Unit,
+        ) {
+            preWriteCommandFixup(command)
+            newLinkeditSegmentBuffer.put(
+                mappedCacheProvider.readBytes(
+                    linkeditBaseAddressInCache + command.linkerDataOffset.toLong(),
+                    command.linkerDataSize.toLong(),
+                ),
+            )
+            if (pointerAlignAfter) {
+                val pointerSize = if (machHeader.is32bit) 4 else 8
+                while (
+                    (
+                        (
+                            newLinkeditSegmentCommand.fileOffset +
+                                newLinkeditSegmentBuffer.position()
+                        ) % pointerSize
+                    ).toInt() != 0
+                ) {
+                    newLinkeditSegmentBuffer.put(0x00)
+                }
+            }
+        }
+
+        fun writeLinkeditCommandData(
+            command: LinkEditDataCommand,
+            pointerAlignAfter: Boolean = true,
+        ) {
+            writeDataToLinkedit(command, pointerAlignAfter) {
+                val offsetForLinkeditCommandData = newLinkeditSegmentBuffer.position()
+                newDyibBuffer
+                    .position(it.startIndex.toInt())
+                    .putInt(it.commandType)
+                    .putInt(it.commandSize)
+                    .putInt(newLinkeditSegmentCommand.fileOffset.toInt() + offsetForLinkeditCommandData)
+                    .putInt(it.linkerDataSize)
+            }
+        }
+
+        functionStartsCommand?.let { writeLinkeditCommandData(it) }
+        dataInCodeCommand?.let { writeLinkeditCommandData(it) }
+
+        // This is not the calculation that `dsc_extractor` does, but it's easier on us to do it this way.
+        val newLinkEditFileSize = newLinkeditSegmentBuffer.position()
+
+        // Finally, we fix up the original `__LINKEDIT` segment command.
+        fixupSegmentCommand(
+            newLinkeditSegmentCommand.startIndex,
+            machHeader,
+            fileSize = newLinkeditSegmentBuffer.position().toLong(),
+            vmSize = ((newLinkEditFileSize + 4095) and (4096).inv()).toLong(),
+        )
+    }
+}
 
 class SharedCacheExtractor(
     private val dscFileSystem: GADyldCacheFileSystem,
@@ -105,14 +418,14 @@ class LinkeditOptimizer(
     var originalFunctionStartsCommand: FunctionStartsCommand? = null
     var originalDataInCodeCommand: DataInCodeCommand? = null
 
-    var exportsTrieOffset = 0
-    var exportsTrieSize = 0
+    var exportsTrie: ExportTrie? = null
 
     var reexportDeps = setOf<Int>()
 
     fun optimizeLoadCommands() {
         val originalMachHeader = MachHeader(originalDyibByteProvider).parse()
         val originalDylibReader = BinaryReader(originalDyibByteProvider, true)
+        val dscReader = BinaryReader(dscFileSystem.fsByteProvider!!, true)
 
         var cumulativeFileSize = 0L
         var depIndex = 0
@@ -231,8 +544,7 @@ class LinkeditOptimizer(
                         buffer.putInt(0)
                         return buffer.array()
                     }
-                    exportsTrieOffset = command.exportOffset
-                    exportsTrieSize = command.exportSize
+                    exportsTrie = command.exportTrie
                     bufferForExtractedDylib.put(command.startIndex.toInt(), command.serializeForExtractor())
                 }
                 is DyldExportsTrieCommand -> {
@@ -245,8 +557,7 @@ class LinkeditOptimizer(
                         buffer.putInt(0)
                         return buffer.array()
                     }
-                    exportsTrieOffset = command.linkerDataOffset
-                    exportsTrieSize = command.linkerDataSize
+                    exportsTrie = command.exportTrie
                     bufferForExtractedDylib.put(command.startIndex.toInt(), command.serializeForExtractor())
                 }
                 is SymbolTableCommand -> this.originalSymbolTableCommand = command
@@ -344,6 +655,26 @@ class LinkeditOptimizer(
         // Write the Symbol Table
         // TODO: Include exports in the symbol table
 
+        val nonReExportedExports =
+            exportsTrie?.exports?.filter {
+                val exportKind = (it.flags and DyldInfoCommandConstants.EXPORT_SYMBOL_FLAGS_KIND_MASK.toLong())
+                if (exportKind != DyldInfoCommandConstants.EXPORT_SYMBOL_FLAGS_KIND_REGULAR.toLong()) {
+                    return@filter false
+                }
+                // The `dsc_extractor` code actually uses the inverse of this check, but that honestly doesn't
+                //  make any sense whatsoever so we invert it here.
+                if ((it.flags and DyldInfoCommandConstants.EXPORT_SYMBOL_FLAGS_REEXPORT.toLong()) != 0L) {
+                    return@filter false
+                }
+                // I'm not really sure what this is, but it's my best attempt at what `dsc_extractor` does here.
+                if (reexportDeps.contains(it.other.toInt())) {
+                    return@filter false
+                }
+                return@filter true
+            } ?: listOf()
+
+        val newSymbolCount = originalSymbolTableCommandCopy.numberOfSymbols + nonReExportedExports.size
+
         val offsetForSymbolTable = bufferForNewLinkeditSegment.position()
         writeDataToLinkedit(originalSymbolTableCommandCopy, pointerAlignAfter = false) {
             // No fixup yet, because we don't know all we need to know.
@@ -355,6 +686,8 @@ class LinkeditOptimizer(
             // Same here. We'll fix them both up at the end.
         }
 
+        val offsetForStringPool = bufferForExtractedDylib.position()
+
         var symbolTableStringPool = "\u0000" // Per `dsc_extractor`: the first entry is always an empty string.
 
         // TODO: Build symbol strings
@@ -362,8 +695,6 @@ class LinkeditOptimizer(
         // We need to pointer-align the string pool size.
         val pointerSize = if (MachHeader(originalDyibByteProvider).is32bit) 4 else 8
         while (symbolTableStringPool.length % pointerSize != 0) symbolTableStringPool += "\u0000"
-
-        val offsetForStringPool = bufferForExtractedDylib.position()
 
         bufferForExtractedDylib.put(symbolTableStringPool.toByteArray())
 
