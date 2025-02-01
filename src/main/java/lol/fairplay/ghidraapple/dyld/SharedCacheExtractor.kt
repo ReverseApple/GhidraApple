@@ -203,8 +203,10 @@ class LinkeditOptimizerNew(
                             newDyibBuffer
                                 .position(
                                     sectionStartIndex.toInt() +
-                                        (16 * 2) + // skip names
-                                        (if (machHeader.is32bit) 8 else 4) * 2, // skip address and size
+                                        // skip names
+                                        (16 * 2) +
+                                        // skip address and size
+                                        (if (machHeader.is32bit) 8 else 4) * 2,
                                 ).putInt((cumulativeFileSize + (section.address - command.vMaddress)).toInt())
                         }
                     }
