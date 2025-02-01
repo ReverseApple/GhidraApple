@@ -108,7 +108,8 @@ class DSCExtractor(
 }
 
 class LinkeditOptimizerNew(
-    val dylibContainingCacheFileByteProvider: ByteProvider,
+    // TODO: We gotta pick a better name for this.
+    val byteProviderForCacheFileContainingDylib: ByteProvider,
     val dscMemoryHelper: DSCMemoryHelper,
     val newDyibBuffer: ByteBuffer,
 ) {
@@ -311,7 +312,7 @@ class LinkeditOptimizerNew(
         ) {
             preWriteCommandFixup(command)
             val bytesToWrite =
-                dylibContainingCacheFileByteProvider.readBytes(
+                byteProviderForCacheFileContainingDylib.readBytes(
                     command.linkerDataOffset.toLong(),
                     command.linkerDataSize.toLong(),
                 )
@@ -346,11 +347,15 @@ class LinkeditOptimizerNew(
             }
         }
 
+        // These two are first and second in the new `__LINKEDIT` section.
+
         functionStartsCommand?.let { writeLinkeditCommandData(it) }
         dataInCodeCommand?.let { writeLinkeditCommandData(it) }
 
-        val readerForSymbolTable = BinaryReader(dylibContainingCacheFileByteProvider, true)
-        readerForSymbolTable.pointerIndex = symbolTableCommandCopy.symbolOffset.toLong()
+        // Now it's onto the tricky part: rebuilding the symbol table.
+
+        // TODO: Maybe clean up this logic if and when Ghidra fixes their symbol table parsing.
+
         val (symbolsFileOffset, stringsFileOffset) =
             symbolTableCommandCopy.let {
                 // Ghidra's parsing may sometimes parse these offsets as signed integers and return negative
@@ -361,12 +366,94 @@ class LinkeditOptimizerNew(
                     it.stringTableOffset.toUInt(),
                 )
             }
-        var symbolTable = mutableListOf<NList>()
-        for (i in 0 until symbolTableCommandCopy.numberOfSymbols) {
+
+        // Start reading from the symbol table as it exists in the cache file.
+
+        val readerForSymbolTable = BinaryReader(byteProviderForCacheFileContainingDylib, true)
+        readerForSymbolTable.pointerIndex = symbolsFileOffset.toLong()
+
+        // Read the first entry. We do this to use it later to calculate the size of our new symbol table.
+
+        val firstNList = NList(readerForSymbolTable, machHeader.is32bit)
+
+        // TODO: Handle any additional symbols that should be added.
+
+        val newSymbolCount = symbolTableCommandCopy.numberOfSymbols
+        val newSymbolTableBuffer =
+            ByteBuffer
+                // We assume all NList entries are the same size (which they should be).
+                .allocate(newSymbolCount * firstNList.toDataType().length)
+                .order(ByteOrder.LITTLE_ENDIAN)
+
+        var symbolTableStringPool = "\u0000" // Per `dsc_extractor`: the first entry is always an empty string.
+
+        repeat(symbolTableCommandCopy.numberOfSymbols - 1) {
             val nList = NList(readerForSymbolTable, machHeader.is32bit)
             nList.initString(readerForSymbolTable, stringsFileOffset.toLong())
-            symbolTable += nList
+            newSymbolTableBuffer
+                .putInt(symbolTableStringPool.length) // String offset where we'll write the string (below).
+                .put(nList.type)
+                .put(nList.section)
+                .putShort(nList.description)
+                .apply {
+                    if (nList.is32bit) putInt(nList.value.toInt()) else putLong(nList.value)
+                }
+            // It's important that this happens *after* we write the entry so the string offset is correct.
+            symbolTableStringPool += nList.string + "\u0000"
         }
+
+        // We need to pointer-align the string pool size.
+        val pointerSize = if (machHeader.is32bit) 4 else 8
+        while (symbolTableStringPool.length % pointerSize != 0) symbolTableStringPool += "\u0000"
+
+        // Now it's time to write the stuff.
+
+        val fileOffsetForNewSymbols =
+            newLinkeditSegmentCommand.fileOffset + newLinkeditSegmentBuffer.position()
+
+        newLinkeditSegmentBuffer.put(newSymbolTableBuffer.array())
+
+        val fileOffsetForIndirectSymbols =
+            newLinkeditSegmentCommand.fileOffset + newLinkeditSegmentBuffer.position()
+
+        writeDataToLinkedit(dynamicSymbolTableCommandCopy) {
+            newDyibBuffer
+                .position(it.startIndex.toInt())
+                .putInt(it.commandType)
+                .putInt(it.commandSize)
+                .putInt(it.localSymbolIndex)
+                .putInt(it.localSymbolCount)
+                .putInt(it.externalSymbolIndex)
+                .putInt(it.externalSymbolCount)
+                .putInt(it.undefinedSymbolIndex)
+                .putInt(it.undefinedSymbolIndex)
+                .putInt(it.tableOfContentsOffset)
+                .putInt(it.tableOfContentsSize)
+                .putInt(it.moduleTableOffset)
+                .putInt(it.moduleTableSize)
+                .putInt(it.referencedSymbolTableOffset)
+                .putInt(it.referencedSymbolTableSize)
+                .putInt(fileOffsetForIndirectSymbols.toInt())
+                .putInt(it.indirectSymbolTableSize)
+                .putInt(0)
+                .putInt(0)
+                .putInt(0)
+                .putInt(0)
+        }
+
+        val fileOffsetForStringPool =
+            newLinkeditSegmentCommand.fileOffset + newLinkeditSegmentBuffer.position()
+
+        newLinkeditSegmentBuffer.put(symbolTableStringPool.toByteArray())
+
+        newDyibBuffer
+            .position(symbolTableCommandCopy.startIndex.toInt())
+            .putInt(symbolTableCommandCopy.commandType)
+            .putInt(symbolTableCommandCopy.commandSize)
+            .putInt(fileOffsetForNewSymbols.toInt())
+            .putInt(newSymbolCount)
+            .putInt(fileOffsetForStringPool.toInt())
+            .putInt(symbolTableStringPool.length)
 
         // This is not the calculation that `dsc_extractor` does, but it's easier on us to do it this way.
         val newLinkEditFileSize = newLinkeditSegmentBuffer.position()
