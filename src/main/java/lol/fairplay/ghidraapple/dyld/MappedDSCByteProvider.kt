@@ -29,7 +29,7 @@ class MappedDSCByteProvider(
         maxAddress = maybeMaxAddress
     }
 
-    private fun getRelevantCacheIndexAndMapping(index: Long) = mappingsMap.floorEntry(index).value
+    private fun getRelevantCacheIndexAndMapping(index: Long) = mappingsMap.floorEntry(index)?.value
 
     override fun getName(): String? = splitDyldCache.getName(0)
 
