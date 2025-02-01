@@ -69,8 +69,8 @@ class MappedDSCByteProvider(
 
     override fun readByte(index: Long): Byte {
         assertIsValidIndex(index)
-        getRelevantCacheIndexAndMapping(index)!!.let { (index, mapping) ->
-            return splitDyldCache.getProvider(index).readByte(mapping.fileOffset + (index - mapping.address))
+        getRelevantCacheIndexAndMapping(index)!!.let { (cacheIndex, mapping) ->
+            return splitDyldCache.getProvider(cacheIndex).readByte(mapping.fileOffset + (index - mapping.address))
         }
     }
 
