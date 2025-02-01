@@ -13,7 +13,6 @@ import ghidra.formats.gfilesystem.FileSystemService
 import ghidra.program.model.address.Address
 import ghidra.program.model.listing.Program
 import ghidra.util.task.TaskMonitor
-import lol.fairplay.ghidraapple.dyld.SharedCacheExtractor
 import lol.fairplay.ghidraapple.filesystems.GADyldCacheFileSystem
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -41,9 +40,9 @@ class GADyldCacheExtractLoader : DyldCacheExtractLoader() {
         val fileSystem = FileSystemService.getInstance().getFilesystem(provider.fsrl.fs, null).filesystem
         if (fileSystem !is GADyldCacheFileSystem) return
 
-        val extractor = SharedCacheExtractor(fileSystem)
-        val newByteProvider = extractor.extractDylib(provider)
-        super.load(newByteProvider, loadSpec, options, program, monitor, log)
+//        val extractor = SharedCacheExtractor(fileSystem)
+//        val newByteProvider = extractor.extractDylib(provider)
+        super.load(provider, loadSpec, options, program, monitor, log)
 
         markupDyldCacheSource(program, fileSystem)
         repointSelectorReferences(program, fileSystem)
