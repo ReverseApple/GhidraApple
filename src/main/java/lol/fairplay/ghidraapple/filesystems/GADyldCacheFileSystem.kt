@@ -29,6 +29,8 @@ class GADyldCacheFileSystem(
     var platform: Dyld.Platform? = null
     var osVersion: Dyld.Version? = null
 
+    val fsByteProvider = provider
+
     companion object {
         const val ROOT_HEADER_OFFSET_IN_BYTE_PROVIDER = 0L // This is defined merely for explanatory benefit.
     }

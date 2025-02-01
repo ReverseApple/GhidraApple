@@ -7,7 +7,7 @@ class StructSerializer(
     private val dataType: StructureDataType,
     private val offsetInBytes: Int = 0,
 ) {
-    val bytes = ByteArray(dataType.length)
+    var bytes = ByteArray(dataType.length)
 
     private fun getComponentByName(componentName: String) =
         dataType.components
