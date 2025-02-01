@@ -18,10 +18,12 @@ import ghidra.app.util.bin.format.macho.commands.LinkEditDataCommand
 import ghidra.app.util.bin.format.macho.commands.LoadCommand
 import ghidra.app.util.bin.format.macho.commands.LoadCommandFactory
 import ghidra.app.util.bin.format.macho.commands.LoadCommandTypes
+import ghidra.app.util.bin.format.macho.commands.NList
 import ghidra.app.util.bin.format.macho.commands.SegmentCommand
 import ghidra.app.util.bin.format.macho.commands.SymbolTableCommand
 import ghidra.formats.gfilesystem.FSRL
 import lol.fairplay.ghidraapple.filesystems.DSCFileSystem
+import lol.fairplay.ghidraapple.filesystems.DSCMemoryHelper
 import lol.fairplay.ghidraapple.filesystems.GADyldCacheFileSystem
 import java.io.IOException
 import java.nio.ByteBuffer
@@ -47,11 +49,25 @@ class DSCExtractor(
 
         val bufferForExtractedDylib: ByteBuffer = ByteBuffer.allocate(maxDylibSize).order(ByteOrder.LITTLE_ENDIAN)
 
-        val mappedCacheProvider = dscFileSystem.mappedCacheProvider!!
+        val dscMemoryHelper = dscFileSystem.memoryHelper!!
 
-        val machHeader =
-            MachHeader(mappedCacheProvider, startAddress)
-                .parse(mappedCacheProvider.splitDyldCache)
+        val (machHeader, cacheFileByteProvider) =
+            dscMemoryHelper
+                .getRelevantCacheIndexAndVMMapping(startAddress)!!
+                .let { (cacheIndex, mappingInfo) ->
+                    val fileOffsetOfDylib = mappingInfo.fileOffset + (startAddress - mappingInfo.address)
+                    Pair(
+                        MachHeader(
+                            dscMemoryHelper.splitDyldCache.getProvider(cacheIndex),
+                            fileOffsetOfDylib,
+                        ).parse(dscMemoryHelper.splitDyldCache),
+                        dscMemoryHelper.splitDyldCache.getProvider(cacheIndex),
+                    )
+                }
+
+//        val machHeader =
+//            MachHeader(mappedCacheProvider, startAddress)
+//                .parse(mappedCacheProvider.splitDyldCache)
 
         var textOffsetInCache = 0L
 
@@ -59,19 +75,24 @@ class DSCExtractor(
             if (segment.segmentName == "__TEXT") {
                 textOffsetInCache =
                     segment.vMaddress -
-                    mappedCacheProvider.splitDyldCache
+                    dscMemoryHelper.splitDyldCache
                         .getDyldCacheHeader(0)
                         .unslidLoadAddress()
             }
             if (segment.segmentName == "__LINKEDIT") continue
-            val segmentBytes = mappedCacheProvider.readBytes(segment.vMaddress, segment.vMsize)
+            val segmentBytes = dscMemoryHelper.readMappedBytes(segment.vMaddress, segment.vMsize)
             bufferForExtractedDylib.put(segmentBytes)
         }
         val offsetForNewLinkeditSegment = bufferForExtractedDylib.position()
 
         val bufferForNewLinkeditSegment = ByteBuffer.allocate(1 shl 20)
 
-        val linkeditOptimizer = LinkeditOptimizerNew(mappedCacheProvider, bufferForExtractedDylib)
+        val linkeditOptimizer =
+            LinkeditOptimizerNew(
+                cacheFileByteProvider,
+                dscMemoryHelper,
+                bufferForExtractedDylib,
+            )
 
         linkeditOptimizer.optimizeLoadCommands()
         linkeditOptimizer.optimizeLinkedit(machHeader, bufferForNewLinkeditSegment, textOffsetInCache)
@@ -82,13 +103,13 @@ class DSCExtractor(
 
         val finalBytes = ByteArray(bufferForExtractedDylib.position())
         bufferForExtractedDylib.get(0, finalBytes)
-        val testMachHeader = MachHeader(ByteArrayProvider(finalBytes)).parse()
         return ByteArrayProvider(finalBytes, fsrl)
     }
 }
 
 class LinkeditOptimizerNew(
-    val mappedCacheProvider: MappedDSCByteProvider,
+    val dylibContainingCacheFileByteProvider: ByteProvider,
+    val dscMemoryHelper: DSCMemoryHelper,
     val newDyibBuffer: ByteBuffer,
 ) {
     private var linkeditSegmentCommand: SegmentCommand? = null
@@ -156,7 +177,7 @@ class LinkeditOptimizerNew(
         val machHeader =
             MachHeader(
                 ByteArrayProvider(newDyibBuffer.array()),
-            ).parse(mappedCacheProvider.splitDyldCache)
+            ).parse(dscMemoryHelper.splitDyldCache)
 
         for (command in machHeader.loadCommands) {
             when (command) {
@@ -289,12 +310,12 @@ class LinkeditOptimizerNew(
             preWriteCommandFixup: (T) -> Unit,
         ) {
             preWriteCommandFixup(command)
-            newLinkeditSegmentBuffer.put(
-                mappedCacheProvider.readBytes(
-                    linkeditBaseAddressInCache + command.linkerDataOffset.toLong(),
+            val bytesToWrite =
+                dylibContainingCacheFileByteProvider.readBytes(
+                    command.linkerDataOffset.toLong(),
                     command.linkerDataSize.toLong(),
-                ),
-            )
+                )
+            newLinkeditSegmentBuffer.put(bytesToWrite)
             if (pointerAlignAfter) {
                 val pointerSize = if (machHeader.is32bit) 4 else 8
                 while (
@@ -327,6 +348,25 @@ class LinkeditOptimizerNew(
 
         functionStartsCommand?.let { writeLinkeditCommandData(it) }
         dataInCodeCommand?.let { writeLinkeditCommandData(it) }
+
+        val readerForSymbolTable = BinaryReader(dylibContainingCacheFileByteProvider, true)
+        readerForSymbolTable.pointerIndex = symbolTableCommandCopy.symbolOffset.toLong()
+        val (symbolsFileOffset, stringsFileOffset) =
+            symbolTableCommandCopy.let {
+                // Ghidra's parsing may sometimes parse these offsets as signed integers and return negative
+                //  values. This obviously doesn't make sense for file offsets, so they need to be converted
+                //  into unsigned integers to access their proper values.
+                Pair(
+                    it.symbolOffset.toUInt(),
+                    it.stringTableOffset.toUInt(),
+                )
+            }
+        var symbolTable = mutableListOf<NList>()
+        for (i in 0 until symbolTableCommandCopy.numberOfSymbols) {
+            val nList = NList(readerForSymbolTable, machHeader.is32bit)
+            nList.initString(readerForSymbolTable, stringsFileOffset.toLong())
+            symbolTable += nList
+        }
 
         // This is not the calculation that `dsc_extractor` does, but it's easier on us to do it this way.
         val newLinkEditFileSize = newLinkeditSegmentBuffer.position()

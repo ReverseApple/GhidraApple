@@ -3,6 +3,7 @@ package lol.fairplay.ghidraapple.filesystems
 import ghidra.app.util.bin.BinaryReader
 import ghidra.app.util.bin.ByteProvider
 import ghidra.app.util.bin.format.macho.dyld.DyldCacheHeader
+import ghidra.app.util.bin.format.macho.dyld.DyldCacheMappingInfo
 import ghidra.app.util.importer.MessageLog
 import ghidra.app.util.opinion.DyldCacheUtils
 import ghidra.app.util.opinion.DyldCacheUtils.SplitDyldCache
@@ -14,8 +15,8 @@ import ghidra.formats.gfilesystem.annotations.FileSystemInfo
 import ghidra.formats.gfilesystem.factory.GFileSystemBaseFactory
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.dyld.DSCExtractor
-import lol.fairplay.ghidraapple.dyld.MappedDSCByteProvider
 import java.io.IOException
+import java.util.TreeMap
 
 /**
  * A dyld (shared) cache expressed as a [GFileSystem].
@@ -30,11 +31,6 @@ class DSCFileSystem(
     provider: ByteProvider,
 ) : GFileSystemBase(fileSystemName, provider) {
     /**
-     * A [ByteProvider] for the cache, mapped into a representation of virtual memory.
-     */
-    var mappedCacheProvider: MappedDSCByteProvider? = null
-
-    /**
      * A map between actual dylib's in the cache and their addresses.
      */
     private val fileAddressMap = mutableMapOf<GFile, Long>()
@@ -45,12 +41,18 @@ class DSCFileSystem(
     private val allFilesAndDirectories = mutableSetOf<GFile>()
 
     /**
+     * A helper for dealing with memory addresses in the cache.
+     */
+
+    var memoryHelper: DSCMemoryHelper? = null
+
+    /**
      * An extractor for the dyld shared cache.
      */
     private val extractor = DSCExtractor(this)
 
     override fun close() {
-        mappedCacheProvider?.close()
+        memoryHelper?.splitDyldCache?.close()
         super.close()
     }
 
@@ -75,13 +77,10 @@ class DSCFileSystem(
     }
 
     override fun open(monitor: TaskMonitor) {
-        mappedCacheProvider =
-            MappedDSCByteProvider(
-                SplitDyldCache(provider, true, MessageLog(), monitor),
-            )
-        mappedCacheProvider!!.let { cacheProvider ->
-            val splitDyldCache = cacheProvider.splitDyldCache
-            for (cacheIndex in 0 until splitDyldCache.size()) {
+        val splitDyldCache = SplitDyldCache(provider, true, MessageLog(), monitor)
+        memoryHelper = DSCMemoryHelper(splitDyldCache)
+        for (cacheIndex in 0 until splitDyldCache.size()) {
+            splitDyldCache.getDyldCacheHeader(cacheIndex).mappingInfos.forEach {
                 splitDyldCache
                     .getDyldCacheHeader(cacheIndex)
                     .mappedImages
@@ -97,4 +96,70 @@ class DSCFileSystem(
     override fun getListing(directory: GFile?): List<GFile?>? =
         allFilesAndDirectories
             .filter { it.parentFile == (directory ?: root) }
+}
+
+class DSCMemoryHelper(
+    val splitDyldCache: SplitDyldCache,
+) {
+    /**
+     * A map containing virtual memory mapping information.
+     */
+    val vmMappingsMap: TreeMap<Long, Pair<Int, DyldCacheMappingInfo>> = TreeMap()
+
+    init {
+        for (cacheIndex in 0 until splitDyldCache.size()) {
+            splitDyldCache.getDyldCacheHeader(cacheIndex).mappingInfos.forEach {
+                vmMappingsMap[it.address] = Pair(cacheIndex, it)
+            }
+        }
+    }
+
+    fun getRelevantCacheIndexAndVMMapping(vmAddress: Long) = vmMappingsMap.floorEntry(vmAddress)?.value
+
+    fun isValidVMAddress(vmAddress: Long): Boolean {
+        val relevantMapping =
+            getRelevantCacheIndexAndVMMapping(vmAddress)?.second ?: return false
+        return vmAddress < relevantMapping.address + relevantMapping.size
+    }
+
+    @OptIn(ExperimentalStdlibApi::class)
+    private fun assertIsValidVMAddress(vmAddress: Long) {
+        isValidVMAddress(vmAddress).takeIf { it }
+            ?: throw IOException("0x${vmAddress.toHexString()} is not a valid address for the mapped cache.")
+    }
+
+    @OptIn(ExperimentalStdlibApi::class)
+    private fun assertIsValidVMRange(
+        vmAddress: Long,
+        length: Long,
+    ) {
+        assertIsValidVMAddress(vmAddress)
+        getRelevantCacheIndexAndVMMapping(vmAddress)!!
+            .takeIf { (_, mapping) ->
+                length <= mapping.size - (vmAddress - mapping.address)
+            }
+            ?: throw IOException(
+                "0x${vmAddress.toHexString()}-0x${(vmAddress + length).toHexString()}" +
+                    " is not a valid range for the mapped cache.",
+            )
+    }
+
+    fun readMappedByte(vmAddress: Long): Byte {
+        assertIsValidVMAddress(vmAddress)
+        getRelevantCacheIndexAndVMMapping(vmAddress)!!.let { (cacheIndex, mapping) ->
+            return splitDyldCache.getProvider(cacheIndex).readByte(mapping.fileOffset + (vmAddress - mapping.address))
+        }
+    }
+
+    fun readMappedBytes(
+        vmAddress: Long,
+        length: Long,
+    ): ByteArray {
+        assertIsValidVMRange(vmAddress, length)
+        getRelevantCacheIndexAndVMMapping(vmAddress)!!.let { (cacheIndex, mapping) ->
+            return splitDyldCache
+                .getProvider(cacheIndex)
+                .readBytes(mapping.fileOffset + (vmAddress - mapping.address), length)
+        }
+    }
 }
