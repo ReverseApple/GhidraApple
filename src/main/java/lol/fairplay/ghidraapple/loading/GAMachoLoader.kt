@@ -51,6 +51,10 @@ class GAMachoLoader : MachoLoader() {
     ) {
         super.load(provider, loadSpec, options, program, monitor, log)
 
+        // The executable format is named after the loader. However, Ghidra performs some checks against this name to
+        // enable certain analyzers (so we have to give it a name it expects: the name of the built-in loader).
+        program.executableFormat = MACH_O_NAME
+
         val fileSystem = FileSystemService.getInstance().getFilesystem(provider.fsrl.fs, null).filesystem
 
         // If the Mach-O was loaded with our custom dyld shared cache handler, we can do some more things with it.
