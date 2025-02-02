@@ -48,7 +48,7 @@ class DSCExtractor(
         val fixups =
             DyldCacheExtractor.getSlideFixups(dscFileSystem.memoryHelper!!.splitDyldCache, monitor)
         val totalFixups = fixups.values.flatten().size
-        monitor?.initialize(totalFixups.toLong(), "Fixing up slide pointers")
+        monitor?.initialize(totalFixups.toLong(), "Fixing up slide pointers...")
         fixups.forEach { (slideInfo, fixups) ->
             for (fixup in fixups) {
                 monitor?.increment()
