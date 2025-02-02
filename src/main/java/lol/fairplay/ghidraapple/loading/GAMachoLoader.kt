@@ -10,8 +10,10 @@ import ghidra.formats.gfilesystem.FileSystemService
 import ghidra.framework.model.Project
 import ghidra.program.model.address.Address
 import ghidra.program.model.listing.Program
+import ghidra.program.model.mem.MemoryBlock
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.filesystems.DSCFileSystem
+import lol.fairplay.ghidraapple.filesystems.DSCMemoryHelper
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -60,7 +62,21 @@ class GAMachoLoader : MachoLoader() {
         // If the Mach-O was loaded with our custom dyld shared cache handler, we can do some more things with it.
         if (fileSystem is DSCFileSystem) {
             markupDyldCacheSource(program, fileSystem)
-            repointSelectorReferences(program, fileSystem)
+            val pointerRepointer = CachePointerRepointer(program, fileSystem.memoryHelper!!)
+            pointerRepointer.repointSelectorReferences()
+            pointerRepointer.repointOtherReferences()
+        }
+
+        var isBeingDebugged = System.getProperty("intellij.debug.agent") == "true"
+        if (isBeingDebugged) {
+            // Delete the cached byte provider after a successful load if the plugin is being debugged. We might be
+            //  making changes to our extract code and want to see the results without having to fully restart.
+            DSCFileSystem.fileByteProviderMap
+                .keys
+                .firstOrNull { it.path == provider.fsrl.path }
+                ?.let {
+                    DSCFileSystem.fileByteProviderMap.remove(it)
+                }
         }
     }
 
@@ -76,82 +92,6 @@ class GAMachoLoader : MachoLoader() {
         val cachePlatform = fileSystem.platform?.prettyName ?: "unknownOS"
         val cacheVersion = fileSystem.osVersion ?: "?.?.?"
         infoOptions.setString("Extracted from dyld Shared Cache", "$cachePlatform $cacheVersion")
-    }
-
-    /**
-     * The dyld shared cache building process puts all selectors into an array and points all selector pointers into
-     * that array. However, those same strings should still exist in the extracted dylib. This function will iterate
-     * over the selector pointers and re-point them to the same strings where they exist inside the dylib. This will
-     * avoid us having to map the entire selector array into the Program's memory.
-     */
-    private fun repointSelectorReferences(
-        program: Program,
-        fileSystem: DSCFileSystem,
-    ) {
-        val memory = program.memory
-        val addressFactory = program.addressFactory
-
-        val selRefs = memory.blocks.firstOrNull { it.name == "__objc_selrefs" }
-        val methName = memory.blocks.firstOrNull { it.name == "__objc_methname" }
-        if (selRefs == null || methName == null) return
-
-        fun findStringInMethName(string: String): Address? {
-            var currentAddress = methName.addressRange.minAddress
-            val stringBytes = string.toByteArray()
-            do {
-                run happy_path@{
-                    // It must be the start of a string (i.e. a null-terminated string precedes it).
-                    if (memory.getByte(currentAddress.subtract(1)) != 0x00.toByte()) return@happy_path
-                    // Loop through bytes to match string.
-                    for (i in stringBytes.indices) {
-                        if (methName.getByte(currentAddress.add(i.toLong())) != stringBytes[i]) return@happy_path
-                    }
-                    return currentAddress
-                }
-                currentAddress = currentAddress.add(1)
-            } while // Iterate until the string cannot fit
-            (currentAddress <= methName.addressRange.maxAddress.subtract(string.length.toLong()))
-
-            return null // There was no match.
-        }
-
-        val pointerSize = addressFactory.defaultAddressSpace.pointerSize
-
-        var currentAddress = selRefs.addressRange.minAddress
-
-        while (currentAddress <= selRefs.addressRange.maxAddress) {
-            run happy_path@{
-                // Get the given pointer.
-                val pointerBytes = ByteArray(pointerSize)
-                val bytesCopied = memory.getBytes(currentAddress, pointerBytes)
-                if (bytesCopied != pointerSize) return@happy_path
-                var pointerValue =
-                    ByteBuffer
-                        .wrap(pointerBytes)
-                        .order(ByteOrder.LITTLE_ENDIAN)
-                        .long
-
-                // Find the string it is pointing to.
-                val string =
-                    fileSystem.memoryHelper!!.readMappedCString(pointerValue) ?: return@happy_path
-
-                // Find the same string in `__objc_methname`.
-                val inDylibAddress = findStringInMethName(string) ?: return@happy_path
-
-                // Re-point the pointer.
-                val newPointerBytes =
-                    ByteBuffer
-                        .allocate(pointerSize)
-                        .order(ByteOrder.LITTLE_ENDIAN)
-                        .putLong(inDylibAddress.offset)
-                        .array()
-                memory.setBytes(currentAddress, newPointerBytes)
-            }
-            currentAddress = currentAddress.add(pointerSize.toLong())
-        }
-
-        // Tell Ghidra that these pointers won't be updating anymore so it can perform optimizations.
-        selRefs.isWrite = false
     }
 
     override fun postLoadProgramFixups(
@@ -189,6 +129,80 @@ class GAMachoLoader : MachoLoader() {
                 // Now that the program is up one folder, we can delete the original one.
                 project.projectData.getFolder(originalFolderPath)?.delete()
             }
+        }
+    }
+}
+
+class CachePointerRepointer(
+    private val program: Program,
+    private val memoryHelper: DSCMemoryHelper,
+) {
+    private val memory = program.memory
+
+//    private val addressFactory = program.addressFactory
+    private val pointerSize = program.addressFactory.defaultAddressSpace.pointerSize
+
+    private fun repointStringPointer(
+        addressOfPointerToRepoint: Address,
+        memoryBlockToSearch: MemoryBlock,
+    ) {
+        // Get the given pointer.
+        val pointerBytes = ByteArray(pointerSize)
+        val bytesCopied = memory.getBytes(addressOfPointerToRepoint, pointerBytes)
+        if (bytesCopied != pointerSize) return
+        var pointerValue =
+            ByteBuffer
+                .wrap(pointerBytes)
+                .order(ByteOrder.LITTLE_ENDIAN)
+                .long
+
+        // Find the string it is pointing to.
+        val string =
+            memoryHelper.readMappedCString(pointerValue) ?: return
+
+        var searchAddress = memoryBlockToSearch.addressRange.minAddress
+        val stringBytes = string.toByteArray()
+        do {
+            run happy_path@{
+                // It must be the start of a string (i.e. a null-terminated string precedes it).
+                if (memory.getByte(searchAddress.subtract(1)) != 0x00.toByte()) return@happy_path
+                // Loop through bytes to match string.
+                for (i in stringBytes.indices) {
+                    val possiblyMatchingByte = memoryBlockToSearch.getByte(searchAddress.add(i.toLong()))
+                    if (possiblyMatchingByte != stringBytes[i]) return@happy_path
+                }
+                // We found the string! Now we re-point the pointer.
+                val newPointerBytes =
+                    ByteBuffer
+                        .allocate(pointerSize)
+                        .order(ByteOrder.LITTLE_ENDIAN)
+                        .putLong(searchAddress.offset)
+                        .array()
+                memory.setBytes(addressOfPointerToRepoint, newPointerBytes)
+            }
+            searchAddress = searchAddress.add(1)
+        } while // Iterate until the string we're searching for cannot fit in the remaining bytes.
+        (searchAddress <= memoryBlockToSearch.addressRange.maxAddress.subtract(string.length.toLong()))
+    }
+
+    fun repointSelectorReferences() {
+        val selRefs = memory.blocks.firstOrNull { it.name == "__objc_selrefs" } ?: return
+        val methName = memory.blocks.firstOrNull { it.name == "__objc_methname" } ?: return
+        var currentAddress = selRefs.addressRange.minAddress
+        while (currentAddress <= selRefs.addressRange.maxAddress) {
+            repointStringPointer(currentAddress, methName)
+            currentAddress = currentAddress.add(pointerSize.toLong())
+        }
+    }
+
+    fun repointOtherReferences() {
+        val otherRefs = memory.blocks.firstOrNull { it.name == "__objc_const" } ?: return
+        val methName = memory.blocks.firstOrNull { it.name == "__objc_methname" } ?: return
+        var currentAddress = otherRefs.addressRange.minAddress
+        // The block contains more than pointers, but each pointer *should* be aligned to the pointer size.
+        while (currentAddress <= otherRefs.addressRange.maxAddress) {
+            repointStringPointer(currentAddress, methName)
+            currentAddress = currentAddress.add(pointerSize.toLong())
         }
     }
 }
