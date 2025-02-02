@@ -50,11 +50,6 @@ class DSCFileSystem(
     var memoryHelper: DSCMemoryHelper? = null
 
     /**
-     * An extractor for the cache.
-     */
-    private val extractor = DSCExtractor(this)
-
-    /**
      * The platform the cache is for.
      */
     var platform: Dyld.Platform? = null
@@ -73,7 +68,7 @@ class DSCFileSystem(
         file: GFile,
         monitor: TaskMonitor,
     ): ByteProvider? =
-        extractor
+        DSCExtractor(this, monitor)
             .extractDylibAtAddress(
                 fileAddressMap[file] ?: throw IOException("File $file not found in cache!"),
                 file.fsrl,

@@ -18,7 +18,10 @@ import ghidra.app.util.bin.format.macho.commands.LoadCommandTypes
 import ghidra.app.util.bin.format.macho.commands.NList
 import ghidra.app.util.bin.format.macho.commands.SegmentCommand
 import ghidra.app.util.bin.format.macho.commands.SymbolTableCommand
+import ghidra.file.formats.ios.ExtractedMacho
+import ghidra.file.formats.ios.dyldcache.DyldCacheExtractor
 import ghidra.formats.gfilesystem.FSRL
+import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.filesystems.DSCFileSystem
 import lol.fairplay.ghidraapple.filesystems.DSCMemoryHelper
 import java.io.IOException
@@ -33,17 +36,47 @@ import kotlin.collections.plus
 
 class DSCExtractor(
     private val dscFileSystem: DSCFileSystem,
+    private val monitor: TaskMonitor? = null,
     // 100 MiB default
     private val maxDylibSize: Int = 1024 * 1024 * 100,
 ) {
-    @OptIn(ExperimentalStdlibApi::class)
+    private fun fixupSlidePointers(
+        header: MachHeader,
+        newDyibBuffer: ByteBuffer,
+        segmentStartMap: Map<String, Long>,
+    ) {
+        val fixups =
+            DyldCacheExtractor.getSlideFixups(dscFileSystem.memoryHelper!!.splitDyldCache, monitor)
+        val totalFixups = fixups.values.flatten().size
+        monitor?.initialize(totalFixups.toLong(), "Fixing up slide pointers")
+        fixups.forEach { (slideInfo, fixups) ->
+            for (fixup in fixups) {
+                monitor?.increment()
+                val address = slideInfo.mappingAddress + fixup.offset
+                val fileOffset = slideInfo.mappingFileOffset + fixup.offset()
+                val matchingSegment =
+                    header.allSegments.firstOrNull {
+                        address >= it.vMaddress && address < it.vMaddress + it.vMsize
+                    } ?: continue
+                val fixedUpBytes = ExtractedMacho.toBytes(fixup.value, fixup.size)
+                newDyibBuffer
+                    .position(
+                        (
+                            fileOffset - matchingSegment.fileOffset +
+                                segmentStartMap[matchingSegment.segmentName]!!
+                        ).toInt(),
+                    ).put(fixedUpBytes)
+            }
+        }
+    }
+
     fun extractDylibAtAddress(
         startAddress: Long,
         fsrl: FSRL,
     ): ByteProvider {
         // TODO: See if we can utilize an automatically-resizing data structure for the buffer(s).
 
-        val bufferForExtractedDylib: ByteBuffer = ByteBuffer.allocate(maxDylibSize).order(ByteOrder.LITTLE_ENDIAN)
+        val newDylibBuffer: ByteBuffer = ByteBuffer.allocate(maxDylibSize).order(ByteOrder.LITTLE_ENDIAN)
 
         val dscMemoryHelper = dscFileSystem.memoryHelper!!
 
@@ -73,9 +106,9 @@ class DSCExtractor(
             }
             if (segment.segmentName == "__LINKEDIT") continue
             val segmentBytes = dscMemoryHelper.readMappedBytes(segment.vMaddress, segment.vMsize)
-            bufferForExtractedDylib.put(segmentBytes)
+            newDylibBuffer.put(segmentBytes)
         }
-        val offsetForNewLinkeditSegment = bufferForExtractedDylib.position()
+        val offsetForNewLinkeditSegment = newDylibBuffer.position()
 
         val bufferForNewLinkeditSegment = ByteBuffer.allocate(1 shl 20)
 
@@ -83,18 +116,22 @@ class DSCExtractor(
             LinkeditOptimizerNew(
                 cacheFileByteProvider,
                 dscMemoryHelper,
-                bufferForExtractedDylib,
+                newDylibBuffer,
             )
 
-        linkeditOptimizer.optimizeLoadCommands()
+        val segmentStartMap = linkeditOptimizer.optimizeLoadCommands()
         linkeditOptimizer.optimizeLinkedit(inCacheMachHeader, bufferForNewLinkeditSegment, textOffsetInCache)
 
-        bufferForExtractedDylib
+        newDylibBuffer
             .position(offsetForNewLinkeditSegment)
             .put(bufferForNewLinkeditSegment.array())
 
-        val finalBytes = ByteArray(bufferForExtractedDylib.position())
-        bufferForExtractedDylib.get(0, finalBytes)
+        val endPosition = newDylibBuffer.position()
+
+        fixupSlidePointers(inCacheMachHeader, newDylibBuffer, segmentStartMap)
+
+        val finalBytes = ByteArray(endPosition)
+        newDylibBuffer.get(0, finalBytes)
         return ByteArrayProvider(finalBytes, fsrl)
     }
 }
@@ -159,13 +196,15 @@ class LinkeditOptimizerNew(
         newDyibBuffer.put(oldSegmentCommand.startIndex.toInt(), newCommandBytes)
     }
 
-    fun optimizeLoadCommands() {
+    fun optimizeLoadCommands(): Map<String, Long> {
         val indexOfFlags = Int.SIZE_BYTES * 6
         val oldFlags = newDyibBuffer.getInt(indexOfFlags)
         newDyibBuffer.putInt(indexOfFlags, oldFlags and MachHeaderFlags.MH_DYLIB_IN_CACHE.inv())
 
         var cumulativeFileSize = 0L
         var depIndex = 0
+
+        val segmentStartMap = mutableMapOf<String, Long>()
 
         val machHeader =
             MachHeader(
@@ -187,6 +226,8 @@ class LinkeditOptimizerNew(
                         fileOffset = cumulativeFileSize,
                         fileSize = command.vMsize,
                     )
+
+                    segmentStartMap[command.segmentName] = cumulativeFileSize
 
                     command.sections.forEachIndexed { index, section ->
                         if (section.offset != 0) {
@@ -263,7 +304,7 @@ class LinkeditOptimizerNew(
                             // Some link-ish load commands aren't handled, but we are copying this logic from
                             //  `dsc_extractor`, so I guess we have to trust it.
                         )
-                    if (command.commandType !in handledLinkCommands) return
+                    if (command.commandType !in handledLinkCommands) continue
                     depIndex++
                     if (command.commandType == LoadCommandTypes.LC_REEXPORT_DYLIB) reexportedDependencies += depIndex
                 }
@@ -278,6 +319,8 @@ class LinkeditOptimizerNew(
                 }
             }
         }
+
+        return segmentStartMap
     }
 
     fun optimizeLinkedit(

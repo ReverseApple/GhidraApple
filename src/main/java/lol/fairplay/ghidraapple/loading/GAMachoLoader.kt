@@ -124,11 +124,6 @@ class GAMachoLoader : MachoLoader() {
                         .order(ByteOrder.LITTLE_ENDIAN)
                         .long
 
-                // TODO: Determine why this is suddenly needed
-
-                pointerValue -= 0x10000000000000
-                pointerValue += 0x180000000
-
                 // Find the string it is pointing to.
                 val string =
                     fileSystem.memoryHelper!!.readMappedCString(pointerValue) ?: return@happy_path
