@@ -1,53 +1,60 @@
-@file:Suppress("ktlint:standard:no-wildcard-imports")
-
 package lol.fairplay.ghidraapple.loading
 
 import ghidra.app.util.Option
 import ghidra.app.util.bin.ByteProvider
-import ghidra.app.util.bin.format.macho.MachHeader
-import ghidra.app.util.bin.format.macho.commands.*
 import ghidra.app.util.importer.MessageLog
-import ghidra.app.util.opinion.DyldCacheExtractLoader
 import ghidra.app.util.opinion.LoadSpec
+import ghidra.app.util.opinion.Loaded
+import ghidra.app.util.opinion.MachoLoader
 import ghidra.formats.gfilesystem.FileSystemService
+import ghidra.framework.model.Project
 import ghidra.program.model.address.Address
 import ghidra.program.model.listing.Program
 import ghidra.util.task.TaskMonitor
-import lol.fairplay.ghidraapple.filesystems.GADyldCacheFileSystem
+import lol.fairplay.ghidraapple.filesystems.DSCFileSystem
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-class GADyldCacheExtractLoader : DyldCacheExtractLoader() {
-    override fun getName(): String {
-        // We need a new name to differentiate our loader from the built-in one.
-        return "(GhidraApple) " + super.getName()
+/**
+ * The Mach-O file loader for GhidraApple.
+ */
+class GAMachoLoader : MachoLoader() {
+    override fun getName(): String? = "(GhidraApple) " + super.getName()
+
+    override fun getPreferredFileName(byteProvider: ByteProvider): String {
+        val original = super.getPreferredFileName(byteProvider)
+
+        // Handle special cases.
+
+        if (byteProvider.fsrl.toStringPart().startsWith("universalbinary://")) {
+            // The FURL is two-fold: the path to the binary, and a path within the binary. We take the
+            // former and extract the name (which will be the last path component, the binary name).
+            val binaryName = byteProvider.fsrl.split()[0].name
+            // We prefix with the binary name as the original name is just the architecture and CPU.
+            return "$binaryName-$original"
+        }
+
+        // If no special case matched, return the original name.
+        return original
     }
 
     override fun load(
-        provider: ByteProvider?,
-        loadSpec: LoadSpec?,
-        options: MutableList<Option>?,
-        program: Program?,
-        monitor: TaskMonitor?,
-        log: MessageLog?,
+        provider: ByteProvider,
+        loadSpec: LoadSpec,
+        options: List<Option?>,
+        program: Program,
+        monitor: TaskMonitor,
+        log: MessageLog,
     ) {
-        if (provider == null || program == null) return
-
-        // The executable format is named after the loader. However, Ghidra performs some checks against this name to
-        // enable certain analyzers (so we have to give it a name it expects: the name of a built-in loader).
-        program.executableFormat = MACH_O_NAME
-
-        val fileSystem = FileSystemService.getInstance().getFilesystem(provider.fsrl.fs, null).filesystem
-        if (fileSystem !is GADyldCacheFileSystem) return
-
-//        val extractor = SharedCacheExtractor(fileSystem)
-//        val newByteProvider = extractor.extractDylib(provider)
         super.load(provider, loadSpec, options, program, monitor, log)
 
-        markupDyldCacheSource(program, fileSystem)
-        repointSelectorReferences(program, fileSystem)
-        addDylibsToProgram(program, fileSystem, provider)
-//        mapDyldSharedCacheToProgram(program, fileSystem, monitor)
+        val fileSystem = FileSystemService.getInstance().getFilesystem(provider.fsrl.fs, null).filesystem
+
+        // If the Mach-O was loaded with our custom dyld shared cache handler, we can do some more things with it.
+        if (fileSystem is DSCFileSystem) {
+            markupDyldCacheSource(program, fileSystem)
+            repointSelectorReferences(program, fileSystem)
+        }
     }
 
     /**
@@ -56,12 +63,12 @@ class GADyldCacheExtractLoader : DyldCacheExtractLoader() {
      */
     private fun markupDyldCacheSource(
         program: Program,
-        fileSystem: GADyldCacheFileSystem,
+        fileSystem: DSCFileSystem,
     ) {
         val infoOptions = program.getOptions(Program.PROGRAM_INFO)
         val cachePlatform = fileSystem.platform?.prettyName ?: "unknownOS"
         val cacheVersion = fileSystem.osVersion ?: "?.?.?"
-        infoOptions.setString("Dyld Shared Cache Platform", "$cachePlatform $cacheVersion")
+        infoOptions.setString("Extracted from dyld Shared Cache", "$cachePlatform $cacheVersion")
     }
 
     /**
@@ -72,7 +79,7 @@ class GADyldCacheExtractLoader : DyldCacheExtractLoader() {
      */
     private fun repointSelectorReferences(
         program: Program,
-        fileSystem: GADyldCacheFileSystem,
+        fileSystem: DSCFileSystem,
     ) {
         val memory = program.memory
         val addressFactory = program.addressFactory
@@ -111,10 +118,20 @@ class GADyldCacheExtractLoader : DyldCacheExtractLoader() {
                 val pointerBytes = ByteArray(pointerSize)
                 val bytesCopied = memory.getBytes(currentAddress, pointerBytes)
                 if (bytesCopied != pointerSize) return@happy_path
-                val pointerValue = ByteBuffer.wrap(pointerBytes).order(ByteOrder.LITTLE_ENDIAN).long
+                var pointerValue =
+                    ByteBuffer
+                        .wrap(pointerBytes)
+                        .order(ByteOrder.LITTLE_ENDIAN)
+                        .long
+
+                // TODO: Determine why this is suddenly needed
+
+                pointerValue -= 0x10000000000000
+                pointerValue += 0x180000000
 
                 // Find the string it is pointing to.
-                val string = fileSystem.readMappedCString(pointerValue) ?: return@happy_path
+                val string =
+                    fileSystem.memoryHelper!!.readMappedCString(pointerValue) ?: return@happy_path
 
                 // Find the same string in `__objc_methname`.
                 val inDylibAddress = findStringInMethName(string) ?: return@happy_path
@@ -135,49 +152,43 @@ class GADyldCacheExtractLoader : DyldCacheExtractLoader() {
         selRefs.isWrite = false
     }
 
-    private fun addDylibsToProgram(
-        program: Program,
-        fileSystem: GADyldCacheFileSystem,
-        byteProvider: ByteProvider,
+    override fun postLoadProgramFixups(
+        loadedPrograms: MutableList<Loaded<Program>>,
+        project: Project,
+        options: MutableList<Option>,
+        messageLog: MessageLog,
+        monitor: TaskMonitor,
     ) {
-        val machHeader = MachHeader(byteProvider)
-        machHeader.parse(fileSystem.splitDyldCache)
-        val dylibs =
-            machHeader.loadCommands
-                .filterIsInstance<DynamicLibraryCommand>()
-                .map { it.dynamicLibrary }
-        for (dylib in dylibs) {
-            val matchingCachedDylib =
-                fileSystem
-                    .rootHeader.mappedImages
-                    .firstOrNull { it.path == dylib.name.string }
-            println(matchingCachedDylib)
-        }
-    }
+        super.postLoadProgramFixups(loadedPrograms, project, options, messageLog, monitor)
+        for (loaded in loadedPrograms) {
+            // The actual program is wrapped, so we need to unwrap it.
+            val program = loaded.domainObject
 
-    // TODO: Remove this when no longer needed.
-    private fun mapDyldSharedCacheToProgram(
-        program: Program,
-        fileSystem: GADyldCacheFileSystem,
-        monitor: TaskMonitor?,
-    ) {
-        var index = 0
+            // This will trigger [getPreferredFileName] above.
+            val preferredName = loaded.name
 
-        fileSystem.getMappings().forEach { (mapping, bytes) ->
-            try {
-                val baseAddress = program.addressFactory.defaultAddressSpace.getAddress(mapping.address)
-                val block =
-                    program.memory.createInitializedBlock(
-                        "DSC Mapping ${++index}",
-                        baseAddress,
-                        mapping.size,
-                        (0).toByte(),
-                        monitor,
-                        false,
-                    )
-                block.putBytes(baseAddress, bytes)
-            } catch (_: Exception) {
+            // If the preferred name is the same as the give name, this probably wasn't
+            // part of a universal binary. Thus, we skip any operations.
+            if (program.name == preferredName) return
+
+            // Otherwise, we rename with the preferred name.
+            program.withTransaction<Exception>("rename") {
+                program.name = preferredName
             }
+
+            // After renaming, the programs will be in folders named after their original
+            // names. To reduce redundancy, we move the programs to the parent folder.
+            val originalFolderPath = loaded.projectFolderPath
+            val newFolderPath =
+                originalFolderPath
+                    .split("/")
+                    // Filter out, potentially, the last, empty, element (if the path ended in "/").
+                    .filterNot(String::isEmpty)
+                    .dropLast(1) // Drop the last path component, leaving a path to the parent folder.
+                    .joinToString("/")
+            loaded.projectFolderPath = newFolderPath
+            // Now that the program is up one folder, we can delete the original one.
+            project.projectData.getFolder(originalFolderPath)?.delete()
         }
     }
 }
