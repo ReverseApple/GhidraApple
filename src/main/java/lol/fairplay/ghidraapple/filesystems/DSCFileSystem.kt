@@ -2,17 +2,23 @@ package lol.fairplay.ghidraapple.filesystems
 
 import ghidra.app.util.bin.BinaryReader
 import ghidra.app.util.bin.ByteProvider
+import ghidra.app.util.bin.format.macho.MachHeader
 import ghidra.app.util.bin.format.macho.dyld.DyldCacheHeader
 import ghidra.app.util.bin.format.macho.dyld.DyldCacheMappingInfo
+import ghidra.app.util.bin.format.macho.dyld.DyldCacheSlideInfoCommon
+import ghidra.app.util.bin.format.macho.dyld.DyldFixup
 import ghidra.app.util.importer.MessageLog
 import ghidra.app.util.opinion.DyldCacheUtils
 import ghidra.app.util.opinion.DyldCacheUtils.SplitDyldCache
+import ghidra.file.formats.ios.ExtractedMacho
+import ghidra.file.formats.ios.dyldcache.DyldCacheExtractor
 import ghidra.formats.gfilesystem.GFile
 import ghidra.formats.gfilesystem.GFileImpl
 import ghidra.formats.gfilesystem.GFileSystem
 import ghidra.formats.gfilesystem.GFileSystemBase
 import ghidra.formats.gfilesystem.annotations.FileSystemInfo
 import ghidra.formats.gfilesystem.factory.GFileSystemBaseFactory
+import ghidra.framework.task.GTaskMonitor
 import ghidra.program.model.data.StructureDataType
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.core.objc.modelling.Dyld
@@ -48,10 +54,10 @@ class DSCFileSystem(
     private val allFilesAndDirectories = mutableSetOf<GFile>()
 
     /**
-     * A helper for dealing with memory addresses in the cache.
+     * A helper for dealing with the cache.
      */
 
-    var memoryHelper: DSCMemoryHelper? = null
+    var cacheHelper: DSCHelper? = null
 
     /**
      * The platform the cache is for.
@@ -64,7 +70,7 @@ class DSCFileSystem(
     var osVersion: Dyld.Version? = null
 
     override fun close() {
-        memoryHelper?.splitDyldCache?.close()
+        cacheHelper?.splitDyldCache?.close()
         super.close()
     }
 
@@ -93,7 +99,7 @@ class DSCFileSystem(
 
     override fun open(monitor: TaskMonitor) {
         val splitDyldCache = SplitDyldCache(provider, false, MessageLog(), monitor)
-        this.memoryHelper = DSCMemoryHelper(splitDyldCache)
+        this.cacheHelper = DSCHelper(splitDyldCache)
         for (cacheIndex in 0 until splitDyldCache.size()) {
             splitDyldCache.getDyldCacheHeader(cacheIndex).mappingInfos.forEach {
                 splitDyldCache
@@ -121,30 +127,82 @@ class DSCFileSystem(
             .filter { it.parentFile == (directory ?: root) }
 }
 
-class DSCMemoryHelper(
+class DSCHelper(
     val splitDyldCache: SplitDyldCache,
 ) {
     /**
-     * A map containing virtual memory mapping information.
+     * Pointer fixups for the cache.
      */
-    val vmMappingsMap: TreeMap<Long, Pair<Int, DyldCacheMappingInfo>> = TreeMap()
+    val fixupsMap: Map<DyldCacheSlideInfoCommon, List<DyldFixup>> =
+        DyldCacheExtractor.getSlideFixups(splitDyldCache, GTaskMonitor())
 
-    init {
-        for (cacheIndex in 0 until splitDyldCache.size()) {
-            splitDyldCache.getDyldCacheHeader(cacheIndex).mappingInfos.forEach {
-                vmMappingsMap[it.address] = Pair(cacheIndex, it)
+    fun fixupMemoryRange(
+        vmAddress: Long,
+        length: Long,
+        bytes: ByteArray,
+    ): ByteArray =
+        bytes.apply {
+            for ((slideInfo, fixups) in fixupsMap) {
+                fixups.forEach {
+                    val fixupAddress = slideInfo.mappingAddress + it.offset
+                    // TODO: Determine if we can make this algorithm more efficient.
+                    if (fixupAddress < vmAddress || fixupAddress >= vmAddress + length) return@forEach
+                    val fixedUpBytes = ExtractedMacho.toBytes(it.value, it.size)
+                    val fixupOffsetInRange = (fixupAddress - vmAddress).toInt()
+                    fixedUpBytes.copyInto(
+                        bytes,
+                        fixupOffsetInRange,
+                        0,
+                        minOf(fixedUpBytes.size, bytes.size - fixupOffsetInRange),
+                    )
+                }
             }
         }
+
+    /**
+     * A map containing virtual memory mapping information.
+     */
+    val vmMappingsMap =
+        TreeMap<Long, Pair<DyldCacheMappingInfo, ByteProvider>>().apply {
+            for (cacheIndex in 0 until splitDyldCache.size()) {
+                splitDyldCache.getDyldCacheHeader(cacheIndex).mappingInfos.forEach {
+                    set(it.address, Pair(it, splitDyldCache.getProvider(cacheIndex)))
+                }
+            }
+        }
+
+    val images =
+        splitDyldCache
+            .let { splitCache ->
+                (0 until splitCache.size()).flatMap { cacheIndex ->
+                    splitCache
+                        .getDyldCacheHeader(cacheIndex)
+                        .mappedImages
+                        .map { image -> Pair(image, splitCache.getProvider(cacheIndex)) }
+                }
+            }
+
+    fun findMachHeaderForImage(path: String): MachHeader? {
+        val (matchingImage, byteProviderForCacheFileContainingImage) =
+            images
+                .firstOrNull { (image) -> image.path == path }
+                ?: return null
+        val (matchingMapping) =
+            findRelevantVMMappingAndCacheByteProvider(matchingImage.address) ?: return null
+        return MachHeader(
+            byteProviderForCacheFileContainingImage,
+            matchingMapping.fileOffset + (matchingImage.address - matchingMapping.address),
+        ).parse(splitDyldCache)
     }
 
-    fun getRelevantCacheIndexAndVMMapping(vmAddress: Long) =
-        vmMappingsMap.floorEntry(vmAddress)?.value?.takeIf { (_, mapping) ->
+    fun findRelevantVMMappingAndCacheByteProvider(vmAddress: Long) =
+        vmMappingsMap.floorEntry(vmAddress)?.value?.takeIf { (mapping) ->
             vmAddress < (mapping.address + mapping.size)
         }
 
     fun isValidVMAddress(vmAddress: Long): Boolean {
         val relevantMapping =
-            getRelevantCacheIndexAndVMMapping(vmAddress)?.second ?: return false
+            findRelevantVMMappingAndCacheByteProvider(vmAddress)?.first ?: return false
         return vmAddress < relevantMapping.address + relevantMapping.size
     }
 
@@ -160,8 +218,8 @@ class DSCMemoryHelper(
         length: Long,
     ) {
         assertIsValidVMAddress(vmAddress)
-        getRelevantCacheIndexAndVMMapping(vmAddress)!!
-            .takeIf { (_, mapping) ->
+        findRelevantVMMappingAndCacheByteProvider(vmAddress)!!
+            .takeIf { (mapping) ->
                 length <= mapping.size - (vmAddress - mapping.address)
             }
             ?: throw IOException(
@@ -170,32 +228,29 @@ class DSCMemoryHelper(
             )
     }
 
-    fun readMappedByte(vmAddress: Long): Byte {
-        assertIsValidVMAddress(vmAddress)
-        getRelevantCacheIndexAndVMMapping(vmAddress)!!.let { (cacheIndex, mapping) ->
-            return splitDyldCache.getProvider(cacheIndex).readByte(mapping.fileOffset + (vmAddress - mapping.address))
-        }
-    }
-
     fun readMappedBytes(
         vmAddress: Long,
         length: Long,
+        fixedUp: Boolean = true,
     ): ByteArray {
         assertIsValidVMRange(vmAddress, length)
-        getRelevantCacheIndexAndVMMapping(vmAddress)!!.let { (cacheIndex, mapping) ->
-            return splitDyldCache
-                .getProvider(cacheIndex)
-                .readBytes(mapping.fileOffset + (vmAddress - mapping.address), length)
-        }
+        findRelevantVMMappingAndCacheByteProvider(vmAddress)!!
+            .let { (mapping, provider) ->
+                return provider
+                    .readBytes(
+                        mapping.fileOffset + (vmAddress - mapping.address),
+                        length,
+                    ).let { if (fixedUp) fixupMemoryRange(vmAddress, length, it) else it }
+            }
     }
 
     fun readMappedCString(vmAddress: Long): String? =
-        getRelevantCacheIndexAndVMMapping(vmAddress)
-            ?.let { (cacheIndex, mapping) ->
+        findRelevantVMMappingAndCacheByteProvider(vmAddress)
+            ?.let { (mapping, provider) ->
                 var string = ""
                 var currentOffset = mapping.fileOffset + (vmAddress - mapping.address)
                 string_builder@ do {
-                    val byte = this.splitDyldCache.getProvider(cacheIndex).readByte(currentOffset)
+                    val byte = provider.readByte(currentOffset)
                     if (byte == 0x00.toByte()) break@string_builder
                     string += byte.toInt().toChar()
                     currentOffset++
