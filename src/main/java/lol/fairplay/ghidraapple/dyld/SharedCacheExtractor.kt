@@ -47,7 +47,7 @@ class DSCExtractor(
 
         val dscMemoryHelper = dscFileSystem.memoryHelper!!
 
-        val (machHeader, cacheFileByteProvider) =
+        val (inCacheMachHeader, cacheFileByteProvider) =
             dscMemoryHelper
                 .getRelevantCacheIndexAndVMMapping(startAddress)!!
                 .let { (cacheIndex, mappingInfo) ->
@@ -61,13 +61,9 @@ class DSCExtractor(
                     )
                 }
 
-//        val machHeader =
-//            MachHeader(mappedCacheProvider, startAddress)
-//                .parse(mappedCacheProvider.splitDyldCache)
-
         var textOffsetInCache = 0L
 
-        for (segment in machHeader.allSegments) {
+        for (segment in inCacheMachHeader.allSegments) {
             if (segment.segmentName == "__TEXT") {
                 textOffsetInCache =
                     segment.vMaddress -
@@ -91,7 +87,7 @@ class DSCExtractor(
             )
 
         linkeditOptimizer.optimizeLoadCommands()
-        linkeditOptimizer.optimizeLinkedit(machHeader, bufferForNewLinkeditSegment, textOffsetInCache)
+        linkeditOptimizer.optimizeLinkedit(inCacheMachHeader, bufferForNewLinkeditSegment, textOffsetInCache)
 
         bufferForExtractedDylib
             .position(offsetForNewLinkeditSegment)

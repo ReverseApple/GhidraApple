@@ -25,8 +25,8 @@ class Dyld {
         }
     }
 
-    class Version(
-        version: UInt,
+    data class Version(
+        private val version: UInt,
     ) {
         val major = (version shr 16) and 0xffffu
         val minor = (version shr 8) and 0xffu

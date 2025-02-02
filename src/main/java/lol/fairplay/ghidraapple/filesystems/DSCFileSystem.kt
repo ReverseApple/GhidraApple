@@ -13,7 +13,10 @@ import ghidra.formats.gfilesystem.GFileSystem
 import ghidra.formats.gfilesystem.GFileSystemBase
 import ghidra.formats.gfilesystem.annotations.FileSystemInfo
 import ghidra.formats.gfilesystem.factory.GFileSystemBaseFactory
+import ghidra.program.model.data.StructureDataType
 import ghidra.util.task.TaskMonitor
+import lol.fairplay.ghidraapple.core.objc.modelling.Dyld
+import lol.fairplay.ghidraapple.core.serialization.StructSerializer
 import lol.fairplay.ghidraapple.dyld.DSCExtractor
 import java.io.IOException
 import java.util.TreeMap
@@ -47,9 +50,19 @@ class DSCFileSystem(
     var memoryHelper: DSCMemoryHelper? = null
 
     /**
-     * An extractor for the dyld shared cache.
+     * An extractor for the cache.
      */
     private val extractor = DSCExtractor(this)
+
+    /**
+     * The platform the cache is for.
+     */
+    var platform: Dyld.Platform? = null
+
+    /**
+     * The OS version the cache is for.
+     */
+    var osVersion: Dyld.Version? = null
 
     override fun close() {
         memoryHelper?.splitDyldCache?.close()
@@ -77,8 +90,8 @@ class DSCFileSystem(
     }
 
     override fun open(monitor: TaskMonitor) {
-        val splitDyldCache = SplitDyldCache(provider, true, MessageLog(), monitor)
-        memoryHelper = DSCMemoryHelper(splitDyldCache)
+        val splitDyldCache = SplitDyldCache(provider, false, MessageLog(), monitor)
+        this.memoryHelper = DSCMemoryHelper(splitDyldCache)
         for (cacheIndex in 0 until splitDyldCache.size()) {
             splitDyldCache.getDyldCacheHeader(cacheIndex).mappingInfos.forEach {
                 splitDyldCache
@@ -91,6 +104,14 @@ class DSCFileSystem(
                     }
             }
         }
+        val headerFileType = splitDyldCache.getDyldCacheHeader(0).toDataType() as StructureDataType
+        val headerSerializer =
+            StructSerializer(
+                headerFileType,
+                splitDyldCache.getProvider(0).readBytes(0, headerFileType.length.toLong()),
+            )
+        this.platform = Dyld.Platform.getPlatform(headerSerializer.getComponentValue("platform"))
+        this.osVersion = Dyld.Version(headerSerializer.getComponentValue("osVersion"))
     }
 
     override fun getListing(directory: GFile?): List<GFile?>? =
@@ -114,7 +135,10 @@ class DSCMemoryHelper(
         }
     }
 
-    fun getRelevantCacheIndexAndVMMapping(vmAddress: Long) = vmMappingsMap.floorEntry(vmAddress)?.value
+    fun getRelevantCacheIndexAndVMMapping(vmAddress: Long) =
+        vmMappingsMap.floorEntry(vmAddress)?.value?.takeIf { (_, mapping) ->
+            vmAddress < (mapping.address + mapping.size)
+        }
 
     fun isValidVMAddress(vmAddress: Long): Boolean {
         val relevantMapping =
@@ -162,4 +186,19 @@ class DSCMemoryHelper(
                 .readBytes(mapping.fileOffset + (vmAddress - mapping.address), length)
         }
     }
+
+    fun readMappedCString(vmAddress: Long): String? =
+        getRelevantCacheIndexAndVMMapping(vmAddress)
+            ?.let { (cacheIndex, mapping) ->
+                var string = ""
+                var currentOffset = mapping.fileOffset + (vmAddress - mapping.address)
+                string_builder@ do {
+                    val byte = this.splitDyldCache.getProvider(cacheIndex).readByte(currentOffset)
+                    if (byte == 0x00.toByte()) break@string_builder
+                    string += byte.toInt().toChar()
+                    currentOffset++
+                } while // Don't keep reading outside mapped sections.
+                (currentOffset <= (mapping.fileOffset + mapping.size))
+                string.takeIf { it != "" }
+            }
 }
