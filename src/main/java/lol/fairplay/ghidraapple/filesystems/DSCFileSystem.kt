@@ -33,6 +33,10 @@ class DSCFileSystem(
     fileSystemName: String,
     provider: ByteProvider,
 ) : GFileSystemBase(fileSystemName, provider) {
+    companion object {
+        val fileByteProviderMap = mutableMapOf<GFile, ByteProvider>()
+    }
+
     /**
      * A map between actual dylib's in the cache and their addresses.
      */
@@ -68,11 +72,14 @@ class DSCFileSystem(
         file: GFile,
         monitor: TaskMonitor,
     ): ByteProvider? =
-        DSCExtractor(this, monitor)
+        // Ghidra isn't exactly efficient with this method and will call it several times when
+        //  opening a file. We cache the result to improve performance. The files shouldn't be
+        //  changing at all (why would they?), so this should be safe for us to do here.
+        fileByteProviderMap[file] ?: DSCExtractor(this, monitor)
             .extractDylibAtAddress(
                 fileAddressMap[file] ?: throw IOException("File $file not found in cache!"),
                 file.fsrl,
-            )
+            ).also { fileByteProviderMap[file] = it }
 
     override fun isValid(monitor: TaskMonitor): Boolean {
         if (!DyldCacheUtils.isDyldCache(provider)) return false
