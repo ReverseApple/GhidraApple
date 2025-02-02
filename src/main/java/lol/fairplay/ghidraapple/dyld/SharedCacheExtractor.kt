@@ -18,12 +18,10 @@ import ghidra.app.util.bin.format.macho.commands.LoadCommandTypes
 import ghidra.app.util.bin.format.macho.commands.NList
 import ghidra.app.util.bin.format.macho.commands.SegmentCommand
 import ghidra.app.util.bin.format.macho.commands.SymbolTableCommand
-import ghidra.file.formats.ios.ExtractedMacho
-import ghidra.file.formats.ios.dyldcache.DyldCacheExtractor
 import ghidra.formats.gfilesystem.FSRL
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.filesystems.DSCFileSystem
-import lol.fairplay.ghidraapple.filesystems.DSCMemoryHelper
+import lol.fairplay.ghidraapple.filesystems.DSCHelper
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -40,36 +38,6 @@ class DSCExtractor(
     // 100 MiB default
     private val maxDylibSize: Int = 1024 * 1024 * 100,
 ) {
-    private fun fixupSlidePointers(
-        header: MachHeader,
-        newDyibBuffer: ByteBuffer,
-        segmentStartMap: Map<String, Long>,
-    ) {
-        val fixups =
-            DyldCacheExtractor.getSlideFixups(dscFileSystem.memoryHelper!!.splitDyldCache, monitor)
-        val totalFixups = fixups.values.flatten().size
-        monitor?.initialize(totalFixups.toLong(), "Fixing up slide pointers...")
-        fixups.forEach { (slideInfo, fixups) ->
-            for (fixup in fixups) {
-                monitor?.increment()
-                val address = slideInfo.mappingAddress + fixup.offset
-                val fileOffset = slideInfo.mappingFileOffset + fixup.offset()
-                val matchingSegment =
-                    header.allSegments.firstOrNull {
-                        address >= it.vMaddress && address < it.vMaddress + it.vMsize
-                    } ?: continue
-                val fixedUpBytes = ExtractedMacho.toBytes(fixup.value, fixup.size)
-                newDyibBuffer
-                    .position(
-                        (
-                            fileOffset - matchingSegment.fileOffset +
-                                segmentStartMap[matchingSegment.segmentName]!!
-                        ).toInt(),
-                    ).put(fixedUpBytes)
-            }
-        }
-    }
-
     fun extractDylibAtAddress(
         startAddress: Long,
         fsrl: FSRL,
@@ -78,19 +46,16 @@ class DSCExtractor(
 
         val newDylibBuffer: ByteBuffer = ByteBuffer.allocate(maxDylibSize).order(ByteOrder.LITTLE_ENDIAN)
 
-        val dscMemoryHelper = dscFileSystem.memoryHelper!!
+        val dscMemoryHelper = dscFileSystem.cacheHelper!!
 
         val (inCacheMachHeader, cacheFileByteProvider) =
             dscMemoryHelper
-                .getRelevantCacheIndexAndVMMapping(startAddress)!!
-                .let { (cacheIndex, mappingInfo) ->
+                .findRelevantVMMappingAndCacheByteProvider(startAddress)!!
+                .let { (mappingInfo, provider) ->
                     val fileOffsetOfDylib = mappingInfo.fileOffset + (startAddress - mappingInfo.address)
                     Pair(
-                        MachHeader(
-                            dscMemoryHelper.splitDyldCache.getProvider(cacheIndex),
-                            fileOffsetOfDylib,
-                        ).parse(dscMemoryHelper.splitDyldCache),
-                        dscMemoryHelper.splitDyldCache.getProvider(cacheIndex),
+                        MachHeader(provider, fileOffsetOfDylib).parse(dscMemoryHelper.splitDyldCache),
+                        provider,
                     )
                 }
 
@@ -128,8 +93,6 @@ class DSCExtractor(
 
         val endPosition = newDylibBuffer.position()
 
-        fixupSlidePointers(inCacheMachHeader, newDylibBuffer, segmentStartMap)
-
         val finalBytes = ByteArray(endPosition)
         newDylibBuffer.get(0, finalBytes)
         return ByteArrayProvider(finalBytes, fsrl)
@@ -139,7 +102,7 @@ class DSCExtractor(
 class LinkeditOptimizerNew(
     // TODO: We gotta pick a better name for this.
     val byteProviderForCacheFileContainingDylib: ByteProvider,
-    val dscMemoryHelper: DSCMemoryHelper,
+    val dscHelper: DSCHelper,
     val newDyibBuffer: ByteBuffer,
 ) {
     private var linkeditSegmentCommand: SegmentCommand? = null
@@ -209,7 +172,7 @@ class LinkeditOptimizerNew(
         val machHeader =
             MachHeader(
                 ByteArrayProvider(newDyibBuffer.array()),
-            ).parse(dscMemoryHelper.splitDyldCache)
+            ).parse(dscHelper.splitDyldCache)
 
         for (command in machHeader.loadCommands) {
             when (command) {
