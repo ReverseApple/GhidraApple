@@ -71,9 +71,6 @@ class DSCExtractor(
             val segmentBytes = dscMemoryHelper.readMappedBytes(segment.vMaddress, segment.vMsize)
             newDylibBuffer.put(segmentBytes)
         }
-        val offsetForNewLinkeditSegment = newDylibBuffer.position()
-
-        val bufferForNewLinkeditSegment = ByteBuffer.allocate(1 shl 20)
 
         val linkeditOptimizer =
             LinkeditOptimizer(
@@ -81,15 +78,21 @@ class DSCExtractor(
                 newDylibBuffer,
             )
 
+        // Fix up and optimize the load commands
         val segmentStartMap = linkeditOptimizer.optimizeLoadCommands()
+
+        // Create a new __LINKEDIT segment.
+        val offsetForNewLinkeditSegment = newDylibBuffer.position()
+        val bufferForNewLinkeditSegment = ByteBuffer.allocate(1 shl 20)
         linkeditOptimizer.optimizeLinkedit(inCacheMachHeader, bufferForNewLinkeditSegment, textOffsetInCache)
 
+        // Write the new __LINKEDIT segment.
         newDylibBuffer
             .position(offsetForNewLinkeditSegment)
             .put(bufferForNewLinkeditSegment.array())
 
+        // Get the written bytes and return them wrapped in a provider.
         val endPosition = newDylibBuffer.position()
-
         val finalBytes = ByteArray(endPosition)
         newDylibBuffer.get(0, finalBytes)
         return ByteArrayProvider(finalBytes, fsrl)
