@@ -34,7 +34,7 @@ class DSCExtractor(
     private val dscFileSystem: DSCFileSystem,
     private val monitor: TaskMonitor? = null,
     // 100 MiB default
-    private val maxDylibSize: Int = 1024 * 1024 * 100,
+    private val maxDylibSize: Int = 100 * (1024 * 1024),
 ) {
     fun extractDylibAtAddress(
         startAddress: Long,
