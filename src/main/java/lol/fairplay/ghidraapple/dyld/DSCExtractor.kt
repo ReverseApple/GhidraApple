@@ -45,7 +45,7 @@ class DSCExtractor(
 
         val dscMemoryHelper = dscFileSystem.cacheHelper!!
 
-        val (inCacheMachHeader, cacheFileByteProvider) =
+        val (inCacheMachHeader) =
             dscMemoryHelper
                 .findRelevantVMMappingAndCacheByteProvider(startAddress)!!
                 .let { (mappingInfo, provider) ->
