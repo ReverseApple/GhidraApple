@@ -379,7 +379,6 @@ class LinkeditOptimizer(
 
         // Start reading from the symbol table as it exists in the cache file.
 
-//        val providerContainingSymbolTable = dscHelper.findRelevantVMMappingAndCacheByteProvider()
         val readerForSymbolTable = BinaryReader(providerContainingLinkeditSegment, true)
         readerForSymbolTable.pointerIndex = symbolsFileOffset.toLong()
 
