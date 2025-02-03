@@ -8,6 +8,7 @@ import ghidra.framework.plugintool.PluginTool
 import ghidra.framework.plugintool.util.PluginStatus
 import ghidra.program.model.listing.Program
 import lol.fairplay.ghidraapple.GhidraApplePluginPackage
+import lol.fairplay.ghidraapple.windows.AllocViewerComponent
 import lol.fairplay.ghidraapple.windows.DynamicDispatchComponent
 
 // @formatter:off
@@ -17,16 +18,18 @@ import lol.fairplay.ghidraapple.windows.DynamicDispatchComponent
     category = PluginCategoryNames.COMMON,
     shortDescription = "Objective-C Dynamic Dispatch",
     description = "A plugin to help with Objective-C dynamic dispatches (msgSend family of functions)",
+    eventsConsumed = [],
 ) // @formatter:on
 class ObjectiveCDynamicDispatchPlugin(
     plugintool: PluginTool,
 ) : ProgramPlugin(plugintool) {
+    private val allocViewerComponent: AllocViewerComponent
     private val dynamicDispatchTable: DynamicDispatchComponent
 
     init {
         setupActions()
-        dynamicDispatchTable = DynamicDispatchComponent(tool)
-        tool.addComponentProvider(dynamicDispatchTable, false)
+        dynamicDispatchTable = DynamicDispatchComponent(tool).install(tool)
+        allocViewerComponent = AllocViewerComponent(tool).install(tool)
     }
 
     private fun setupActions() {
@@ -36,5 +39,6 @@ class ObjectiveCDynamicDispatchPlugin(
     override fun programActivated(program: Program) {
         super.programActivated(program)
         dynamicDispatchTable.updateProgram(program)
+        allocViewerComponent.updateProgram(program)
     }
 }

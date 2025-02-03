@@ -60,7 +60,7 @@ abstract class AbstractDispatchAnalyzer<CALLSITE_RESULT>(
                     monitor: TaskMonitor,
                 ): Map<Reference, CALLSITE_RESULT?> {
                     monitor.incrementProgress(1)
-                    return decompilerCallback(results, dispatchSitesByFunction[results.function]!!, monitor)
+                    return decompilerCallback(results, dispatchSitesByFunction[results.function]!!, monitor, log)
                 }
             }
         monitor.maximum = dispatchSitesByFunction.size.toLong()
@@ -114,9 +114,10 @@ abstract class AbstractDispatchAnalyzer<CALLSITE_RESULT>(
         results: DecompileResults,
         references: Collection<Reference>,
         monitor: TaskMonitor,
+        msgLog: MessageLog,
     ): Map<Reference, CALLSITE_RESULT?> =
-        getCallOps(results, references, monitor)
-            .mapValues { (_, pcodeOp) -> getResultForPCodeCall(results.highFunction.function.program, pcodeOp) }
+        getCallOps(results, references, monitor, msgLog)
+            .mapValues { (_, pcodeOp) -> getResultForPCodeCall(results.highFunction.function.program, pcodeOp, msgLog) }
 
     /**
      * Helper function to get the PcodeOps for the references
@@ -125,8 +126,13 @@ abstract class AbstractDispatchAnalyzer<CALLSITE_RESULT>(
         results: DecompileResults,
         references: Collection<Reference>,
         monitor: TaskMonitor,
+        msgLog: MessageLog,
     ): Map<Reference, PcodeOp> {
         val addressSet = references.map { it.fromAddress }.toSet()
+        if (results.highFunction == null) {
+            msgLog.appendMsg("Failed to decompile function ${results.function} containing callsites $addressSet")
+            return emptyMap()
+        }
         return results.highFunction.pcodeOps
             .asSequence()
             .filter { it.opcode == PcodeOp.CALL || it.opcode == PcodeOp.CALLIND }
@@ -137,5 +143,6 @@ abstract class AbstractDispatchAnalyzer<CALLSITE_RESULT>(
     abstract fun getResultForPCodeCall(
         program: Program,
         pcodeOp: PcodeOp,
+        msgLog: MessageLog,
     ): CALLSITE_RESULT?
 }

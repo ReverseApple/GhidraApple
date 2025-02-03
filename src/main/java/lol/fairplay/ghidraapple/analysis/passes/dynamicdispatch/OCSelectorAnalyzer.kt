@@ -1,6 +1,7 @@
 package lol.fairplay.ghidraapple.analysis.passes.dynamicdispatch
 
 import ghidra.app.services.AnalyzerType
+import ghidra.app.util.importer.MessageLog
 import ghidra.program.model.listing.Function
 import ghidra.program.model.listing.ParameterImpl
 import ghidra.program.model.listing.Program
@@ -80,8 +81,13 @@ class OCSelectorAnalyzer :
     override fun getResultForPCodeCall(
         program: Program,
         pcodeOp: PcodeOp,
+        msgLog: MessageLog,
     ): String? {
-        val selector = pcodeOp.getInput(2) ?: throw IllegalArgumentException("Selector call without selector argument")
+        val selector = pcodeOp.getInput(2)
+        if (selector == null) {
+            msgLog.appendMsg("No selector argument found in call at ${pcodeOp.seqnum}")
+            return null
+        }
         val r = getConstantFromVarNode(selector).getOrNull()
         // We now have the constant address of the selector. We need to translate this into a proper address
         val selectorAddr = r?.toDefaultAddressSpace(program)

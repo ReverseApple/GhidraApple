@@ -4,6 +4,7 @@ import ghidra.app.decompiler.DecompileOptions
 import ghidra.app.decompiler.parallel.DecompileConfigurer
 import ghidra.app.services.AnalysisPriority
 import ghidra.app.services.AnalyzerType
+import ghidra.app.util.importer.MessageLog
 import ghidra.program.model.address.Address
 import ghidra.program.model.data.DataType
 import ghidra.program.model.data.FunctionDefinitionDataType
@@ -65,10 +66,12 @@ class OCTypeInjectorAnalyzer :
     override fun getResultForPCodeCall(
         program: Program,
         pcodeOp: PcodeOp,
+        msgLog: MessageLog,
     ): Address? {
         val clsVarNode = pcodeOp.getInput(1)
         if (clsVarNode == null) {
-            throw IllegalArgumentException("Alloc call without argument")
+            msgLog.appendMsg("Alloc call without argument at ${pcodeOp.seqnum.target}")
+            return null
         }
         val r = getConstantFromVarNode(clsVarNode).getOrNull()
         val classAddr = r?.toDefaultAddressSpace(program)
