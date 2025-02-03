@@ -12,8 +12,9 @@ import ghidra.program.model.address.Address
 import ghidra.program.model.listing.Program
 import ghidra.program.model.mem.MemoryBlock
 import ghidra.util.task.TaskMonitor
+import lol.fairplay.ghidraapple.core.objc.modelling.Dyld
 import lol.fairplay.ghidraapple.filesystems.DSCFileSystem
-import lol.fairplay.ghidraapple.filesystems.DSCMemoryHelper
+import lol.fairplay.ghidraapple.filesystems.DSCHelper
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -52,7 +53,6 @@ class GAMachoLoader : MachoLoader() {
         log: MessageLog,
     ) {
         super.load(provider, loadSpec, options, program, monitor, log)
-
         // The executable format is named after the loader. However, Ghidra performs some checks against this name to
         // enable certain analyzers (so we have to give it a name it expects: the name of the built-in loader).
         program.executableFormat = MACH_O_NAME
@@ -62,9 +62,14 @@ class GAMachoLoader : MachoLoader() {
         // If the Mach-O was loaded with our custom dyld shared cache handler, we can do some more things with it.
         if (fileSystem is DSCFileSystem) {
             markupDyldCacheSource(program, fileSystem)
-            val pointerRepointer = CachePointerRepointer(program, fileSystem.memoryHelper!!)
+            val pointerRepointer = CachePointerRepointer(program, fileSystem.cacheHelper!!)
             pointerRepointer.repointSelectorReferences()
             pointerRepointer.repointOtherReferences()
+            if (fileSystem.platform == Dyld.Platform.MACOS) {
+                val cachedDylibLinker = CachedDylibImporter(program, fileSystem.cacheHelper!!)
+                // Many dylibs are probably going to have pointers to this, so let's just map it.
+                cachedDylibLinker.mapCachedDependency("/usr/lib/libobjc.A.dylib")
+            }
         }
 
         var isBeingDebugged = System.getProperty("intellij.debug.agent") == "true"
@@ -135,7 +140,7 @@ class GAMachoLoader : MachoLoader() {
 
 class CachePointerRepointer(
     private val program: Program,
-    private val memoryHelper: DSCMemoryHelper,
+    private val memoryHelper: DSCHelper,
 ) {
     private val memory = program.memory
 
@@ -185,24 +190,109 @@ class CachePointerRepointer(
         (searchAddress <= memoryBlockToSearch.addressRange.maxAddress.subtract(string.length.toLong()))
     }
 
-    fun repointSelectorReferences() {
-        val selRefs = memory.blocks.firstOrNull { it.name == "__objc_selrefs" } ?: return
-        val methName = memory.blocks.firstOrNull { it.name == "__objc_methname" } ?: return
-        var currentAddress = selRefs.addressRange.minAddress
-        while (currentAddress <= selRefs.addressRange.maxAddress) {
-            repointStringPointer(currentAddress, methName)
+    fun repointStringReferences(
+        referencesBlock: MemoryBlock,
+        stringsBlock: MemoryBlock,
+    ) {
+        var currentAddress = referencesBlock.addressRange.minAddress
+        while (currentAddress <= referencesBlock.addressRange.maxAddress) {
+            repointStringPointer(currentAddress, stringsBlock)
             currentAddress = currentAddress.add(pointerSize.toLong())
         }
     }
 
+    fun repointSelectorReferences() {
+        repointStringReferences(
+            program.memory.getBlock("__objc_selrefs") ?: return,
+            program.memory.getBlock("__objc_methname") ?: return,
+        )
+    }
+
     fun repointOtherReferences() {
-        val otherRefs = memory.blocks.firstOrNull { it.name == "__objc_const" } ?: return
-        val methName = memory.blocks.firstOrNull { it.name == "__objc_methname" } ?: return
-        var currentAddress = otherRefs.addressRange.minAddress
-        // The block contains more than pointers, but each pointer *should* be aligned to the pointer size.
-        while (currentAddress <= otherRefs.addressRange.maxAddress) {
-            repointStringPointer(currentAddress, methName)
-            currentAddress = currentAddress.add(pointerSize.toLong())
+        repointStringReferences(
+            program.memory.getBlock("__objc_const") ?: return,
+            program.memory.getBlock("__objc_methname") ?: return,
+        )
+    }
+}
+
+class CachedDylibImporter(
+    private val program: Program,
+    private val cacheHelper: DSCHelper,
+) {
+    val cachePointerRepointer = CachePointerRepointer(program, cacheHelper)
+
+    private fun createBlockName(
+        path: String,
+        segmentName: String,
+        sectionName: String?,
+    ) = "$path -- $segmentName -- ${sectionName ?: "(no section)"}"
+
+    private fun addBlockFromMappedCache(
+        name: String,
+        vmAddress: Long,
+        vmSize: Long,
+    ): MemoryBlock {
+        vmSize
+        val block =
+            program.memory.createInitializedBlock(
+                name,
+                program.addressFactory.defaultAddressSpace.getAddress(vmAddress),
+                vmSize,
+                0x00.toByte(),
+                null,
+                false,
+            )
+        block.putBytes(block.addressRange.minAddress, cacheHelper.readMappedBytes(vmAddress, vmSize))
+        return block
+    }
+
+    fun mapCachedDependency(path: String) {
+        val header = cacheHelper.findMachHeaderForImage(path) ?: return
+        val blocksAdded = mutableListOf<MemoryBlock>()
+        for (segment in header.allSegments) {
+            if (segment.vMsize == 0L) continue
+            try {
+                if (segment.sections.isEmpty()) {
+                    blocksAdded +=
+                        addBlockFromMappedCache(
+                            createBlockName(path, segment.segmentName, null),
+                            segment.vMaddress,
+                            segment.vMsize,
+                        )
+                } else {
+                    for (section in segment.sections) {
+                        if (section.size == 0L) continue
+                        if (section.segmentName != segment.segmentName) {
+                            // This probably should never happen, but we want to know about it if it does.
+                            println(
+                                "($path) Section ${section.sectionName} claims to be in segment " +
+                                    "${section.segmentName}, but is listed below ${segment.segmentName}.",
+                            )
+                        }
+                        blocksAdded +=
+                            addBlockFromMappedCache(
+                                createBlockName(path, section.segmentName, section.sectionName),
+                                section.address,
+                                section.size,
+                            )
+                    }
+                }
+            } catch (e: Exception) {
+                println("Failed to add segment: $e")
+            }
         }
+        repointStringReferencesPostMap(path)
+    }
+
+    private fun repointStringReferencesPostMap(path: String) {
+        cachePointerRepointer.repointStringReferences(
+            program.memory.getBlock(createBlockName(path, "__AUTH_CONST", "__objc_selrefs")) ?: return,
+            program.memory.getBlock(createBlockName(path, "__TEXT", "__objc_methname")) ?: return,
+        )
+        cachePointerRepointer.repointStringReferences(
+            program.memory.getBlock(createBlockName(path, "__AUTH_CONST", "__objc_const")) ?: return,
+            program.memory.getBlock(createBlockName(path, "__TEXT", "__objc_methname")) ?: return,
+        )
     }
 }
