@@ -47,11 +47,18 @@ data class DynamicDispatchCallsiteData(
                 } else {
                     null
                 }
+            val runtimeFunction = program.functionManager.getFunctionAt(reference.toAddress)
+            val selector: String? =
+                if (runtimeFunction.hasTag(OBJC_TRAMPOLINE)) {
+                    runtimeFunction.name
+                } else {
+                    program.usrPropertyManager.getStringPropertyMap(SELECTOR_DATA)?.get(reference.fromAddress)
+                }
             return DynamicDispatchCallsiteData(
                 reference,
-                program.functionManager.getFunctionAt(reference.toAddress),
+                runtimeFunction,
                 impl,
-                program.usrPropertyManager.getStringPropertyMap(SELECTOR_DATA)?.get(reference.fromAddress),
+                selector,
             )
         }
     }
@@ -120,7 +127,7 @@ class DynamicDispatchTable(
         if (program == null) return
         val data =
             program.functionManager
-                .getFunctionsWithAnyTag(OBJC_DISPATCH_SELECTOR, OBJC_DISPATCH_CLASS)
+                .getFunctionsWithAnyTag(OBJC_DISPATCH_SELECTOR, OBJC_DISPATCH_CLASS, OBJC_TRAMPOLINE)
                 .asSequence()
                 .takeWhile { !monitor.isCancelled }
                 .flatMap { program.referenceManager.getReferencesTo(it.entryPoint) }
