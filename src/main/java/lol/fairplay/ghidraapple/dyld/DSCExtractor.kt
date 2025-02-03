@@ -20,7 +20,6 @@ import ghidra.app.util.bin.format.macho.commands.NList
 import ghidra.app.util.bin.format.macho.commands.SegmentCommand
 import ghidra.app.util.bin.format.macho.commands.SymbolTableCommand
 import ghidra.formats.gfilesystem.FSRL
-import ghidra.util.task.TaskMonitor
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -33,7 +32,6 @@ import kotlin.collections.plus
 
 class DSCExtractor(
     private val dscFileSystem: DSCFileSystem,
-    private val monitor: TaskMonitor? = null,
     // 100 MiB default
     private val maxDylibSize: Int = 100 * (1024 * 1024),
 ) {
