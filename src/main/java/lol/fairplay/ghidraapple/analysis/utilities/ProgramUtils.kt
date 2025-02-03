@@ -116,41 +116,40 @@ fun ReferenceManager.setCallTarget(
     targetFunction: Function,
     sourceType: SourceType,
 ) {
-    val ref = addMemoryReference(callsite, targetFunction.entryPoint, RefType.UNCONDITIONAL_CALL, sourceType, 0)
+    val ref =
+        addMemoryReference(
+            callsite,
+            targetFunction.entryPoint,
+            RefType.UNCONDITIONAL_CALL,
+            sourceType,
+            0,
+        )
     setPrimary(ref, true)
 }
 
 fun <ROW_TYPE, COLUMN_TYPE> TableColumnDescriptor<ROW_TYPE>.addColumn(
     name: String,
     visible: Boolean,
-    accessor: (ROW_TYPE) -> COLUMN_TYPE,
+    columnType: Class<COLUMN_TYPE>,
+    accessor: (ROW_TYPE) -> COLUMN_TYPE?,
 ) {
+    val column =
+        object : AbstractDynamicTableColumn<ROW_TYPE, COLUMN_TYPE, Any?>() {
+            override fun getColumnName(): String = name
+
+            override fun getValue(
+                rowObject: ROW_TYPE,
+                settings: Settings,
+                data: Any?,
+                serviceProvider: ServiceProvider,
+            ): COLUMN_TYPE? = accessor(rowObject)
+
+            override fun getColumnClass(): Class<COLUMN_TYPE> = columnType
+        }
     if (visible) {
-        addVisibleColumn(
-            object : AbstractDynamicTableColumn<ROW_TYPE, COLUMN_TYPE, Any?>() {
-                override fun getColumnName(): String = name
-
-                override fun getValue(
-                    rowObject: ROW_TYPE,
-                    settings: Settings,
-                    data: Any?,
-                    serviceProvider: ServiceProvider,
-                ): COLUMN_TYPE = accessor(rowObject)
-            },
-        )
+        addVisibleColumn(column)
     } else {
-        addHiddenColumn(
-            object : AbstractDynamicTableColumn<ROW_TYPE, COLUMN_TYPE, Any?>() {
-                override fun getColumnName(): String = name
-
-                override fun getValue(
-                    rowObject: ROW_TYPE,
-                    settings: Settings,
-                    data: Any?,
-                    serviceProvider: ServiceProvider,
-                ): COLUMN_TYPE = accessor(rowObject)
-            },
-        )
+        addHiddenColumn(column)
     }
 }
 

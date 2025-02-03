@@ -65,17 +65,17 @@ class DynamicDispatchTable(
 ) : GhidraProgramTableModel<DynamicDispatchCallsiteData>("Dynamic Dispatch Table", pluginTool, null, null) {
     override fun createTableColumnDescriptor(): TableColumnDescriptor<DynamicDispatchCallsiteData> {
         val descriptor = TableColumnDescriptor<DynamicDispatchCallsiteData>()
-        descriptor.addColumn("Address", true) { it.reference.fromAddress }
-        descriptor.addColumn("Class", true) { null }
-        descriptor.addColumn("Selector", true) { it.selector }
-        descriptor.addColumn("Implementation", true) { it.implementation }
-        descriptor.addColumn("Is Trampoline", true) {
+        descriptor.addColumn("Address", true, Address::class.java) { it.reference.fromAddress }
+//        descriptor.addColumn("Receiver Type", true, String::class.java) { it }
+        descriptor.addColumn("Selector", true, String::class.java) { it.selector }
+        descriptor.addColumn("Implementation", true, Function::class.java) { it.implementation }
+        descriptor.addColumn("Is Trampoline", true, Boolean::class.java) {
             it.calledRuntimeFunction
                 ?.tags
                 ?.map { tag -> tag.name }
                 ?.contains(OBJC_TRAMPOLINE)
         }
-        descriptor.addColumn("Runtime Function", true) { it.calledRuntimeFunction }
+        descriptor.addColumn("Runtime Function", true, Function::class.java) { it.calledRuntimeFunction }
 
         return descriptor
     }
