@@ -79,7 +79,7 @@ class DSCExtractor(
             )
 
         // Fix up and optimize the load commands
-        val segmentStartMap = linkeditOptimizer.optimizeLoadCommands()
+        linkeditOptimizer.optimizeLoadCommands()
 
         // Create a new __LINKEDIT segment.
         val offsetForNewLinkeditSegment = newDylibBuffer.position()
@@ -157,15 +157,13 @@ class LinkeditOptimizer(
         newDyibBuffer.put(oldSegmentCommand.startIndex.toInt(), newCommandBytes)
     }
 
-    fun optimizeLoadCommands(): Map<String, Long> {
+    fun optimizeLoadCommands() {
         val indexOfFlags = Int.SIZE_BYTES * 6
         val oldFlags = newDyibBuffer.getInt(indexOfFlags)
         newDyibBuffer.putInt(indexOfFlags, oldFlags and MachHeaderFlags.MH_DYLIB_IN_CACHE.inv())
 
         var cumulativeFileSize = 0L
         var depIndex = 0
-
-        val segmentStartMap = mutableMapOf<String, Long>()
 
         val machHeader =
             MachHeader(
@@ -187,8 +185,6 @@ class LinkeditOptimizer(
                         fileOffset = cumulativeFileSize,
                         fileSize = command.vMsize,
                     )
-
-                    segmentStartMap[command.segmentName] = cumulativeFileSize
 
                     command.sections.forEachIndexed { index, section ->
                         if (section.offset != 0) {
@@ -280,8 +276,6 @@ class LinkeditOptimizer(
                 }
             }
         }
-
-        return segmentStartMap
     }
 
     fun optimizeLinkedit(
