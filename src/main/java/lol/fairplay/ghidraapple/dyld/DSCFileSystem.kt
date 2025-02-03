@@ -64,6 +64,12 @@ class DSCFileSystem(
     var osVersion: Dyld.Version? = null
 
     /**
+     * A pretty name for the platform the cache is for, along with a version number.
+     */
+    val platformPrettyNameWithVersion: String get() =
+        "${platform?.prettyName ?: "unknownOS"} ${osVersion ?: "?.?.?"}"
+
+    /**
      * An extractor for the cache.
      */
     private val extractor = DSCExtractor(this)

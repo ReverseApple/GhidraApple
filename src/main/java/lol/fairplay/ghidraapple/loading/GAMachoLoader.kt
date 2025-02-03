@@ -94,9 +94,7 @@ class GAMachoLoader : MachoLoader() {
         fileSystem: DSCFileSystem,
     ) {
         val infoOptions = program.getOptions(Program.PROGRAM_INFO)
-        val cachePlatform = fileSystem.platform?.prettyName ?: "unknownOS"
-        val cacheVersion = fileSystem.osVersion ?: "?.?.?"
-        infoOptions.setString("Extracted from dyld Shared Cache", "$cachePlatform $cacheVersion")
+        infoOptions.setString("Extracted from dyld Shared Cache", fileSystem.platformPrettyNameWithVersion)
     }
 
     override fun postLoadProgramFixups(
