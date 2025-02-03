@@ -14,7 +14,6 @@ import ghidra.program.model.mem.MemoryBlock
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.dyld.DSCFileSystem
 import lol.fairplay.ghidraapple.dyld.DSCHelper
-import lol.fairplay.ghidraapple.dyld.Dyld
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -65,11 +64,9 @@ class GAMachoLoader : MachoLoader() {
             val pointerRepointer = CachePointerRepointer(program, fileSystem.cacheHelper!!)
             pointerRepointer.repointSelectorReferences()
             pointerRepointer.repointOtherReferences()
-            if (fileSystem.platform == Dyld.Platform.MACOS) {
-                val cachedDylibLinker = CachedDylibImporter(program, fileSystem.cacheHelper!!)
-                // Many dylibs are probably going to have pointers to this, so let's just map it.
-                cachedDylibLinker.mapCachedDependency("/usr/lib/libobjc.A.dylib")
-            }
+            val cachedDylibMapper = CachedDylibMapper(program, fileSystem.cacheHelper!!)
+            // Many dylibs are probably going to have pointers to this, so let's just map it.
+            cachedDylibMapper.mapCachedDependency("/usr/lib/libobjc.A.dylib")
         }
 
         var isBeingDebugged = System.getProperty("intellij.debug.agent") == "true"
@@ -214,7 +211,7 @@ class CachePointerRepointer(
     }
 }
 
-class CachedDylibImporter(
+class CachedDylibMapper(
     private val program: Program,
     private val cacheHelper: DSCHelper,
 ) {
