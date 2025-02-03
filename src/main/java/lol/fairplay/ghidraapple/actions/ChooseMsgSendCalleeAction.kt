@@ -30,7 +30,10 @@ class ChooseMsgSendCalleeAction : AbstractDecompilerAction("Choose msgSend Calle
             return true
         }
         // Check if the function is a trampoline by checking if it is in the trampoline section `__objc_stubs`
-        if (func.program.memory.getBlock(func.entryPoint).name == "__objc_stubs") {
+        if (func.program.memory
+                .getBlock(func.entryPoint)
+                .name == "__objc_stubs"
+        ) {
             return true
         }
         return false

@@ -26,26 +26,23 @@ class ARCFixupInstallerAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerTy
         setSupportsOneTimeAnalysis()
     }
 
-    override fun canAnalyze(program: Program?): Boolean {
-        return ObjectiveC2_Constants.isObjectiveC2(program)
-    }
+    override fun canAnalyze(program: Program?): Boolean = ObjectiveC2_Constants.isObjectiveC2(program)
 
     private fun createCallFixupXML(
         name: String,
         code: String,
         vararg targets: String,
-    ): String {
-        return """
-            <callfixup name="$name">
-              ${targets.joinToString("\n") { "<target name=\"$it\"/>" }}
-              <pcode>
-                <body><![CDATA[
-                        $code
-                 ]]></body>
-              </pcode>
-            </callfixup>
-            """.trimIndent()
-    }
+    ): String =
+        """
+        <callfixup name="$name">
+          ${targets.joinToString("\n") { "<target name=\"$it\"/>" }}
+          <pcode>
+            <body><![CDATA[
+                    $code
+             ]]></body>
+          </pcode>
+        </callfixup>
+        """.trimIndent()
 
     override fun added(
         program: Program?,

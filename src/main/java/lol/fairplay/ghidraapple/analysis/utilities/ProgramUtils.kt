@@ -9,12 +9,15 @@ import ghidra.program.model.address.AddressSetView
 import ghidra.program.model.data.PointerDataType
 import ghidra.program.model.listing.Data
 import ghidra.program.model.listing.Function
+import ghidra.program.model.listing.FunctionManager
 import ghidra.program.model.listing.Program
 import ghidra.program.model.symbol.Namespace
 import ghidra.program.model.symbol.RefType
 import ghidra.program.model.symbol.ReferenceManager
 import ghidra.program.model.symbol.SourceType
 import ghidra.program.model.symbol.Symbol
+import ghidra.program.model.util.PropertyMap
+import ghidra.program.model.util.StringPropertyMap
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.derefUntyped
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.get
 
@@ -113,40 +116,58 @@ fun ReferenceManager.setCallTarget(
     targetFunction: Function,
     sourceType: SourceType,
 ) {
-    val ref = addMemoryReference(callsite, targetFunction.entryPoint, RefType.UNCONDITIONAL_CALL, sourceType, 0)
+    val ref =
+        addMemoryReference(
+            callsite,
+            targetFunction.entryPoint,
+            RefType.UNCONDITIONAL_CALL,
+            sourceType,
+            0,
+        )
     setPrimary(ref, true)
 }
 
 fun <ROW_TYPE, COLUMN_TYPE> TableColumnDescriptor<ROW_TYPE>.addColumn(
     name: String,
     visible: Boolean,
-    accessor: (ROW_TYPE) -> COLUMN_TYPE,
+    columnType: Class<COLUMN_TYPE>,
+    accessor: (ROW_TYPE) -> COLUMN_TYPE?,
 ) {
+    val column =
+        object : AbstractDynamicTableColumn<ROW_TYPE, COLUMN_TYPE, Any?>() {
+            override fun getColumnName(): String = name
+
+            override fun getValue(
+                rowObject: ROW_TYPE,
+                settings: Settings,
+                data: Any?,
+                serviceProvider: ServiceProvider,
+            ): COLUMN_TYPE? = accessor(rowObject)
+
+            override fun getColumnClass(): Class<COLUMN_TYPE> = columnType
+        }
     if (visible) {
-        addVisibleColumn(
-            object : AbstractDynamicTableColumn<ROW_TYPE, COLUMN_TYPE, Any?>() {
-                override fun getColumnName(): String = name
-
-                override fun getValue(
-                    rowObject: ROW_TYPE,
-                    settings: Settings,
-                    data: Any?,
-                    serviceProvider: ServiceProvider,
-                ): COLUMN_TYPE = accessor(rowObject)
-            },
-        )
+        addVisibleColumn(column)
     } else {
-        addHiddenColumn(
-            object : AbstractDynamicTableColumn<ROW_TYPE, COLUMN_TYPE, Any?>() {
-                override fun getColumnName(): String = name
-
-                override fun getValue(
-                    rowObject: ROW_TYPE,
-                    settings: Settings,
-                    data: Any?,
-                    serviceProvider: ServiceProvider,
-                ): COLUMN_TYPE = accessor(rowObject)
-            },
-        )
+        addHiddenColumn(column)
     }
 }
+
+fun FunctionManager.getFunctionsWithTag(tagName: String): List<Function> {
+    val tag = functionTagManager.getFunctionTag(tagName) ?: return emptyList()
+    return this.getFunctions(true).filter { it.tags.contains(tag) }
+}
+
+fun FunctionManager.getFunctionsWithAnyTag(vararg tagNames: String): List<Function> {
+    val tags = tagNames.mapNotNull { functionTagManager.getFunctionTag(it) }.toSet()
+    if (tags.isEmpty()) return emptyList()
+    return this.getFunctions(true).filter { it.tags.intersect(tags).isNotEmpty() }
+}
+
+fun StringPropertyMap.toMap(): Map<Address, String> = this.propertyIterator.associateWith { this.get(it) }
+
+fun <T> PropertyMap<T>.addCollection(d: Collection<Pair<Address, T?>>) {
+    d.forEach { (address, value) -> this.add(address, value) }
+}
+
+fun Function.hasTag(tagName: String): Boolean = this.tags.any { it.name == tagName }

@@ -9,6 +9,7 @@ import ghidra.app.services.GraphDisplayBroker
 import ghidra.framework.plugintool.PluginInfo
 import ghidra.framework.plugintool.PluginTool
 import ghidra.framework.plugintool.util.PluginStatus
+import ghidra.program.model.listing.Data
 import ghidra.util.task.TaskLauncher
 import lol.fairplay.ghidraapple.GhidraApplePluginPackage
 import lol.fairplay.ghidraapple.analysis.objectivec.modelling.StructureParsing
@@ -21,7 +22,9 @@ import lol.fairplay.ghidraapple.graph.ClassAbstractionGraphTask
     description = "",
     shortDescription = "",
 )
-class ObjCInheritanceGraphPlugin(tool: PluginTool) : ProgramPlugin(tool) {
+class ObjCInheritanceGraphPlugin(
+    tool: PluginTool,
+) : ProgramPlugin(tool) {
     init {
         createActions()
     }
@@ -29,6 +32,14 @@ class ObjCInheritanceGraphPlugin(tool: PluginTool) : ProgramPlugin(tool) {
     private fun createActions() {
         val action =
             object : DockingAction("Graph class abstraction", name) {
+                override fun isEnabled(): Boolean {
+                    if (currentProgram != null && currentLocation != null) {
+                        val data: Data? = currentProgram.listing.getDefinedDataAt(currentLocation.address)
+                        return data?.dataType?.name == "class_t"
+                    }
+                    return false
+                }
+
                 override fun actionPerformed(context: ActionContext?) {
                     if (currentProgram == null) return
 
@@ -50,7 +61,5 @@ class ObjCInheritanceGraphPlugin(tool: PluginTool) : ProgramPlugin(tool) {
         tool.addAction(action)
     }
 
-    private fun sanitizeMenuPath(path: Array<String>): Array<String> {
-        return path.map { it.replace(Regex("\\s{2,}"), " ").trim() }.toTypedArray()
-    }
+    private fun sanitizeMenuPath(path: Array<String>): Array<String> = path.map { it.replace(Regex("\\s{2,}"), " ").trim() }.toTypedArray()
 }
