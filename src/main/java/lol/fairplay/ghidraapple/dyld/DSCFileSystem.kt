@@ -31,6 +31,9 @@ class DSCFileSystem(
     provider: ByteProvider,
 ) : GFileSystemBase(fileSystemName, provider) {
     companion object {
+        /**
+         * A map of previously-calculated [ByteProvider]'s for given files.
+         */
         val fileByteProviderMap = mutableMapOf<GFile, ByteProvider>()
     }
 
