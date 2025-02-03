@@ -5,6 +5,7 @@ import ghidra.app.util.bin.ByteArrayProvider
 import ghidra.app.util.bin.ByteProvider
 import ghidra.app.util.bin.format.macho.MachHeader
 import ghidra.app.util.bin.format.macho.MachHeaderFlags
+import ghidra.app.util.bin.format.macho.Section
 import ghidra.app.util.bin.format.macho.commands.DataInCodeCommand
 import ghidra.app.util.bin.format.macho.commands.DyldExportsTrieCommand
 import ghidra.app.util.bin.format.macho.commands.DyldInfoCommand
@@ -115,7 +116,7 @@ class LinkeditOptimizer(
     var reexportedDependencies = setOf<Int>()
 
     fun fixupSegmentCommand(
-        commandStartIndex: Long,
+        oldSegmentCommand: SegmentCommand,
         machHeader: MachHeader,
         name: String? = null,
         vmAddr: Long? = null,
@@ -126,10 +127,10 @@ class LinkeditOptimizer(
         initProt: Int? = null,
         numSections: Int? = null,
         flags: Int? = null,
+        forEachSectionAndStartIndex: (Section, Int) -> Unit = { _, _ -> },
     ) {
         val readerForNewDylib = BinaryReader(ByteArrayProvider(newDyibBuffer.array()), true)
-        readerForNewDylib.pointerIndex = commandStartIndex
-        val oldSegmentCommand = SegmentCommand(readerForNewDylib, machHeader.is32bit)
+        readerForNewDylib.pointerIndex = oldSegmentCommand.startIndex
         val newCommandBytes =
             SegmentCommand.create(
                 machHeader.magic,
@@ -155,6 +156,17 @@ class LinkeditOptimizer(
 
         // Write the new command bytes into the buffer.
         newDyibBuffer.put(oldSegmentCommand.startIndex.toInt(), newCommandBytes)
+
+        oldSegmentCommand.sections.forEachIndexed { index, section ->
+            forEachSectionAndStartIndex(
+                section,
+                (
+                    oldSegmentCommand.startIndex +
+                        newCommandBytes.size +
+                        (section.toDataType().length * index)
+                ).toInt(),
+            )
+        }
     }
 
     fun optimizeLoadCommands() {
@@ -180,24 +192,21 @@ class LinkeditOptimizer(
                     }
 
                     fixupSegmentCommand(
-                        command.startIndex,
+                        command,
                         machHeader,
                         fileOffset = cumulativeFileSize,
                         fileSize = command.vMsize,
-                    )
-
-                    command.sections.forEachIndexed { index, section ->
+                    ) { section, startIndex ->
                         if (section.offset != 0) {
-                            val sectionStartIndex =
-                                command.startIndex + command.commandSize + (section.toDataType().length * index)
                             newDyibBuffer
-                                .position(
-                                    sectionStartIndex.toInt() +
+                                .putInt(
+                                    startIndex.toInt() +
                                         // skip names
                                         (16 * 2) +
                                         // skip address and size
-                                        (if (machHeader.is32bit) 8 else 4) * 2,
-                                ).putInt((cumulativeFileSize + (section.address - command.vMaddress)).toInt())
+                                        (if (machHeader.is32bit) 4 else 8) * 2,
+                                    (cumulativeFileSize + (section.address - command.vMaddress)).toInt(),
+                                )
                         }
                     }
 
@@ -464,7 +473,7 @@ class LinkeditOptimizer(
 
         // Finally, we fix up the original `__LINKEDIT` segment command.
         fixupSegmentCommand(
-            newLinkeditSegmentCommand.startIndex,
+            newLinkeditSegmentCommand,
             machHeader,
             fileSize = newLinkeditSegmentBuffer.position().toLong(),
             vmSize = ((newLinkEditFileSize + 4095) and (4096).inv()).toLong(),
