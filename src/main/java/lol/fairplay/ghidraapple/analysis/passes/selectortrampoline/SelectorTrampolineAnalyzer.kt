@@ -68,7 +68,8 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
         val trampolineFunctions =
             program.functionManager
                 .getFunctions(set, true)
-                .filter { isPlausibleTrampoline(it) }.toList()
+                .filter { isPlausibleTrampoline(it) }
+                .toList()
 
         monitor.maximum = trampolineFunctions.size.toLong()
 
@@ -83,8 +84,7 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
             it.addTag(TRAMPOLINE_TAG)
             it.symbol.setNamespace(stubNamespace)
         }
-        findAllSelectors(program, trampolineFunctions, monitor, log).forEach {
-                (func, selector) ->
+        findAllSelectors(program, trampolineFunctions, monitor, log).forEach { (func, selector) ->
             applySelectorToFunction(func, selector)
         }
         return true
@@ -129,7 +129,9 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
                     }
 
                     val callOp =
-                        results.highFunction.pcodeOps.iterator().asSequence()
+                        results.highFunction.pcodeOps
+                            .iterator()
+                            .asSequence()
                             .singleOrNull { it.opcode == PcodeOp.CALLIND || it.opcode == PcodeOp.CALL }
                     if (callOp != null) {
                         val selAddress = getConstantFromVarNode(callOp.inputs[2]).getOrNull()?.toDefaultAddressSpace(program)
@@ -221,7 +223,5 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
         return getStubsSegment(program) != null
     }
 
-    private fun getStubsSegment(program: Program): MemoryBlock? {
-        return program.memory.getBlock("__objc_stubs")
-    }
+    private fun getStubsSegment(program: Program): MemoryBlock? = program.memory.getBlock("__objc_stubs")
 }
