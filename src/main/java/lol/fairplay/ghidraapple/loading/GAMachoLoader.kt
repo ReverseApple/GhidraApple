@@ -12,9 +12,9 @@ import ghidra.program.model.address.Address
 import ghidra.program.model.listing.Program
 import ghidra.program.model.mem.MemoryBlock
 import ghidra.util.task.TaskMonitor
-import lol.fairplay.ghidraapple.core.objc.modelling.Dyld
-import lol.fairplay.ghidraapple.filesystems.DSCFileSystem
-import lol.fairplay.ghidraapple.filesystems.DSCHelper
+import lol.fairplay.ghidraapple.dyld.DSCFileSystem
+import lol.fairplay.ghidraapple.dyld.DSCHelper
+import lol.fairplay.ghidraapple.dyld.Dyld
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 

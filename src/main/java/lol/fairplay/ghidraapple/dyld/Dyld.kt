@@ -1,4 +1,4 @@
-package lol.fairplay.ghidraapple.core.objc.modelling
+package lol.fairplay.ghidraapple.dyld
 
 class Dyld {
     enum class Platform(

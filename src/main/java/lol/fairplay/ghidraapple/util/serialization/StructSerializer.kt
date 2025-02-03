@@ -1,4 +1,4 @@
-package lol.fairplay.ghidraapple.core.serialization
+package lol.fairplay.ghidraapple.util.serialization
 
 import ghidra.program.model.data.StructureDataType
 import java.io.IOException

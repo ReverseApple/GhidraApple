@@ -20,8 +20,6 @@ import ghidra.app.util.bin.format.macho.commands.SegmentCommand
 import ghidra.app.util.bin.format.macho.commands.SymbolTableCommand
 import ghidra.formats.gfilesystem.FSRL
 import ghidra.util.task.TaskMonitor
-import lol.fairplay.ghidraapple.filesystems.DSCFileSystem
-import lol.fairplay.ghidraapple.filesystems.DSCHelper
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -78,7 +76,7 @@ class DSCExtractor(
         val bufferForNewLinkeditSegment = ByteBuffer.allocate(1 shl 20)
 
         val linkeditOptimizer =
-            LinkeditOptimizerNew(
+            LinkeditOptimizer(
                 dscMemoryHelper,
                 newDylibBuffer,
             )
@@ -98,7 +96,7 @@ class DSCExtractor(
     }
 }
 
-class LinkeditOptimizerNew(
+class LinkeditOptimizer(
     val dscHelper: DSCHelper,
     val newDyibBuffer: ByteBuffer,
 ) {
