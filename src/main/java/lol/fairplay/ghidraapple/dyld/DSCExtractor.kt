@@ -77,15 +77,15 @@ class DSCExtractor(
                 newDylibBuffer,
             )
 
-        // Fix up and optimize the load commands
+        // Fix up and optimize the load commands.
         linkeditOptimizer.optimizeLoadCommands()
 
-        // Create a new __LINKEDIT segment.
+        // Create a new `__LINKEDIT` segment.
         val offsetForNewLinkeditSegment = newDylibBuffer.position()
         val bufferForNewLinkeditSegment = ByteBuffer.allocate(1 shl 20)
         linkeditOptimizer.optimizeLinkedit(inCacheMachHeader, bufferForNewLinkeditSegment, textOffsetInCache)
 
-        // Write the new __LINKEDIT segment.
+        // Write the new `__LINKEDIT` segment.
         newDylibBuffer
             .position(offsetForNewLinkeditSegment)
             .put(bufferForNewLinkeditSegment.array())
@@ -304,11 +304,11 @@ class LinkeditOptimizer(
         val dynamicSymbolTableCommandCopy =
             dynamicSymbolTableCommand ?: return
 
-        // Load commands will include a file-offset to specific data. Because this is a file offset, we need
-        //  to make sure we're looking in the correct file. In most (if not all) cases, this will be the one
-        //  that is mapped to where the __LINKEDIT segment lives (or simply, the one that contains it). It's
-        //  currently unknown if there are any cases where this "linker data" exists elsewhere. But, for now
-        //  it should be a good assumption that it will be in __LINKEDIT.
+        // Load commands may include a file-offset to specific data. Because it is a file offset, we'll need
+        //  to make sure we're looking in the correct file. In most (if not all) cases, that will be the one
+        //  that is mapped to where the `__LINKEDIT` segment lives (or simply, the one that contains it). It
+        //  is currently unknown if there are any cases where the "linker data" will be elsewhere, but there
+        //  shouldn't be. For now, it should be a good assumption that it will be in `__LINKEDIT`.
         val (_, providerContainingLinkeditSegment) =
             dscHelper.findRelevantVMMappingAndCacheByteProvider(
                 // We never changed the VM address, so we can use it to find the relevant provider.
