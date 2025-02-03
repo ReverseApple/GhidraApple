@@ -9,6 +9,7 @@ import ghidra.app.services.GraphDisplayBroker
 import ghidra.framework.plugintool.PluginInfo
 import ghidra.framework.plugintool.PluginTool
 import ghidra.framework.plugintool.util.PluginStatus
+import ghidra.program.model.listing.Data
 import ghidra.util.Msg
 import ghidra.util.task.TaskLauncher
 import lol.fairplay.ghidraapple.GhidraApplePluginPackage
@@ -30,6 +31,14 @@ class ObjCInheritanceGraphPlugin(tool: PluginTool) : ProgramPlugin(tool) {
     private fun createActions() {
         val action =
             object : DockingAction("Graph class abstraction", name) {
+                override fun isEnabled(): Boolean {
+                    if (currentProgram != null && currentLocation != null) {
+                        val data: Data? = currentProgram.listing.getDefinedDataAt(currentLocation.address)
+                        return data?.dataType?.name == "class_t"
+                    }
+                    return false
+                }
+
                 override fun actionPerformed(context: ActionContext?) {
                     if (currentProgram == null) return
 
