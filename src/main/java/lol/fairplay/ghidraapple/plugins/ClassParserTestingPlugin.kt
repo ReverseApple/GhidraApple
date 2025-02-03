@@ -9,6 +9,7 @@ import ghidra.framework.plugintool.PluginInfo
 import ghidra.framework.plugintool.PluginTool
 import ghidra.framework.plugintool.util.PluginStatus
 import ghidra.util.Msg
+import ghidra.program.model.listing.Data
 import lol.fairplay.ghidraapple.GhidraApplePluginPackage
 import lol.fairplay.ghidraapple.analysis.objectivec.modelling.StructureParsing
 import lol.fairplay.ghidraapple.core.objc.modelling.OCClass
@@ -46,6 +47,14 @@ class ClassParserTestingPlugin(
     private fun createActions() {
         val action =
             object : DockingAction("Analyze Class", name) {
+                override fun isEnabled(): Boolean {
+                    if (currentProgram != null && currentLocation != null) {
+                        val data: Data? = currentProgram.listing.getDefinedDataAt(currentLocation.address)
+                        return data?.dataType?.name == "class_t"
+                    }
+                    return false
+                }
+
                 override fun actionPerformed(context: ActionContext?) {
                     if (currentProgram == null) return
 
