@@ -2,6 +2,9 @@ package lol.fairplay.ghidraapple.loading
 
 import ghidra.app.util.Option
 import ghidra.app.util.bin.ByteProvider
+import ghidra.app.util.bin.format.macho.MachHeader
+import ghidra.app.util.bin.format.macho.commands.DynamicLibraryCommand
+import ghidra.app.util.bin.format.macho.commands.LoadCommandTypes
 import ghidra.app.util.importer.MessageLog
 import ghidra.app.util.opinion.LoadSpec
 import ghidra.app.util.opinion.Loaded
@@ -65,8 +68,15 @@ class GAMachoLoader : MachoLoader() {
             pointerRepointer.repointSelectorReferences()
             pointerRepointer.repointOtherReferences()
             val cachedDylibMapper = CachedDylibMapper(program, fileSystem.cacheHelper!!)
-            // Many dylibs are probably going to have pointers to this, so let's just map it.
-            cachedDylibMapper.mapCachedDependency("/usr/lib/libobjc.A.dylib")
+            val machHeader = MachHeader(provider).parse()
+            val deps =
+                machHeader.loadCommands
+                    .filterIsInstance<DynamicLibraryCommand>()
+                    .filter { it.commandType != LoadCommandTypes.LC_ID_DYLIB }
+                    .map { it.dynamicLibrary }
+            for (dep in deps) {
+                cachedDylibMapper.mapCachedDependency(dep.name.string)
+            }
         }
 
         var isBeingDebugged = System.getProperty("intellij.debug.agent") == "true"
