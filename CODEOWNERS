@@ -1,0 +1,8 @@
+# Global
+* @angelod2022
+
+# Analyzers
+/src/main/java/lol/fairplay/ghidraapple/analysis/passes/ @fmagin
+
+# Loaders
+/src/main/java/lol/fairplay/ghidraapple/loading/ @nmggithub
