@@ -9,9 +9,9 @@ import ghidra.program.model.pcode.PcodeOp
 import ghidra.program.model.symbol.Reference
 import ghidra.program.model.symbol.SourceType
 import lol.fairplay.ghidraapple.analysis.passes.ObjectiveCDispatchTagAnalyzer
-import lol.fairplay.ghidraapple.analysis.utilities.addCollection
 import lol.fairplay.ghidraapple.analysis.utilities.getConstantFromVarNode
 import lol.fairplay.ghidraapple.analysis.utilities.toDefaultAddressSpace
+import lol.fairplay.ghidraapple.db.DataBaseLayer
 import kotlin.jvm.optionals.getOrNull
 
 /**
@@ -26,14 +26,13 @@ class OCSelectorAnalyzer :
     AbstractDispatchAnalyzer<String>(
         NAME,
         DESCRIPTION,
-        AnalyzerType.FUNCTION_ANALYZER,
+        AnalyzerType.INSTRUCTION_ANALYZER,
         ObjectiveCDispatchTagAnalyzer.OBJC_DISPATCH_SELECTOR,
     ) {
     companion object {
         private const val NAME = "Selector Analysis"
         private const val DESCRIPTION = "For all calls to functions tagged with OBJC_DISPATCH_SELECTOR"
-        private val PRIORITY = ObjectiveCDispatchTagAnalyzer.PRIORITY.after()
-        const val SELECTOR_DATA = "SelectorData"
+        private val PRIORITY = ObjectiveCDispatchTagAnalyzer.PRIORITY.after().after()
     }
 
     init {
@@ -49,12 +48,9 @@ class OCSelectorAnalyzer :
         program: Program,
         result: Collection<Pair<Reference, String?>>,
     ) {
-        val propMap =
-            program.usrPropertyManager.getStringPropertyMap(SELECTOR_DATA) ?: program.usrPropertyManager.createStringPropertyMap(
-                SELECTOR_DATA,
-            )
-
-        propMap.addCollection(result.map { (ref, selector) -> ref.fromAddress to selector })
+        DataBaseLayer(program).addSelectors(
+            result.map { (reference, selector) -> reference.fromAddress to selector }.toMap(),
+        )
     }
 
     override fun prepare(

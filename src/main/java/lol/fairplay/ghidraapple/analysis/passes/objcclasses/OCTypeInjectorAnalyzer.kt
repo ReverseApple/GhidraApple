@@ -32,7 +32,7 @@ class OCTypeInjectorAnalyzer :
         ObjectiveCDispatchTagAnalyzer.OBJC_ALLOC,
     ) {
     companion object {
-        private const val NAME = "Objective-C Type Injection"
+        public const val NAME = "Objective-C Type Injection"
         private const val DESCRIPTION = ""
 
         // This has to run before the data type propagation (but not earlier), otherwise not all alloc calls are found?
@@ -42,8 +42,8 @@ class OCTypeInjectorAnalyzer :
 
     init {
         priority = PRIORITY
-        setPrototype()
         setSupportsOneTimeAnalysis()
+        setDefaultEnablement(true)
     }
 
     override fun canAnalyze(program: Program?): Boolean = true
@@ -93,6 +93,8 @@ class OCTypeInjectorAnalyzer :
     }
 
     override fun configureDecompiler(): DecompileConfigurer =
+        // We only need a simple backward slice to find the class address, so no need to run type inference on the
+        // function. `normalize` should be sufficient
         DecompileConfigurer { decompiler ->
             decompiler.setSimplificationStyle("normalize")
             decompiler.toggleCCode(false)

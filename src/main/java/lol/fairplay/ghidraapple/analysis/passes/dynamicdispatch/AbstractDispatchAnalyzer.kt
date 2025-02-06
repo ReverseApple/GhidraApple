@@ -81,10 +81,13 @@ abstract class AbstractDispatchAnalyzer<CALLSITE_RESULT>(
      * configures the decompiler to be used for analysis later
      * This can be overridden to provide custom configuration
      * but the default one is probably fine for most cases
+     * By default we use the highest level of P-Code simplification with full type analysis
+     *
+     * If an analysis requires only basic dataflow it can override this method
      */
     open fun configureDecompiler(): DecompileConfigurer =
         DecompileConfigurer { decompiler: DecompInterface ->
-            decompiler.simplificationStyle = "normalize"
+            decompiler.simplificationStyle = "decompile"
             decompiler.toggleSyntaxTree(true)
             decompiler.toggleCCode(false)
             decompiler.setOptions(

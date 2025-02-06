@@ -43,32 +43,35 @@ class ObjectiveCDispatchTagAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, Analyz
         monitor: TaskMonitor,
         log: MessageLog,
     ): Boolean {
-        program.functionManager.getFunctions(set, true).forEach { function ->
-            program.functionManager.functionTagManager.allFunctionTags
-            // Check if the function is in the trampoline section `__objc_stubs`
-            val block = program.memory.getBlock(function.entryPoint)
-            if (block?.name == "__objc_stubs") {
-                function.addTag(OBJC_TRAMPOLINE)
-            }
-            when (function.name) {
-                "_objc_msgSend" -> {
-                    function.addTag(OBJC_DISPATCH_SELECTOR)
+        program.functionManager
+            .getFunctions(set, true)
+            .filter { function -> function.isExternal || function.isThunk || isPlausibleTrampoline(function) }
+            .forEach { function ->
+                program.functionManager.functionTagManager.allFunctionTags
+                // Check if the function is in the trampoline section `__objc_stubs`
+                if (isPlausibleTrampoline(function)) {
+                    function.addTag(OBJC_TRAMPOLINE)
                     function.addTag(OBJC_DISPATCH_CLASS)
                 }
-                // The super call takes a special receiver argument
-                // so it needs to be handled differently in receiver type analysis
-                "_objc_msgSendSuper2" -> function.addTag(OBJC_DISPATCH_SELECTOR)
-                "_objc_alloc_init" -> function.addTag(OBJC_ALLOC)
-                "_objc_alloc" -> function.addTag(OBJC_ALLOC)
-                "_objc_allocWithZone" -> function.addTag(OBJC_ALLOC)
+                when (function.name) {
+                    "_objc_msgSend" -> {
+                        function.addTag(OBJC_DISPATCH_SELECTOR)
+                        function.addTag(OBJC_DISPATCH_CLASS)
+                    }
+                    // The super call takes a special receiver argument
+                    // so it needs to be handled differently in receiver type analysis
+                    "_objc_msgSendSuper2" -> function.addTag(OBJC_DISPATCH_SELECTOR)
+                    "_objc_alloc_init" -> function.addTag(OBJC_ALLOC)
+                    "_objc_alloc" -> function.addTag(OBJC_ALLOC)
+                    "_objc_allocWithZone" -> function.addTag(OBJC_ALLOC)
+                }
             }
-        }
         return true
     }
 
     private fun isPlausibleTrampoline(function: Function): Boolean {
         // Look up the block that the function is in
-        val block = getStubsSegment(function.program)!!
+        val block = getStubsSegment(function.program) ?: return false
         return block.contains(function.entryPoint)
     }
 

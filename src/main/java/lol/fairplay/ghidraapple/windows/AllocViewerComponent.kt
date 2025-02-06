@@ -31,6 +31,7 @@ import javax.swing.JComponent
 data class AllocSiteData(
     val reference: Reference,
     val calledRuntimeFunction: Function,
+    val clsAddr: Address?,
     val cls: Symbol?,
 ) {
     companion object {
@@ -39,14 +40,14 @@ data class AllocSiteData(
             reference: Reference,
         ): AllocSiteData {
             //
-            val cls: Symbol? =
+            val clsAddr =
                 program.usrPropertyManager
                     .getLongPropertyMap(ALLOC_DATA)
                     ?.get(reference.fromAddress)
                     ?.let(program::address)
-                    ?.let(program.symbolTable::getPrimarySymbol)
+            val cls: Symbol? = clsAddr?.let(program.symbolTable::getPrimarySymbol)
 
-            return AllocSiteData(reference, program.functionManager.getFunctionAt(reference.toAddress), cls)
+            return AllocSiteData(reference, program.functionManager.getFunctionAt(reference.toAddress), clsAddr, cls)
         }
     }
 }
@@ -94,6 +95,7 @@ class AllocTable(
         val descriptor = TableColumnDescriptor<AllocSiteData>()
         Address::class.java
         descriptor.addColumn("Address", true, Address::class.java) { it.reference.fromAddress }
+        descriptor.addColumn("Class Address", true, Address::class.java) { it.clsAddr }
         descriptor.addColumn("Class", true, Symbol::class.java) { it.cls }
         descriptor.addColumn(
             "Is External Class",
