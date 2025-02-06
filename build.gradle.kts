@@ -1,3 +1,7 @@
+// This cannot be used inside the `plugins` block, but can (and is) used elsewhere and
+//  should match the version used inside the `plugins` block.
+val kotlinVersion = "1.9.23"
+
 plugins {
     kotlin("jvm") version "1.9.23"
     id("org.jlleitschuh.gradle.ktlint") version "12.1.2"
@@ -34,8 +38,8 @@ repositories {
 }
 
 dependencies {
-    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
-    testImplementation("org.jetbrains.kotlin:kotlin-test")
+    implementation(kotlin("stdlib", kotlinVersion))
+    testImplementation(kotlin("test", kotlinVersion))
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.3")
     testImplementation("org.json:json:20240303")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.3")
