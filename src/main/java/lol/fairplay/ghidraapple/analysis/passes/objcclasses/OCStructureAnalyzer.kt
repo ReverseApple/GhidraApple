@@ -21,7 +21,7 @@ import lol.fairplay.ghidraapple.analysis.utilities.parseObjCListSection
 
 class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYTE_ANALYZER) {
     companion object {
-        private const val NAME = "Objective-C: Structures"
+        public const val NAME = "Objective-C: Structures"
         private const val DESCRIPTION = ""
         val PRIORITY = AnalysisPriority.BLOCK_ANALYSIS.after()
     }
