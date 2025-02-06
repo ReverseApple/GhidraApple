@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 // This cannot be used inside the `plugins` block, but can (and is) used elsewhere and
 //  should match the version used inside the `plugins` block.
 val kotlinVersion = "1.9.23"
