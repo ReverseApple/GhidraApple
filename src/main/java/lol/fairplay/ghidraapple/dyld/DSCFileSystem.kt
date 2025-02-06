@@ -91,7 +91,10 @@ class DSCFileSystem(
                 .extractDylibAtAddress(
                     fileAddressMap[file] ?: throw IOException("File $file not found in cache!"),
                     file.fsrl,
-                ).also { fileByteProviderMap[file] = it }
+                ).also {
+                    var isBeingDebugged = System.getProperty("intellij.debug.agent") == "true"
+                    if (!isBeingDebugged) fileByteProviderMap[file] = it
+                }
 
     override fun isValid(monitor: TaskMonitor): Boolean {
         if (!DyldCacheUtils.isDyldCache(provider)) return false

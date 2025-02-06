@@ -2,6 +2,7 @@ package lol.fairplay.ghidraapple.dyld
 
 import ghidra.app.util.bin.ByteProvider
 import ghidra.app.util.bin.format.macho.MachHeader
+import ghidra.app.util.bin.format.macho.dyld.DyldCacheMappingAndSlideInfo
 import ghidra.app.util.bin.format.macho.dyld.DyldCacheMappingInfo
 import ghidra.app.util.bin.format.macho.dyld.DyldCacheSlideInfoCommon
 import ghidra.app.util.bin.format.macho.dyld.DyldFixup
@@ -9,6 +10,8 @@ import ghidra.app.util.opinion.DyldCacheUtils.SplitDyldCache
 import ghidra.file.formats.ios.ExtractedMacho
 import ghidra.file.formats.ios.dyldcache.DyldCacheExtractor
 import ghidra.framework.task.GTaskMonitor
+import ghidra.program.model.data.StructureDataType
+import lol.fairplay.ghidraapple.util.serialization.StructSerializer
 import java.io.IOException
 import java.util.TreeMap
 import kotlin.collections.forEach
@@ -57,6 +60,56 @@ class DSCHelper(
                 }
             }
         }
+
+    /**
+     * Whether the cache has stub optimizations instead of simply using the in-dylib stubs.
+     *
+     * [The stub optimizations are only included in universal-typed caches](
+     * https://github.com/apple-oss-distributions/dyld/blob/dyld-1235.2/cache_builder/NewSharedCacheBuilder.cpp#L2747),
+     * [which are marked in the `cacheType` field](
+     * https://github.com/apple-oss-distributions/dyld/blob/dyld-1235.2/cache_builder/SubCache.cpp#L1526)
+     * [by the value `kDyldSharedCacheTypeUniversal`](
+     * https://github.com/apple-oss-distributions/dyld/blob/dyld-1235.2/cache_builder/SubCache.cpp#L1348)
+     * ([which is equal to `2`](
+     * https://github.com/apple-oss-distributions/dyld/blob/dyld-1235.2/cache-builder/dyld_cache_format.h#L622)).
+     *
+     */
+    val cacheHasStubOptimizations: Boolean =
+        {
+            val headerDataType = splitDyldCache.getDyldCacheHeader(0).toDataType() as StructureDataType
+            val cacheType: Long =
+                StructSerializer(
+                    headerDataType,
+                    splitDyldCache.getProvider(0).readBytes(0, headerDataType.length.toLong()),
+                ).getComponentValue("cacheType")
+            cacheType == 2L
+        }()
+
+    /**
+     * The virtual memory mappings that include stubs.
+     *
+     * [Stub mappings are flagged with `DYLD_CACHE_MAPPING_TEXT_STUBS`](
+     * https://github.com/apple-oss-distributions/dyld/blob/dyld-1235.2/cache_builder/SubCache.cpp#L1390),
+     * [which is equal to `1 << 3`](
+     * https://github.com/apple-oss-distributions/dyld/blob/dyld-1235.2/cache-builder/dyld_cache_format.h#L131).
+     */
+    val stubOptimizationMappings =
+        (0 until splitDyldCache.size())
+            .fold(listOf<Pair<DyldCacheMappingAndSlideInfo, ByteProvider>>()) { acc, cacheIndex ->
+                val mappings =
+                    splitDyldCache
+                        .getDyldCacheHeader(cacheIndex)
+                        .cacheMappingAndSlideInfos
+                        .filter { it.flags and (1 shl 3) != 0L }
+                var mappingPairs =
+                    mutableListOf<Pair<DyldCacheMappingAndSlideInfo, ByteProvider>>()
+                mappings.forEach {
+                    val (_, mappingProvider) =
+                        findRelevantVMMappingAndCacheByteProvider(it.address) ?: return@forEach
+                    mappingPairs += Pair(it, mappingProvider)
+                }
+                return@fold acc + mappingPairs
+            }
 
     val images =
         splitDyldCache

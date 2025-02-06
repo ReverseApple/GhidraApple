@@ -1,10 +1,9 @@
-package lol.fairplay.ghidraapple.loading
+package lol.fairplay.ghidraapple.loading.macho
 
 import ghidra.app.util.Option
 import ghidra.app.util.bin.ByteProvider
-import ghidra.app.util.bin.format.macho.MachHeader
-import ghidra.app.util.bin.format.macho.commands.DynamicLibraryCommand
-import ghidra.app.util.bin.format.macho.commands.LoadCommandTypes
+import ghidra.app.util.bin.format.macho.dyld.DyldCacheMappingAndSlideInfo
+import ghidra.app.util.bin.format.macho.dyld.DyldCacheMappingInfo
 import ghidra.app.util.importer.MessageLog
 import ghidra.app.util.opinion.LoadSpec
 import ghidra.app.util.opinion.Loaded
@@ -64,31 +63,21 @@ class GAMachoLoader : MachoLoader() {
         // If the Mach-O was loaded with our custom dyld shared cache handler, we can do some more things with it.
         if (fileSystem is DSCFileSystem) {
             markupDyldCacheSource(program, fileSystem)
+            val mappingMapper = CacheMappingMapper(program, fileSystem.cacheHelper!!)
+            mappingMapper.mapStubOptimizations()
             val pointerRepointer = CachePointerRepointer(program, fileSystem.cacheHelper!!)
             pointerRepointer.repointSelectorReferences()
             pointerRepointer.repointOtherReferences()
-            val cachedDylibMapper = CachedDylibMapper(program, fileSystem.cacheHelper!!)
-            val machHeader = MachHeader(provider).parse()
-            val deps =
-                machHeader.loadCommands
-                    .filterIsInstance<DynamicLibraryCommand>()
-                    .filter { it.commandType != LoadCommandTypes.LC_ID_DYLIB }
-                    .map { it.dynamicLibrary }
-            for (dep in deps) {
-                cachedDylibMapper.mapCachedDependency(dep.name.string)
-            }
-        }
-
-        var isBeingDebugged = System.getProperty("intellij.debug.agent") == "true"
-        if (isBeingDebugged) {
-            // Delete the cached byte provider after a successful load if the plugin is being debugged. We might be
-            //  making changes to our extract code and want to see the results without having to fully restart.
-            DSCFileSystem.fileByteProviderMap
-                .keys
-                .firstOrNull { it.path == provider.fsrl.path }
-                ?.let {
-                    DSCFileSystem.fileByteProviderMap.remove(it)
-                }
+//            val cachedDylibMapper = CachedDylibMapper(program, fileSystem.cacheHelper!!)
+//            val machHeader = MachHeader(provider).parse()
+//            val deps =
+//                machHeader.loadCommands
+//                    .filterIsInstance<DynamicLibraryCommand>()
+//                    .filter { it.commandType != LoadCommandTypes.LC_ID_DYLIB }
+//                    .map { it.dynamicLibrary }
+//            for (dep in deps) {
+//                cachedDylibMapper.mapCachedDependency(dep.name.string)
+//            }
         }
     }
 
@@ -143,12 +132,76 @@ class GAMachoLoader : MachoLoader() {
     }
 }
 
+class CacheMappingMapper(
+    private val program: Program,
+    private val cacheHelper: DSCHelper,
+) {
+    fun mapStubOptimizations() {
+        if (!cacheHelper.cacheHasStubOptimizations) return
+        var index = 0
+        val blocksMapped =
+            cacheHelper.stubOptimizationMappings
+                // TODO: Determine if we can filter these based on if they are relevant for the dylib to be loaded.
+                .map { (mapping, provider) ->
+                    try {
+                        return@map mapMappingAndSlide(mapping, provider, "Cached Stubs ${++index}", null)
+                    } catch (_: Exception) {
+                        return@map null
+                    }
+                }.filterNotNull()
+        val stubsModule =
+            program.listing.defaultRootModule
+                .createModule("Cached Stubs")
+        blocksMapped.forEach { stubsModule.reparent(it.name, program.listing.defaultRootModule) }
+    }
+
+    fun mapMapping(
+        mapping: DyldCacheMappingInfo,
+        provider: ByteProvider,
+        blockName: String,
+        monitor: TaskMonitor?,
+    ): MemoryBlock {
+        val baseAddress = program.addressFactory.defaultAddressSpace.getAddress(mapping.address)
+        val block =
+            program.memory.createInitializedBlock(
+                blockName,
+                baseAddress,
+                mapping.size,
+                (0).toByte(),
+                monitor,
+                false,
+            )
+        val bytes = provider.readBytes(mapping.fileOffset, mapping.size)
+        block.putBytes(baseAddress, bytes)
+        return block
+    }
+
+    fun mapMappingAndSlide(
+        mapping: DyldCacheMappingAndSlideInfo,
+        provider: ByteProvider,
+        blockName: String,
+        monitor: TaskMonitor?,
+    ): MemoryBlock {
+        val baseAddress = program.addressFactory.defaultAddressSpace.getAddress(mapping.address)
+        val block =
+            program.memory.createInitializedBlock(
+                blockName,
+                baseAddress,
+                mapping.size,
+                (0).toByte(),
+                monitor,
+                false,
+            )
+        val bytes = provider.readBytes(mapping.fileOffset, mapping.size)
+        block.putBytes(baseAddress, bytes)
+        return block
+    }
+}
+
 class CachePointerRepointer(
     private val program: Program,
     private val memoryHelper: DSCHelper,
 ) {
-    private val memory = program.memory
-
 //    private val addressFactory = program.addressFactory
     private val pointerSize = program.addressFactory.defaultAddressSpace.pointerSize
 
@@ -158,7 +211,7 @@ class CachePointerRepointer(
     ) {
         // Get the given pointer.
         val pointerBytes = ByteArray(pointerSize)
-        val bytesCopied = memory.getBytes(addressOfPointerToRepoint, pointerBytes)
+        val bytesCopied = program.memory.getBytes(addressOfPointerToRepoint, pointerBytes)
         if (bytesCopied != pointerSize) return
         var pointerValue =
             ByteBuffer
@@ -175,7 +228,7 @@ class CachePointerRepointer(
         do {
             run happy_path@{
                 // It must be the start of a string (i.e. a null-terminated string precedes it).
-                if (memory.getByte(searchAddress.subtract(1)) != 0x00.toByte()) return@happy_path
+                if (program.memory.getByte(searchAddress.subtract(1)) != 0x00.toByte()) return@happy_path
                 // Loop through bytes to match string.
                 for (i in stringBytes.indices) {
                     val possiblyMatchingByte = memoryBlockToSearch.getByte(searchAddress.add(i.toLong()))
@@ -188,7 +241,7 @@ class CachePointerRepointer(
                         .order(ByteOrder.LITTLE_ENDIAN)
                         .putLong(searchAddress.offset)
                         .array()
-                memory.setBytes(addressOfPointerToRepoint, newPointerBytes)
+                program.memory.setBytes(addressOfPointerToRepoint, newPointerBytes)
             }
             searchAddress = searchAddress.add(1)
         } while // Iterate until the string we're searching for cannot fit in the remaining bytes.
