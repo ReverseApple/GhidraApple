@@ -149,8 +149,8 @@ class CacheMappingMapper(
     fun mapStubOptimizations() {
         if (!cacheHelper.cacheHasStubOptimizations) return
         var index = 0
-        val blocksMapped =
-            cacheHelper.readOnlyMappings
+        val mappedBlocks =
+            cacheHelper.stubOptimizationMappings
                 // TODO: Determine if we can filter these based on if they are relevant for the dylib to be loaded.
                 .map { (mapping, provider) ->
                     try {
@@ -159,10 +159,11 @@ class CacheMappingMapper(
                         return@map null
                     }
                 }.filterNotNull()
-        val stubsModule =
+        if (mappedBlocks.isNotEmpty()) {
             program.listing.defaultRootModule
                 .createModule("Cached Stubs")
-        blocksMapped.forEach { stubsModule.reparent(it.name, program.listing.defaultRootModule) }
+                .apply { mappedBlocks.forEach { reparent(it.name, program.listing.defaultRootModule) } }
+        }
     }
 
     fun mapReadOnlyData(): List<MemoryBlock> {
@@ -185,9 +186,11 @@ class CacheMappingMapper(
                         return@mapIndexed null
                     }
                 }.filterNotNull()
-        program.listing.defaultRootModule
-            .createModule("Cached Read-Only Data")
-            .apply { mappedBlocks.forEach { reparent(it.name, program.listing.defaultRootModule) } }
+        if (mappedBlocks.isNotEmpty()) {
+            program.listing.defaultRootModule
+                .createModule("Cached Read-Only Data")
+                .apply { mappedBlocks.forEach { reparent(it.name, program.listing.defaultRootModule) } }
+        }
         return mappedBlocks
     }
 
