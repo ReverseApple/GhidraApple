@@ -78,12 +78,17 @@ class DSCExtractor(
             )
 
         // Fix up and optimize the load commands.
-        linkeditOptimizer.optimizeLoadCommands()
+        val loadCommandOptimizationsReturn = linkeditOptimizer.optimizeLoadCommands()
 
         // Create a new `__LINKEDIT` segment.
         val offsetForNewLinkeditSegment = newDylibBuffer.position()
         val bufferForNewLinkeditSegment = ByteBuffer.allocate(1 shl 20)
-        linkeditOptimizer.optimizeLinkedit(inCacheMachHeader, bufferForNewLinkeditSegment, textOffsetInCache)
+        linkeditOptimizer.optimizeLinkedit(
+            inCacheMachHeader,
+            bufferForNewLinkeditSegment,
+            loadCommandOptimizationsReturn,
+            textOffsetInCache,
+        )
 
         // Write the new `__LINKEDIT` segment.
         newDylibBuffer
@@ -98,19 +103,19 @@ class DSCExtractor(
     }
 }
 
+data class LoadCommandOptimizationsReturn(
+    var linkeditSegmentCommand: SegmentCommand? = null,
+    var exportsTrie: ExportTrie? = null,
+    var symbolTableCommand: SymbolTableCommand? = null,
+    var dynamicSymbolTableCommand: DynamicSymbolTableCommand? = null,
+    var functionStartsCommand: FunctionStartsCommand? = null,
+    var dataInCodeCommand: DataInCodeCommand? = null,
+)
+
 class LinkeditOptimizer(
     val dscHelper: DSCHelper,
     val newDyibBuffer: ByteBuffer,
 ) {
-    private var linkeditSegmentCommand: SegmentCommand? = null
-    private var linkeditBaseAddressInCache: Long = 0L
-    var exportsTrie: ExportTrie? = null
-
-    var symbolTableCommand: SymbolTableCommand? = null
-    var dynamicSymbolTableCommand: DynamicSymbolTableCommand? = null
-    var functionStartsCommand: FunctionStartsCommand? = null
-    var dataInCodeCommand: DataInCodeCommand? = null
-
     var reexportedDependencies = setOf<Int>()
 
     fun fixupSegmentCommand(
@@ -167,7 +172,8 @@ class LinkeditOptimizer(
         }
     }
 
-    fun optimizeLoadCommands() {
+    fun optimizeLoadCommands(): LoadCommandOptimizationsReturn {
+        val returnValue = LoadCommandOptimizationsReturn()
         val indexOfFlags = Int.SIZE_BYTES * 6
         val oldFlags = newDyibBuffer.getInt(indexOfFlags)
         newDyibBuffer.putInt(indexOfFlags, oldFlags and MachHeaderFlags.MH_DYLIB_IN_CACHE.inv())
@@ -184,9 +190,7 @@ class LinkeditOptimizer(
             when (command) {
                 is SegmentCommand -> {
                     if (command.segmentName == "__LINKEDIT") {
-                        linkeditSegmentCommand = command
-                        linkeditBaseAddressInCache = command.vMaddress
-                        linkeditBaseAddressInCache -= command.fileOffset
+                        returnValue.linkeditSegmentCommand = command
                     }
 
                     fixupSegmentCommand(
@@ -235,7 +239,7 @@ class LinkeditOptimizer(
                                 .putInt(0)
                         return buffer.array()
                     }
-                    exportsTrie = command.exportTrie
+                    returnValue.exportsTrie = command.exportTrie
                     newDyibBuffer.put(command.startIndex.toInt(), command.serializeForExtractor())
                 }
                 is DyldExportsTrieCommand -> {
@@ -251,13 +255,13 @@ class LinkeditOptimizer(
                                 .putInt(0)
                         return buffer.array()
                     }
-                    exportsTrie = command.exportTrie
+                    returnValue.exportsTrie = command.exportTrie
                     newDyibBuffer.put(command.startIndex.toInt(), command.serializeForExtractor())
                 }
-                is SymbolTableCommand -> this.symbolTableCommand = command
-                is DynamicSymbolTableCommand -> this.dynamicSymbolTableCommand = command
-                is FunctionStartsCommand -> this.functionStartsCommand = command
-                is DataInCodeCommand -> this.dataInCodeCommand = command
+                is SymbolTableCommand -> returnValue.symbolTableCommand = command
+                is DynamicSymbolTableCommand -> returnValue.dynamicSymbolTableCommand = command
+                is FunctionStartsCommand -> returnValue.functionStartsCommand = command
+                is DataInCodeCommand -> returnValue.dataInCodeCommand = command
                 is DynamicLinkerCommand -> {
                     val handledLinkCommands =
                         arrayOf(
@@ -283,26 +287,28 @@ class LinkeditOptimizer(
                 }
             }
         }
+        return returnValue
     }
 
     fun optimizeLinkedit(
         machHeader: MachHeader,
         newLinkeditSegmentBuffer: ByteBuffer,
+        loadCommandOptimizationsReturn: LoadCommandOptimizationsReturn,
         textOffsetInCache: Long,
         // TODO: Handle `localSymbolsCache`
     ) {
         // Copy the segment commands into new values to stop the compiler from complaining when we use them later.
         var newLinkeditSegmentCommand =
-            linkeditSegmentCommand?.let {
+            loadCommandOptimizationsReturn.linkeditSegmentCommand?.let {
                 val readerForNewDylib = BinaryReader(ByteArrayProvider(newDyibBuffer.array()), true)
                 readerForNewDylib.pointerIndex = it.startIndex
                 val newSegmentCommand = SegmentCommand(readerForNewDylib, machHeader.is32bit)
                 return@let newSegmentCommand
             } ?: return
         val symbolTableCommandCopy =
-            symbolTableCommand ?: return
+            loadCommandOptimizationsReturn.symbolTableCommand ?: return
         val dynamicSymbolTableCommandCopy =
-            dynamicSymbolTableCommand ?: return
+            loadCommandOptimizationsReturn.dynamicSymbolTableCommand ?: return
 
         // Load commands may include a file-offset to specific data. Because it is a file offset, we'll need
         //  to make sure we're looking in the correct file. In most (if not all) cases, that will be the one
@@ -359,8 +365,8 @@ class LinkeditOptimizer(
 
         // These two are first and second in the new `__LINKEDIT` section.
 
-        functionStartsCommand?.let { writeLinkeditCommandData(it) }
-        dataInCodeCommand?.let { writeLinkeditCommandData(it) }
+        loadCommandOptimizationsReturn.functionStartsCommand?.let { writeLinkeditCommandData(it) }
+        loadCommandOptimizationsReturn.dataInCodeCommand?.let { writeLinkeditCommandData(it) }
 
         // Now it's onto the tricky part: rebuilding the symbol table.
 
