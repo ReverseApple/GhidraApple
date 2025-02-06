@@ -5,6 +5,7 @@ import ghidra.app.util.bin.ByteProvider
 import ghidra.app.util.bin.format.macho.commands.SegmentCommand
 import ghidra.app.util.bin.format.macho.dyld.DyldCacheMappingAndSlideInfo
 import ghidra.app.util.bin.format.macho.dyld.DyldCacheMappingInfo
+import ghidra.app.util.bin.format.macho.dyld.LibObjcOptimization
 import ghidra.app.util.importer.MessageLog
 import ghidra.app.util.opinion.LoadSpec
 import ghidra.app.util.opinion.Loaded
@@ -12,11 +13,13 @@ import ghidra.app.util.opinion.MachoLoader
 import ghidra.formats.gfilesystem.FileSystemService
 import ghidra.framework.model.Project
 import ghidra.program.model.address.Address
+import ghidra.program.model.data.StructureDataType
 import ghidra.program.model.listing.Program
 import ghidra.program.model.mem.MemoryBlock
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.dyld.DSCFileSystem
 import lol.fairplay.ghidraapple.dyld.DSCHelper
+import lol.fairplay.ghidraapple.util.serialization.StructSerializer
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -63,11 +66,19 @@ class GAMachoLoader : MachoLoader() {
 
         // If the Mach-O was loaded with our custom dyld shared cache handler, we can do some more things with it.
         if (fileSystem is DSCFileSystem) {
+            // If the selector references block isn't read-only, Ghidra won't apply the optimizations
+            //  that are required for our analyzers to work properly.
+            val selRefs = program.memory.getBlock("__objc_selrefs")
+            selRefs.isRead = true
+            selRefs.isWrite = false
+            selRefs.isExecute = false
+
             markupDyldCacheSource(program, fileSystem)
             val mappingMapper = CacheMappingMapper(program, fileSystem.cacheHelper!!)
             mappingMapper.mapStubOptimizations()
-            val cachedDylibMapper = CachedDylibMapper(program, fileSystem.cacheHelper!!)
-            cachedDylibMapper.mapLibObjCOptimizations()
+            mappingMapper.mapReadOnlyData()
+//            val cachedDylibMapper = CachedDylibMapper(program, fileSystem.cacheHelper!!)
+//            cachedDylibMapper.mapLibObjCOptimizations()
 //            val machHeader = MachHeader(provider).parse()
 //            val deps =
 //                machHeader.loadCommands
@@ -139,7 +150,7 @@ class CacheMappingMapper(
         if (!cacheHelper.cacheHasStubOptimizations) return
         var index = 0
         val blocksMapped =
-            cacheHelper.stubOptimizationMappings
+            cacheHelper.readOnlyMappings
                 // TODO: Determine if we can filter these based on if they are relevant for the dylib to be loaded.
                 .map { (mapping, provider) ->
                     try {
@@ -152,6 +163,32 @@ class CacheMappingMapper(
             program.listing.defaultRootModule
                 .createModule("Cached Stubs")
         blocksMapped.forEach { stubsModule.reparent(it.name, program.listing.defaultRootModule) }
+    }
+
+    fun mapReadOnlyData(): List<MemoryBlock> {
+        val mappedBlocks =
+            cacheHelper.readOnlyMappings
+                .mapIndexed { index, (mapping, provider) ->
+                    try {
+                        val roBlock =
+                            mapMappingAndSlide(
+                                mapping,
+                                provider,
+                                "Cached Read-Only Data $index",
+                                null,
+                            )
+                        roBlock.isRead = true
+                        roBlock.isWrite = false
+                        roBlock.isExecute = false
+                        return@mapIndexed roBlock
+                    } catch (_: Exception) {
+                        return@mapIndexed null
+                    }
+                }.filterNotNull()
+        program.listing.defaultRootModule
+            .createModule("Cached Read-Only Data")
+            .apply { mappedBlocks.forEach { reparent(it.name, program.listing.defaultRootModule) } }
+        return mappedBlocks
     }
 
     fun mapMapping(
@@ -305,6 +342,29 @@ class CachedDylibMapper(
     }
 
     fun mapLibObjCOptimizations() {
+        val header = cacheHelper.findMachHeaderForImage("/usr/lib/libobjc.A.dylib") ?: return
+        val section =
+            header
+                .allSegments
+                .firstOrNull { it.segmentName == "__TEXT" }
+                ?.sections
+                ?.firstOrNull { it.segmentName == "__objc_opt_ro" }
+                ?: return
+        val (_, provider) =
+            cacheHelper.findRelevantMapping(section.address) ?: return
+
+        // We're only using this to get the data type and length of the header.
+        val objcOptsDataType =
+            LibObjcOptimization(
+                program,
+                program.addressFactory.defaultAddressSpace.getAddress(section.address),
+            ).toDataType() as StructureDataType
+        val objcOptsSerializer =
+            StructSerializer(
+                objcOptsDataType,
+                provider.readBytes(section.offset.toLong(), objcOptsDataType.length.toLong()),
+            )
+
         // FIXME: This only works for iOS caches, for some reason. The optimizations live elsewhere on macOS caches.
         mapCachedDependency("/usr/lib/libobjc.A.dylib") { segment ->
             if (segment.segmentName != "__OBJC_RO") return@mapCachedDependency null

@@ -47,7 +47,7 @@ class DSCExtractor(
 
         val (inCacheMachHeader) =
             dscMemoryHelper
-                .findRelevantVMMappingAndCacheByteProvider(startAddress)!!
+                .findRelevantMapping(startAddress)!!
                 .let { (mappingInfo, provider) ->
                     val fileOffsetOfDylib = mappingInfo.fileOffset + (startAddress - mappingInfo.address)
                     Pair(
@@ -316,7 +316,7 @@ class LinkeditOptimizer(
         //  is currently unknown if there are any cases where the "linker data" will be elsewhere, but there
         //  shouldn't be. For now, it should be a good assumption that it will be in `__LINKEDIT`.
         val (_, providerContainingLinkeditSegment) =
-            dscHelper.findRelevantVMMappingAndCacheByteProvider(
+            dscHelper.findRelevantMapping(
                 // We never changed the VM address, so we can use it to find the relevant provider.
                 newLinkeditSegmentCommand.vMaddress,
             )!!

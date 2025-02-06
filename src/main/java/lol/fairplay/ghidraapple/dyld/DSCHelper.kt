@@ -3,7 +3,6 @@ package lol.fairplay.ghidraapple.dyld
 import ghidra.app.util.bin.ByteProvider
 import ghidra.app.util.bin.format.macho.MachHeader
 import ghidra.app.util.bin.format.macho.dyld.DyldCacheMappingAndSlideInfo
-import ghidra.app.util.bin.format.macho.dyld.DyldCacheMappingInfo
 import ghidra.app.util.bin.format.macho.dyld.DyldCacheSlideInfoCommon
 import ghidra.app.util.bin.format.macho.dyld.DyldFixup
 import ghidra.app.util.opinion.DyldCacheUtils.SplitDyldCache
@@ -50,68 +49,96 @@ class DSCHelper(
         }
 
     /**
-     * A map containing virtual memory mapping information.
+     * A list of all mappings in the cache, along with the byte providers for their
+     *  containing files and the file indexes of their containing files.
      */
-    val vmMappingsMap =
-        TreeMap<Long, Pair<DyldCacheMappingInfo, ByteProvider>>().apply {
-            for (cacheIndex in 0 until splitDyldCache.size()) {
-                splitDyldCache.getDyldCacheHeader(cacheIndex).mappingInfos.forEach {
-                    set(it.address, Pair(it, splitDyldCache.getProvider(cacheIndex)))
-                }
-            }
-        }
-
-    /**
-     * Whether the cache has stub optimizations instead of simply using the in-dylib stubs.
-     *
-     * [The stub optimizations are only included in universal-typed caches](
-     * https://github.com/apple-oss-distributions/dyld/blob/dyld-1235.2/cache_builder/NewSharedCacheBuilder.cpp#L2747),
-     * [which are marked in the `cacheType` field](
-     * https://github.com/apple-oss-distributions/dyld/blob/dyld-1235.2/cache_builder/SubCache.cpp#L1526)
-     * [by the value `kDyldSharedCacheTypeUniversal`](
-     * https://github.com/apple-oss-distributions/dyld/blob/dyld-1235.2/cache_builder/SubCache.cpp#L1348)
-     * ([which is equal to `2`](
-     * https://github.com/apple-oss-distributions/dyld/blob/dyld-1235.2/cache-builder/dyld_cache_format.h#L622)).
-     *
-     */
-    val cacheHasStubOptimizations: Boolean =
-        {
-            val headerDataType = splitDyldCache.getDyldCacheHeader(0).toDataType() as StructureDataType
-            val cacheType: Long =
-                StructSerializer(
-                    headerDataType,
-                    splitDyldCache.getProvider(0).readBytes(0, headerDataType.length.toLong()),
-                ).getComponentValue("cacheType")
-            cacheType == 2L
-        }()
-
-    /**
-     * The virtual memory mappings that include stubs.
-     *
-     * [Stub mappings are flagged with `DYLD_CACHE_MAPPING_TEXT_STUBS`](
-     * https://github.com/apple-oss-distributions/dyld/blob/dyld-1235.2/cache_builder/SubCache.cpp#L1390),
-     * [which is equal to `1 << 3`](
-     * https://github.com/apple-oss-distributions/dyld/blob/dyld-1235.2/cache-builder/dyld_cache_format.h#L131).
-     */
-    val stubOptimizationMappings =
+    val allMappings =
         (0 until splitDyldCache.size())
-            .fold(listOf<Pair<DyldCacheMappingAndSlideInfo, ByteProvider>>()) { acc, cacheIndex ->
-                val mappings =
+            .fold(
+                listOf<Triple<DyldCacheMappingAndSlideInfo, ByteProvider, Int>>(),
+            ) { list, cacheIndex ->
+                list +
                     splitDyldCache
                         .getDyldCacheHeader(cacheIndex)
                         .cacheMappingAndSlideInfos
-                        .filter { it.flags and (1 shl 3) != 0L }
-                var mappingPairs =
-                    mutableListOf<Pair<DyldCacheMappingAndSlideInfo, ByteProvider>>()
-                mappings.forEach {
-                    val (_, mappingProvider) =
-                        findRelevantVMMappingAndCacheByteProvider(it.address) ?: return@forEach
-                    mappingPairs += Pair(it, mappingProvider)
-                }
-                return@fold acc + mappingPairs
+                        .map { Triple(it, splitDyldCache.getProvider(cacheIndex), cacheIndex) }
             }
 
-    val images =
+    /**
+     * A map containing virtual memory mapping information.
+     */
+    val vmMappingsMap =
+        TreeMap<Long, Triple<DyldCacheMappingAndSlideInfo, ByteProvider, Int>>().apply {
+            allMappings.forEach {
+                set(it.first.address, it)
+            }
+        }
+
+    fun findRelevantMapping(vmAddress: Long) =
+        vmMappingsMap.floorEntry(vmAddress)?.value?.takeIf { (mapping) ->
+            vmAddress < (mapping.address + mapping.size)
+        }
+
+    fun isValidVMAddress(vmAddress: Long): Boolean {
+        val (relevantMapping) =
+            findRelevantMapping(vmAddress) ?: return false
+        return vmAddress < relevantMapping.address + relevantMapping.size
+    }
+
+    @OptIn(ExperimentalStdlibApi::class)
+    private fun assertIsValidVMAddress(vmAddress: Long) {
+        isValidVMAddress(vmAddress).takeIf { it }
+            ?: throw IOException("0x${vmAddress.toHexString()} is not a valid address for the mapped cache.")
+    }
+
+    @OptIn(ExperimentalStdlibApi::class)
+    private fun assertIsValidVMRange(
+        vmAddress: Long,
+        length: Long,
+    ) {
+        assertIsValidVMAddress(vmAddress)
+        findRelevantMapping(vmAddress)!!
+            .takeIf { (mapping) ->
+                length <= mapping.size - (vmAddress - mapping.address)
+            }
+            ?: throw IOException(
+                "0x${vmAddress.toHexString()}-0x${(vmAddress + length).toHexString()}" +
+                    " is not a valid range for the mapped cache.",
+            )
+    }
+
+    fun readMappedBytes(
+        vmAddress: Long,
+        length: Long,
+        fixedUp: Boolean = true,
+    ): ByteArray {
+        assertIsValidVMRange(vmAddress, length)
+        findRelevantMapping(vmAddress)!!
+            .let { (mapping, provider) ->
+                return provider
+                    .readBytes(
+                        mapping.fileOffset + (vmAddress - mapping.address),
+                        length,
+                    ).let { if (fixedUp) fixupMemoryRange(vmAddress, length, it) else it }
+            }
+    }
+
+    fun readMappedCString(vmAddress: Long): String? =
+        findRelevantMapping(vmAddress)
+            ?.let { (mapping, provider) ->
+                var string = ""
+                var currentOffset = mapping.fileOffset + (vmAddress - mapping.address)
+                string_builder@ do {
+                    val byte = provider.readByte(currentOffset)
+                    if (byte == 0x00.toByte()) break@string_builder
+                    string += byte.toInt().toChar()
+                    currentOffset++
+                } while // Don't keep reading outside mapped sections.
+                (currentOffset <= (mapping.fileOffset + mapping.size))
+                string.takeIf { it != "" }
+            }
+
+    val images get() =
         splitDyldCache
             .let { splitCache ->
                 (0 until splitCache.size()).flatMap { cacheIndex ->
@@ -128,74 +155,58 @@ class DSCHelper(
                 .firstOrNull { (image) -> image.path == path }
                 ?: return null
         val (matchingMapping) =
-            findRelevantVMMappingAndCacheByteProvider(matchingImage.address) ?: return null
+            findRelevantMapping(matchingImage.address) ?: return null
         return MachHeader(
             byteProviderForCacheFileContainingImage,
             matchingMapping.fileOffset + (matchingImage.address - matchingMapping.address),
         ).parse(splitDyldCache)
     }
 
-    fun findRelevantVMMappingAndCacheByteProvider(vmAddress: Long) =
-        vmMappingsMap.floorEntry(vmAddress)?.value?.takeIf { (mapping) ->
-            vmAddress < (mapping.address + mapping.size)
+    /**
+     * Whether the cache has stub optimizations instead of simply using the in-dylib stubs.
+     *
+     * [The stub optimizations are only included in universal-typed caches](
+     * https://github.com/apple-oss-distributions/dyld/blob/dyld-1235.2/cache_builder/NewSharedCacheBuilder.cpp#L2747),
+     * [which are marked in the `cacheType` field](
+     * https://github.com/apple-oss-distributions/dyld/blob/dyld-1235.2/cache_builder/SubCache.cpp#L1526)
+     * [by the value `kDyldSharedCacheTypeUniversal`](
+     * https://github.com/apple-oss-distributions/dyld/blob/dyld-1235.2/cache_builder/SubCache.cpp#L1348)
+     * ([which is equal to `2`](
+     * https://github.com/apple-oss-distributions/dyld/blob/dyld-1235.2/cache-builder/dyld_cache_format.h#L622)).
+     *
+     */
+    val cacheHasStubOptimizations: Boolean
+        get() {
+            val headerDataType = splitDyldCache.getDyldCacheHeader(0).toDataType() as StructureDataType
+            val cacheType: Long =
+                StructSerializer(
+                    headerDataType,
+                    splitDyldCache.getProvider(0).readBytes(0, headerDataType.length.toLong()),
+                ).getComponentValue("cacheType")
+            return cacheType == 2L
         }
 
-    fun isValidVMAddress(vmAddress: Long): Boolean {
-        val relevantMapping =
-            findRelevantVMMappingAndCacheByteProvider(vmAddress)?.first ?: return false
-        return vmAddress < relevantMapping.address + relevantMapping.size
-    }
+    /**
+     * The virtual memory mappings that include stubs.
+     *
+     * [Stub mappings are flagged with `DYLD_CACHE_MAPPING_TEXT_STUBS`](
+     * https://github.com/apple-oss-distributions/dyld/blob/dyld-1235.2/cache_builder/SubCache.cpp#L1390),
+     * [which is equal to `1 << 3`](
+     * https://github.com/apple-oss-distributions/dyld/blob/dyld-1235.2/cache-builder/dyld_cache_format.h#L131).
+     */
+    val stubOptimizationMappings get() =
+        allMappings.filter { (mapping) -> mapping.flags and (1 shl 3) != 0L }
 
-    @OptIn(ExperimentalStdlibApi::class)
-    private fun assertIsValidVMAddress(vmAddress: Long) {
-        isValidVMAddress(vmAddress).takeIf { it }
-            ?: throw IOException("0x${vmAddress.toHexString()} is not a valid address for the mapped cache.")
-    }
-
-    @OptIn(ExperimentalStdlibApi::class)
-    private fun assertIsValidVMRange(
-        vmAddress: Long,
-        length: Long,
-    ) {
-        assertIsValidVMAddress(vmAddress)
-        findRelevantVMMappingAndCacheByteProvider(vmAddress)!!
-            .takeIf { (mapping) ->
-                length <= mapping.size - (vmAddress - mapping.address)
-            }
-            ?: throw IOException(
-                "0x${vmAddress.toHexString()}-0x${(vmAddress + length).toHexString()}" +
-                    " is not a valid range for the mapped cache.",
-            )
-    }
-
-    fun readMappedBytes(
-        vmAddress: Long,
-        length: Long,
-        fixedUp: Boolean = true,
-    ): ByteArray {
-        assertIsValidVMRange(vmAddress, length)
-        findRelevantVMMappingAndCacheByteProvider(vmAddress)!!
-            .let { (mapping, provider) ->
-                return provider
-                    .readBytes(
-                        mapping.fileOffset + (vmAddress - mapping.address),
-                        length,
-                    ).let { if (fixedUp) fixupMemoryRange(vmAddress, length, it) else it }
-            }
-    }
-
-    fun readMappedCString(vmAddress: Long): String? =
-        findRelevantVMMappingAndCacheByteProvider(vmAddress)
-            ?.let { (mapping, provider) ->
-                var string = ""
-                var currentOffset = mapping.fileOffset + (vmAddress - mapping.address)
-                string_builder@ do {
-                    val byte = provider.readByte(currentOffset)
-                    if (byte == 0x00.toByte()) break@string_builder
-                    string += byte.toInt().toChar()
-                    currentOffset++
-                } while // Don't keep reading outside mapped sections.
-                (currentOffset <= (mapping.fileOffset + mapping.size))
-                string.takeIf { it != "" }
-            }
+    /**
+     * The virtual memory mappings that include stubs.
+     *
+     * [Read-only mappings are flagged with `DYLD_CACHE_READ_ONLY_DATA`](
+     * https://github.com/apple-oss-distributions/dyld/blob/dyld-1235.2/cache_builder/SubCache.cpp#L1449),
+     * [which is equal to `1 << 5`](
+     * https://github.com/apple-oss-distributions/dyld/blob/dyld-1235.2/cache-builder/dyld_cache_format.h#L133).
+     *
+     * Note: This was only added in more recent versions of `dyld`.
+     */
+    val readOnlyMappings get() =
+        allMappings.filter { (mapping) -> mapping.flags and (1 shl 5) != 0L }
 }
