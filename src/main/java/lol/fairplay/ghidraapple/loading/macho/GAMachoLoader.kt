@@ -2,6 +2,7 @@ package lol.fairplay.ghidraapple.loading.macho
 
 import ghidra.app.util.Option
 import ghidra.app.util.bin.ByteProvider
+import ghidra.app.util.bin.format.macho.commands.SegmentCommand
 import ghidra.app.util.bin.format.macho.dyld.DyldCacheMappingAndSlideInfo
 import ghidra.app.util.bin.format.macho.dyld.DyldCacheMappingInfo
 import ghidra.app.util.importer.MessageLog
@@ -65,10 +66,8 @@ class GAMachoLoader : MachoLoader() {
             markupDyldCacheSource(program, fileSystem)
             val mappingMapper = CacheMappingMapper(program, fileSystem.cacheHelper!!)
             mappingMapper.mapStubOptimizations()
-            val pointerRepointer = CachePointerRepointer(program, fileSystem.cacheHelper!!)
-            pointerRepointer.repointSelectorReferences()
-            pointerRepointer.repointOtherReferences()
-//            val cachedDylibMapper = CachedDylibMapper(program, fileSystem.cacheHelper!!)
+            val cachedDylibMapper = CachedDylibMapper(program, fileSystem.cacheHelper!!)
+            cachedDylibMapper.mapLibObjCOptimizations()
 //            val machHeader = MachHeader(provider).parse()
 //            val deps =
 //                machHeader.loadCommands
@@ -305,42 +304,37 @@ class CachedDylibMapper(
         return block
     }
 
-    fun mapCachedDependency(path: String) {
+    fun mapLibObjCOptimizations() {
+        // FIXME: This only works for iOS caches, for some reason. The optimizations live elsewhere on macOS caches.
+        mapCachedDependency("/usr/lib/libobjc.A.dylib") { segment ->
+            if (segment.segmentName != "__OBJC_RO") return@mapCachedDependency null
+            val objcOptsBlock =
+                addBlockFromMappedCache(
+                    "Objective C Optimizations",
+                    segment.vMaddress,
+                    segment.vMsize,
+                )
+            objcOptsBlock.isRead = true
+            objcOptsBlock.isWrite = false
+            objcOptsBlock.isExecute = false
+            return@mapCachedDependency objcOptsBlock
+        }
+        // Now that we've mapped the optimizations to our Program, we need to ensure that our
+        //  selector references segment is marked as read-only so that Ghidra can perform the
+        //  proper optimizations (which are required for our analyzers to work properly).
+        val selRefs = program.memory.getBlock("__objc_selrefs")
+        selRefs.isRead = true
+        selRefs.isWrite = false
+        selRefs.isExecute = false
+    }
+
+    fun mapCachedDependency(
+        path: String,
+        forEachSegment: (SegmentCommand) -> MemoryBlock?,
+    ) {
         val header = cacheHelper.findMachHeaderForImage(path) ?: return
         val blocksAdded = mutableListOf<MemoryBlock>()
-        for (segment in header.allSegments) {
-            if (segment.vMsize == 0L) continue
-            try {
-                if (segment.sections.isEmpty()) {
-                    blocksAdded +=
-                        addBlockFromMappedCache(
-                            createBlockName(path, segment.segmentName, null),
-                            segment.vMaddress,
-                            segment.vMsize,
-                        )
-                } else {
-                    for (section in segment.sections) {
-                        if (section.size == 0L) continue
-                        if (section.segmentName != segment.segmentName) {
-                            // This probably should never happen, but we want to know about it if it does.
-                            println(
-                                "($path) Section ${section.sectionName} claims to be in segment " +
-                                    "${section.segmentName}, but is listed below ${segment.segmentName}.",
-                            )
-                        }
-                        blocksAdded +=
-                            addBlockFromMappedCache(
-                                createBlockName(path, section.segmentName, section.sectionName),
-                                section.address,
-                                section.size,
-                            )
-                    }
-                }
-            } catch (e: Exception) {
-                println("Failed to add segment: $e")
-            }
-        }
-        repointStringReferencesPostMap(path)
+        header.allSegments.forEach { forEachSegment(it)?.let { blocksAdded += it } }
     }
 
     private fun repointStringReferencesPostMap(path: String) {
