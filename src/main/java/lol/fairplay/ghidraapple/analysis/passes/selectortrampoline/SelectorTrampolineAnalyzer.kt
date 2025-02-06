@@ -20,9 +20,12 @@ import ghidra.program.model.listing.Variable
 import ghidra.program.model.mem.MemoryBlock
 import ghidra.program.model.pcode.PcodeOp
 import ghidra.program.model.symbol.SourceType
+import ghidra.program.model.util.StringPropertyMap
 import ghidra.util.exception.CancelledException
 import ghidra.util.task.TaskMonitor
+import lol.fairplay.ghidraapple.analysis.passes.ObjectiveCDispatchTagAnalyzer.Companion.OBJC_TRAMPOLINE
 import lol.fairplay.ghidraapple.analysis.utilities.getConstantFromVarNode
+import lol.fairplay.ghidraapple.analysis.utilities.getFunctionsWithTag
 import lol.fairplay.ghidraapple.analysis.utilities.toDefaultAddressSpace
 import kotlin.Boolean
 import kotlin.Exception
@@ -38,10 +41,9 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
         const val NAME = "Objective-C Selector Trampoline Analysis"
         const val DESCRIPTION = "Identify and rename Objective-C trampoline procedures."
         const val OPT_SHOULD_COPY_REFS = "Copy Trampoline References to Actual Implementations"
-        val PRIORITY = AnalysisPriority.DATA_ANALYSIS.before().before()
+        const val TRAMPOLINE_SELECTOR_DATA = "TrampolineSelectorData"
 
-        const val TRAMPOLINE_TAG = "OBJC_TRAMPOLINE"
-        const val TRAMPOLINE_TAG_DESC = "Objective-C Selector Trampoline Function"
+        val PRIORITY: AnalysisPriority = AnalysisPriority.DATA_ANALYSIS.before().before()
 
         const val STUB_NAMESPACE_NAME = "stub"
     }
@@ -59,16 +61,7 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
         monitor: TaskMonitor,
         log: MessageLog,
     ): Boolean {
-        // Get all trampoline functions in the addressSet
-        program.functionManager.functionTagManager.createFunctionTag(
-            TRAMPOLINE_TAG,
-            TRAMPOLINE_TAG_DESC,
-        )
-
-        val trampolineFunctions =
-            program.functionManager
-                .getFunctions(set, true)
-                .filter { isPlausibleTrampoline(it) }.toList()
+        val trampolineFunctions = program.functionManager.getFunctionsWithTag(OBJC_TRAMPOLINE)
 
         monitor.maximum = trampolineFunctions.size.toLong()
 
@@ -79,12 +72,8 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
                 SourceType.ANALYSIS,
             )
 
-        trampolineFunctions.forEach {
-            it.addTag(TRAMPOLINE_TAG)
-            it.symbol.setNamespace(stubNamespace)
-        }
-        findAllSelectors(program, trampolineFunctions, monitor, log).forEach {
-                (func, selector) ->
+        trampolineFunctions.forEach { it.symbol.setNamespace(stubNamespace) }
+        findAllSelectors(program, trampolineFunctions, monitor, log).forEach { (func, selector) ->
             applySelectorToFunction(func, selector)
         }
         return true
@@ -99,8 +88,7 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
         monitor: TaskMonitor,
         log: MessageLog,
     ): List<Pair<Function, String?>> {
-//        trampolineFunctions.filter { it.symbol.source  }
-
+        // Decompiler Factory (for each process we need a new instance)
         val configurer =
             DecompileConfigurer { decompiler: DecompInterface ->
                 decompiler.simplificationStyle = "normalize"
@@ -129,7 +117,9 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
                     }
 
                     val callOp =
-                        results.highFunction.pcodeOps.iterator().asSequence()
+                        results.highFunction.pcodeOps
+                            .iterator()
+                            .asSequence()
                             .singleOrNull { it.opcode == PcodeOp.CALLIND || it.opcode == PcodeOp.CALL }
                     if (callOp != null) {
                         val selAddress = getConstantFromVarNode(callOp.inputs[2]).getOrNull()?.toDefaultAddressSpace(program)
@@ -158,7 +148,10 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
         func: Function,
         selector: String?,
     ) {
+        // Add the selector to a special table for easier lookup later
         if (selector != null) {
+            getTrampolineSelectorUserData(func.program).add(func.entryPoint, selector)
+
             if (func.name != selector) {
                 // Change the function name based on the selector
                 // If it already had a name because symbol information was available, we don't want to overwrite it
@@ -210,18 +203,16 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
      *
      * If this actually becomes a relevant enough problem to fix, it can be changed to some better heuristic
      */
-    private fun isPlausibleTrampoline(function: Function): Boolean {
-        // Look up the block that the function is in
-        val block = getStubsSegment(function.program)!!
-        return block.contains(function.entryPoint)
-    }
 
     override fun canAnalyze(program: Program): Boolean {
         // Check if we have a "__objc_stubs" block
         return getStubsSegment(program) != null
     }
 
-    private fun getStubsSegment(program: Program): MemoryBlock? {
-        return program.memory.getBlock("__objc_stubs")
+    private fun getTrampolineSelectorUserData(program: Program): StringPropertyMap {
+        val propMap = program.usrPropertyManager.getStringPropertyMap(TRAMPOLINE_SELECTOR_DATA)
+        return propMap ?: program.usrPropertyManager.createStringPropertyMap(TRAMPOLINE_SELECTOR_DATA)
     }
+
+    private fun getStubsSegment(program: Program): MemoryBlock? = program.memory.getBlock("__objc_stubs")
 }

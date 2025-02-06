@@ -63,3 +63,13 @@ sourceSets {
     }
 }
 //----------------------END "DO NOT MODIFY" SECTION-------------------------------
+
+idea {
+    module {
+
+        // Tells IntelliJ to automatically download and attach source ZIP/JAR
+        downloadSources = true
+        // Optionally download Javadoc as well
+        downloadJavadoc = true
+    }
+}
