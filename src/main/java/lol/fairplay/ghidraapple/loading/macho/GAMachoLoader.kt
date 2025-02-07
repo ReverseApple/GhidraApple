@@ -66,7 +66,7 @@ class GAMachoLoader : MachoLoader() {
 
         // If the Mach-O was loaded with our custom dyld shared cache handler, we can do some more things with it.
         if (fileSystem is DSCFileSystem) {
-            // If the selector references block isn't read-only, Ghidra won't apply the optimizations
+            // If the selector references block isn't read-only, Ghidra won't apply optimizations
             //  that are required for our analyzers to work properly.
             val selRefs = program.memory.getBlock("__objc_selrefs")
             selRefs.isRead = true
