@@ -12,9 +12,12 @@ import ghidra.framework.task.GTaskMonitor
 import ghidra.program.model.data.StructureDataType
 import lol.fairplay.ghidraapple.util.serialization.StructSerializer
 import java.io.IOException
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.TreeMap
 import kotlin.collections.forEach
 import kotlin.collections.set
+import kotlin.reflect.cast
 
 class DSCHelper(
     val splitDyldCache: SplitDyldCache,
@@ -122,6 +125,33 @@ class DSCHelper(
                     ).let { if (fixedUp) fixupMemoryRange(vmAddress, length, it) else it }
             }
     }
+
+    fun byteBufferOfMappedBytes(
+        vmAddress: Long,
+        length: Long,
+        byteOrder: ByteOrder,
+    ): ByteBuffer =
+        ByteBuffer
+            .wrap(readMappedBytes(vmAddress, length))
+            .order(byteOrder)
+
+    inline fun <reified T : Number> readMappedNumber(
+        vmAddress: Long,
+        byteOrder: ByteOrder = ByteOrder.LITTLE_ENDIAN,
+    ): T =
+        T::class.cast(
+            when (T::class) {
+                Long::class -> byteBufferOfMappedBytes(vmAddress, 8, byteOrder).long
+                ULong::class -> byteBufferOfMappedBytes(vmAddress, 8, byteOrder).long.toULong()
+                Int::class -> byteBufferOfMappedBytes(vmAddress, 4, byteOrder).int
+                UInt::class -> byteBufferOfMappedBytes(vmAddress, 4, byteOrder).int.toUInt()
+                Short::class -> byteBufferOfMappedBytes(vmAddress, 2, byteOrder).short
+                UShort::class -> byteBufferOfMappedBytes(vmAddress, 2, byteOrder).short.toUShort()
+                Float::class -> byteBufferOfMappedBytes(vmAddress, 4, byteOrder).float
+                Double::class -> byteBufferOfMappedBytes(vmAddress, 8, byteOrder).double
+                else -> throw IllegalArgumentException("Unsupported type: ${T::class.simpleName}")
+            },
+        )
 
     fun readMappedCString(vmAddress: Long): String? =
         findRelevantMapping(vmAddress)

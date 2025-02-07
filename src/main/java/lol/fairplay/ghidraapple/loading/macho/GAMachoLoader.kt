@@ -73,10 +73,16 @@ class GAMachoLoader : MachoLoader() {
             selRefs.isWrite = false
             selRefs.isExecute = false
 
-            markupDyldCacheSource(program, fileSystem)
+            markupProgramInfo(program, fileSystem)
+
+            // Map additional data into the program
             val mappingMapper = CacheMappingMapper(program, fileSystem.cacheHelper!!)
             mappingMapper.mapStubOptimizations()
-            mappingMapper.mapReadOnlyData()
+            val mappedROBlocks = mappingMapper.mapReadOnlyData()
+            // The function above is meant to capture the Objective-C optimizations, but only works on
+            //  more recent caches. If we failed to map anything, we fall back to the below function.
+            if (mappedROBlocks.isEmpty()) mappingMapper.mapLibObjCOptimizations()
+
 //            val cachedDylibMapper = CachedDylibMapper(program, fileSystem.cacheHelper!!)
 //            cachedDylibMapper.mapLibObjCOptimizations()
 //            val machHeader = MachHeader(provider).parse()
@@ -92,10 +98,9 @@ class GAMachoLoader : MachoLoader() {
     }
 
     /**
-     * At times, it might be useful to know what dyld shared cache a dylib came from. This function adds the platform
-     * of the source shared cache to the program info (visible in the "About Program" dialog).
+     * Adds information about the source cache to the program info (visible in the "About Program" dialog).
      */
-    private fun markupDyldCacheSource(
+    private fun markupProgramInfo(
         program: Program,
         fileSystem: DSCFileSystem,
     ) {
@@ -146,49 +151,81 @@ class CacheMappingMapper(
     private val program: Program,
     private val cacheHelper: DSCHelper,
 ) {
+    companion object {
+        private const val STUBS_PROGRAM_TREE_NAME = "Cached Stubs"
+        private const val READ_ONLY_DATA_PROGRAM_TREE_NAME = "Cached Read-Only Data"
+    }
+
+    private fun mapMappingsToBlocksWithIndexedNames(
+        mappings: List<Triple<DyldCacheMappingAndSlideInfo, ByteProvider, Int>>,
+        prefix: String,
+        forEachBlock: (MemoryBlock) -> Unit = {},
+    ) = mappings
+        .mapIndexed { index, (mapping, provider) ->
+            try {
+                val block = mapMappingAndSlide(mapping, provider, "$prefix $index", null)
+                forEachBlock(block)
+                return@mapIndexed block
+            } catch (_: Exception) {
+                return@mapIndexed null
+            }
+        }.filterNotNull()
+
     fun mapStubOptimizations() {
         if (!cacheHelper.cacheHasStubOptimizations) return
-        var index = 0
         val mappedBlocks =
-            cacheHelper.stubOptimizationMappings
-                // TODO: Determine if we can filter these based on if they are relevant for the dylib to be loaded.
-                .map { (mapping, provider) ->
-                    try {
-                        return@map mapMappingAndSlide(mapping, provider, "Cached Stubs ${++index}", null)
-                    } catch (_: Exception) {
-                        return@map null
-                    }
-                }.filterNotNull()
+            // TODO: Determine if we can filter these based on if they are relevant for the dylib to be loaded.
+            mapMappingsToBlocksWithIndexedNames(cacheHelper.stubOptimizationMappings, STUBS_PROGRAM_TREE_NAME)
         if (mappedBlocks.isNotEmpty()) {
             program.listing.defaultRootModule
-                .createModule("Cached Stubs")
+                .createModule(STUBS_PROGRAM_TREE_NAME)
                 .apply { mappedBlocks.forEach { reparent(it.name, program.listing.defaultRootModule) } }
         }
     }
 
+    fun mapLibObjCOptimizations() {
+        val header = cacheHelper.findMachHeaderForImage("/usr/lib/libobjc.A.dylib") ?: return
+        val section =
+            header
+                .allSegments
+                .firstOrNull { it.segmentName == "__TEXT" }
+                ?.sections
+                ?.firstOrNull { it.sectionName == "__objc_opt_ro" }
+                ?: return
+        val (_, provider) =
+            cacheHelper.findRelevantMapping(section.address) ?: return
+
+        // TODO: The following two values are defined mostly for explanatory benefit. Confirm if we should just
+        //  simplify the process and combine some of these math operations instead.
+
+        // The header should always be at the beginning of the `__objc_opt_ro` section.
+        val objCOptimizationsHeaderStartAddress = section.address
+
+        // The offset field lives after two `uint32_t`'s (version and flags) and one `int32_t` (`selopt_offset`).
+        val readonlyOffsetFieldAddress =
+            objCOptimizationsHeaderStartAddress + (UInt.SIZE_BYTES * 2) + Int.SIZE_BYTES
+
+        // Read the offset from the header
+        val roOffsetFromHeader: Int = cacheHelper.readMappedNumber(readonlyOffsetFieldAddress)
+        var roOffset = section.address + roOffsetFromHeader
+
+        // Map the relevant mapping into the program
+        // TODO: Confirm that the mapping that contains [roOffset] is the *only* mapping we should care about.
+        val (roMapping, roProvider) =
+            cacheHelper.findRelevantMapping(roOffset) ?: return
+        mapMappingAndSlide(roMapping, roProvider, READ_ONLY_DATA_PROGRAM_TREE_NAME, null)
+    }
+
     fun mapReadOnlyData(): List<MemoryBlock> {
         val mappedBlocks =
-            cacheHelper.readOnlyMappings
-                .mapIndexed { index, (mapping, provider) ->
-                    try {
-                        val roBlock =
-                            mapMappingAndSlide(
-                                mapping,
-                                provider,
-                                "Cached Read-Only Data $index",
-                                null,
-                            )
-                        roBlock.isRead = true
-                        roBlock.isWrite = false
-                        roBlock.isExecute = false
-                        return@mapIndexed roBlock
-                    } catch (_: Exception) {
-                        return@mapIndexed null
-                    }
-                }.filterNotNull()
+            mapMappingsToBlocksWithIndexedNames(cacheHelper.readOnlyMappings, READ_ONLY_DATA_PROGRAM_TREE_NAME) { roBlock ->
+                roBlock.isRead = true
+                roBlock.isWrite = false
+                roBlock.isExecute = false
+            }
         if (mappedBlocks.isNotEmpty()) {
             program.listing.defaultRootModule
-                .createModule("Cached Read-Only Data")
+                .createModule(READ_ONLY_DATA_PROGRAM_TREE_NAME)
                 .apply { mappedBlocks.forEach { reparent(it.name, program.listing.defaultRootModule) } }
         }
         return mappedBlocks
@@ -367,6 +404,11 @@ class CachedDylibMapper(
                 objcOptsDataType,
                 provider.readBytes(section.offset.toLong(), objcOptsDataType.length.toLong()),
             )
+
+        val roOffsetFromHeader: Int = objcOptsSerializer.getComponentValue("headeropt_ro_offset")
+        var roOffset = section.address + roOffsetFromHeader
+
+        val roAddress = program.addressFactory.defaultAddressSpace.getAddress(roOffset)
 
         // FIXME: This only works for iOS caches, for some reason. The optimizations live elsewhere on macOS caches.
         mapCachedDependency("/usr/lib/libobjc.A.dylib") { segment ->
