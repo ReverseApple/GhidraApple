@@ -15,7 +15,6 @@ import ghidra.program.model.mem.MemoryBlock
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.dyld.DSCFileSystem
 import lol.fairplay.ghidraapple.dyld.DSCHelper
-import lol.fairplay.ghidraapple.loading.macho.CacheMappingMapper.Companion.READ_ONLY_DATA_PROGRAM_TREE_NAME
 
 /**
  * The Mach-O file loader for GhidraApple.
@@ -76,17 +75,6 @@ class GAMachoLoader : MachoLoader() {
             // The function above is meant to capture the Objective-C optimizations, but only works on
             //  more recent caches. If we failed to map anything, we fall back to the below function.
             if (mappedROBlocks.isEmpty()) mappingMapper.mapLibObjCOptimizations()
-
-//            val cachedDylibMapper = CachedDylibMapper(program, fileSystem.cacheHelper!!)
-//            val machHeader = MachHeader(provider).parse()
-//            val deps =
-//                machHeader.loadCommands
-//                    .filterIsInstance<DynamicLibraryCommand>()
-//                    .filter { it.commandType != LoadCommandTypes.LC_ID_DYLIB }
-//                    .map { it.dynamicLibrary }
-//            for (dep in deps) {
-//                cachedDylibMapper.mapCachedDependency(dep.name.string)
-//            }
         }
     }
 
@@ -264,82 +252,5 @@ class CacheMappingMapper(
         val bytes = provider.readBytes(mapping.fileOffset, mapping.size)
         block.putBytes(baseAddress, bytes)
         return block
-    }
-}
-
-class CachedDylibMapper(
-    private val program: Program,
-    private val cacheHelper: DSCHelper,
-) {
-    private fun createBlockName(
-        path: String,
-        segmentName: String,
-        sectionName: String?,
-    ) = "$path -- $segmentName -- ${sectionName ?: "(no section)"}"
-
-    private fun addBlockFromMappedCache(
-        name: String,
-        vmAddress: Long,
-        vmSize: Long,
-    ): MemoryBlock {
-        vmSize
-        val block =
-            program.memory.createInitializedBlock(
-                name,
-                program.addressFactory.defaultAddressSpace.getAddress(vmAddress),
-                vmSize,
-                0x00.toByte(),
-                null,
-                false,
-            )
-        block.putBytes(block.addressRange.minAddress, cacheHelper.readMappedBytes(vmAddress, vmSize))
-        return block
-    }
-
-    fun mapCachedDependency(path: String) {
-        val header = cacheHelper.findMachHeaderForImage(path) ?: return
-        val mappedBlocks = mutableListOf<MemoryBlock>()
-        for (segment in header.allSegments) {
-            if (segment.vMsize == 0L) continue
-            try {
-                if (segment.sections.isEmpty()) {
-                    mappedBlocks +=
-                        addBlockFromMappedCache(
-                            createBlockName(path, segment.segmentName, null),
-                            segment.vMaddress,
-                            segment.vMsize,
-                        )
-                } else {
-                    for (section in segment.sections) {
-                        if (section.size == 0L) continue
-                        if (section.segmentName != segment.segmentName) {
-                            // This probably should never happen, but we want to know about it if it does.
-                            println(
-                                "($path) Section ${section.sectionName} claims to be in segment " +
-                                    "${section.segmentName}, but is listed below ${segment.segmentName}.",
-                            )
-                        }
-                        mappedBlocks +=
-                            addBlockFromMappedCache(
-                                createBlockName(path, section.segmentName, section.sectionName),
-                                section.address,
-                                section.size,
-                            )
-                    }
-                }
-            } catch (_: Exception) {
-            }
-            if (mappedBlocks.isNotEmpty()) {
-                try {
-                    (
-                        // Try to see if we have already created the module.
-                        program.listing.getModule(program.listing.treeNames.first(), path)
-                            // If not, create it.
-                            ?: program.listing.defaultRootModule.createModule(path)
-                    ).apply { mappedBlocks.forEach { reparent(it.name, program.listing.defaultRootModule) } }
-                } catch (_: Exception) {
-                }
-            }
-        }
     }
 }
