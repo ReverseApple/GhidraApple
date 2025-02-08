@@ -2,26 +2,20 @@ package lol.fairplay.ghidraapple.loading.macho
 
 import ghidra.app.util.Option
 import ghidra.app.util.bin.ByteProvider
-import ghidra.app.util.bin.format.macho.commands.SegmentCommand
 import ghidra.app.util.bin.format.macho.dyld.DyldCacheMappingAndSlideInfo
 import ghidra.app.util.bin.format.macho.dyld.DyldCacheMappingInfo
-import ghidra.app.util.bin.format.macho.dyld.LibObjcOptimization
 import ghidra.app.util.importer.MessageLog
 import ghidra.app.util.opinion.LoadSpec
 import ghidra.app.util.opinion.Loaded
 import ghidra.app.util.opinion.MachoLoader
 import ghidra.formats.gfilesystem.FileSystemService
 import ghidra.framework.model.Project
-import ghidra.program.model.address.Address
-import ghidra.program.model.data.StructureDataType
 import ghidra.program.model.listing.Program
 import ghidra.program.model.mem.MemoryBlock
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.dyld.DSCFileSystem
 import lol.fairplay.ghidraapple.dyld.DSCHelper
-import lol.fairplay.ghidraapple.util.serialization.StructSerializer
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
+import lol.fairplay.ghidraapple.loading.macho.CacheMappingMapper.Companion.READ_ONLY_DATA_PROGRAM_TREE_NAME
 
 /**
  * The Mach-O file loader for GhidraApple.
@@ -84,7 +78,6 @@ class GAMachoLoader : MachoLoader() {
             if (mappedROBlocks.isEmpty()) mappingMapper.mapLibObjCOptimizations()
 
 //            val cachedDylibMapper = CachedDylibMapper(program, fileSystem.cacheHelper!!)
-//            cachedDylibMapper.mapLibObjCOptimizations()
 //            val machHeader = MachHeader(provider).parse()
 //            val deps =
 //                machHeader.loadCommands
@@ -274,88 +267,10 @@ class CacheMappingMapper(
     }
 }
 
-class CachePointerRepointer(
-    private val program: Program,
-    private val memoryHelper: DSCHelper,
-) {
-//    private val addressFactory = program.addressFactory
-    private val pointerSize = program.addressFactory.defaultAddressSpace.pointerSize
-
-    private fun repointStringPointer(
-        addressOfPointerToRepoint: Address,
-        memoryBlockToSearch: MemoryBlock,
-    ) {
-        // Get the given pointer.
-        val pointerBytes = ByteArray(pointerSize)
-        val bytesCopied = program.memory.getBytes(addressOfPointerToRepoint, pointerBytes)
-        if (bytesCopied != pointerSize) return
-        var pointerValue =
-            ByteBuffer
-                .wrap(pointerBytes)
-                .order(ByteOrder.LITTLE_ENDIAN)
-                .long
-
-        // Find the string it is pointing to.
-        val string =
-            memoryHelper.readMappedCString(pointerValue) ?: return
-
-        var searchAddress = memoryBlockToSearch.addressRange.minAddress
-        val stringBytes = string.toByteArray()
-        do {
-            run happy_path@{
-                // It must be the start of a string (i.e. a null-terminated string precedes it).
-                if (program.memory.getByte(searchAddress.subtract(1)) != 0x00.toByte()) return@happy_path
-                // Loop through bytes to match string.
-                for (i in stringBytes.indices) {
-                    val possiblyMatchingByte = memoryBlockToSearch.getByte(searchAddress.add(i.toLong()))
-                    if (possiblyMatchingByte != stringBytes[i]) return@happy_path
-                }
-                // We found the string! Now we re-point the pointer.
-                val newPointerBytes =
-                    ByteBuffer
-                        .allocate(pointerSize)
-                        .order(ByteOrder.LITTLE_ENDIAN)
-                        .putLong(searchAddress.offset)
-                        .array()
-                program.memory.setBytes(addressOfPointerToRepoint, newPointerBytes)
-            }
-            searchAddress = searchAddress.add(1)
-        } while // Iterate until the string we're searching for cannot fit in the remaining bytes.
-        (searchAddress <= memoryBlockToSearch.addressRange.maxAddress.subtract(string.length.toLong()))
-    }
-
-    fun repointStringReferences(
-        referencesBlock: MemoryBlock,
-        stringsBlock: MemoryBlock,
-    ) {
-        var currentAddress = referencesBlock.addressRange.minAddress
-        while (currentAddress <= referencesBlock.addressRange.maxAddress) {
-            repointStringPointer(currentAddress, stringsBlock)
-            currentAddress = currentAddress.add(pointerSize.toLong())
-        }
-    }
-
-    fun repointSelectorReferences() {
-        repointStringReferences(
-            program.memory.getBlock("__objc_selrefs") ?: return,
-            program.memory.getBlock("__objc_methname") ?: return,
-        )
-    }
-
-    fun repointOtherReferences() {
-        repointStringReferences(
-            program.memory.getBlock("__objc_const") ?: return,
-            program.memory.getBlock("__objc_methname") ?: return,
-        )
-    }
-}
-
 class CachedDylibMapper(
     private val program: Program,
     private val cacheHelper: DSCHelper,
 ) {
-    val cachePointerRepointer = CachePointerRepointer(program, cacheHelper)
-
     private fun createBlockName(
         path: String,
         segmentName: String,
@@ -381,75 +296,50 @@ class CachedDylibMapper(
         return block
     }
 
-    fun mapLibObjCOptimizations() {
-        val header = cacheHelper.findMachHeaderForImage("/usr/lib/libobjc.A.dylib") ?: return
-        val section =
-            header
-                .allSegments
-                .firstOrNull { it.segmentName == "__TEXT" }
-                ?.sections
-                ?.firstOrNull { it.segmentName == "__objc_opt_ro" }
-                ?: return
-        val (_, provider) =
-            cacheHelper.findRelevantMapping(section.address) ?: return
-
-        // We're only using this to get the data type and length of the header.
-        val objcOptsDataType =
-            LibObjcOptimization(
-                program,
-                program.addressFactory.defaultAddressSpace.getAddress(section.address),
-            ).toDataType() as StructureDataType
-        val objcOptsSerializer =
-            StructSerializer(
-                objcOptsDataType,
-                provider.readBytes(section.offset.toLong(), objcOptsDataType.length.toLong()),
-            )
-
-        val roOffsetFromHeader: Int = objcOptsSerializer.getComponentValue("headeropt_ro_offset")
-        var roOffset = section.address + roOffsetFromHeader
-
-        val roAddress = program.addressFactory.defaultAddressSpace.getAddress(roOffset)
-
-        // FIXME: This only works for iOS caches, for some reason. The optimizations live elsewhere on macOS caches.
-        mapCachedDependency("/usr/lib/libobjc.A.dylib") { segment ->
-            if (segment.segmentName != "__OBJC_RO") return@mapCachedDependency null
-            val objcOptsBlock =
-                addBlockFromMappedCache(
-                    "Objective C Optimizations",
-                    segment.vMaddress,
-                    segment.vMsize,
-                )
-            objcOptsBlock.isRead = true
-            objcOptsBlock.isWrite = false
-            objcOptsBlock.isExecute = false
-            return@mapCachedDependency objcOptsBlock
-        }
-        // Now that we've mapped the optimizations to our Program, we need to ensure that our
-        //  selector references segment is marked as read-only so that Ghidra can perform the
-        //  proper optimizations (which are required for our analyzers to work properly).
-        val selRefs = program.memory.getBlock("__objc_selrefs")
-        selRefs.isRead = true
-        selRefs.isWrite = false
-        selRefs.isExecute = false
-    }
-
-    fun mapCachedDependency(
-        path: String,
-        forEachSegment: (SegmentCommand) -> MemoryBlock?,
-    ) {
+    fun mapCachedDependency(path: String) {
         val header = cacheHelper.findMachHeaderForImage(path) ?: return
-        val blocksAdded = mutableListOf<MemoryBlock>()
-        header.allSegments.forEach { forEachSegment(it)?.let { blocksAdded += it } }
-    }
-
-    private fun repointStringReferencesPostMap(path: String) {
-        cachePointerRepointer.repointStringReferences(
-            program.memory.getBlock(createBlockName(path, "__AUTH_CONST", "__objc_selrefs")) ?: return,
-            program.memory.getBlock(createBlockName(path, "__TEXT", "__objc_methname")) ?: return,
-        )
-        cachePointerRepointer.repointStringReferences(
-            program.memory.getBlock(createBlockName(path, "__AUTH_CONST", "__objc_const")) ?: return,
-            program.memory.getBlock(createBlockName(path, "__TEXT", "__objc_methname")) ?: return,
-        )
+        val mappedBlocks = mutableListOf<MemoryBlock>()
+        for (segment in header.allSegments) {
+            if (segment.vMsize == 0L) continue
+            try {
+                if (segment.sections.isEmpty()) {
+                    mappedBlocks +=
+                        addBlockFromMappedCache(
+                            createBlockName(path, segment.segmentName, null),
+                            segment.vMaddress,
+                            segment.vMsize,
+                        )
+                } else {
+                    for (section in segment.sections) {
+                        if (section.size == 0L) continue
+                        if (section.segmentName != segment.segmentName) {
+                            // This probably should never happen, but we want to know about it if it does.
+                            println(
+                                "($path) Section ${section.sectionName} claims to be in segment " +
+                                    "${section.segmentName}, but is listed below ${segment.segmentName}.",
+                            )
+                        }
+                        mappedBlocks +=
+                            addBlockFromMappedCache(
+                                createBlockName(path, section.segmentName, section.sectionName),
+                                section.address,
+                                section.size,
+                            )
+                    }
+                }
+            } catch (_: Exception) {
+            }
+            if (mappedBlocks.isNotEmpty()) {
+                try {
+                    (
+                        // Try to see if we have already created the module.
+                        program.listing.getModule(program.listing.treeNames.first(), path)
+                            // If not, create it.
+                            ?: program.listing.defaultRootModule.createModule(path)
+                    ).apply { mappedBlocks.forEach { reparent(it.name, program.listing.defaultRootModule) } }
+                } catch (_: Exception) {
+                }
+            }
+        }
     }
 }
