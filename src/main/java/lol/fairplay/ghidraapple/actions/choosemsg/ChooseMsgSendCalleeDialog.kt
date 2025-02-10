@@ -1,4 +1,4 @@
-package lol.fairplay.ghidraapple.actions
+package lol.fairplay.ghidraapple.actions.choosemsg
 
 import docking.DialogComponentProvider
 import docking.Tool
