@@ -12,8 +12,8 @@ import lol.fairplay.ghidraapple.actions.setasblock.SetAsBlockAction
     status = PluginStatus.STABLE,
     packageName = GhidraApplePluginPackage.PKG_NAME,
     category = PluginCategoryNames.COMMON,
-    shortDescription = "Objective-C Dynamic Dispatch",
-    description = "A plugin to help with Objective-C dynamic dispatches (msgSend family of functions)",
+    shortDescription = "Objective-C Block Parser Plugin",
+    description = "A plugin to help with Objective-C blocks",
 )
 class ObjectiveCBlockParserPlugin(
     tool: PluginTool,
