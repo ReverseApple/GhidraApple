@@ -221,7 +221,8 @@ class BlockLayout(
             .getFunctionAt(program.addressFactory.defaultAddressSpace.getAddress(invokePointer))
             .let {
                 it.updateFunction(
-                    it.callingConventionName, // Keep the same calling convention
+                    // Keep the same calling convention
+                    it.callingConventionName,
                     ReturnParameterImpl(invokeFunctionType.returnType, program),
                     invokeFunctionType.arguments.map { ParameterImpl(it.name, it.dataType, program) },
                     // TODO: Determine if this is the best [FunctionUpdateType] to use here.
