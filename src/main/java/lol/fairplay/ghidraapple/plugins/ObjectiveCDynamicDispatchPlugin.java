@@ -2,11 +2,10 @@ package lol.fairplay.ghidraapple.plugins;
 
 import ghidra.app.plugin.PluginCategoryNames;
 import ghidra.app.plugin.ProgramPlugin;
-import ghidra.app.plugin.core.decompile.actions.ChooseMsgSendCalleeAction;
+import lol.fairplay.ghidraapple.actions.choosemsg.ChooseMsgSendCalleeAction;
 import ghidra.framework.plugintool.PluginInfo;
 import ghidra.framework.plugintool.PluginTool;
 import ghidra.framework.plugintool.util.PluginStatus;
-import ghidra.program.model.listing.Program;
 import lol.fairplay.ghidraapple.GhidraApplePluginPackage;
 
 
