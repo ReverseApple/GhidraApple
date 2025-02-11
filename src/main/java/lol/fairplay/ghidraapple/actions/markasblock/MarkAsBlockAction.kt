@@ -1,4 +1,4 @@
-package lol.fairplay.ghidraapple.actions.setasblock
+package lol.fairplay.ghidraapple.actions.markasblock
 
 import docking.ActionContext
 import docking.action.DockingAction
@@ -19,7 +19,7 @@ import lol.fairplay.ghidraapple.analysis.utilities.address
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-class SetAsBlockAction : DockingAction("Set As Objective-C Block", null) {
+class MarkAsBlockAction : DockingAction("Mark As Objective-C Block", null) {
     init {
         popupMenuData = MenuData(arrayOf(this.name), GhidraApplePluginPackage.PKG_NAME)
     }
@@ -39,7 +39,7 @@ class SetAsBlockAction : DockingAction("Set As Objective-C Block", null) {
             context.program.listing.getDataAt(context.address)
                 ?: throw IllegalArgumentException(
                     "No data at address 0x${context.address}. " +
-                        "Please use the Decompile pane if setting a stack block.",
+                        "Please use the Decompile pane if marking a stack block.",
                 )
         if (dataAtLocation.dataType !is Pointer) {
             throw IllegalArgumentException(
