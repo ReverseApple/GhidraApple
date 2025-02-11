@@ -41,6 +41,11 @@ class MarkAsBlockAction : DockingAction("Mark As Objective-C Block", null) {
                     "No data at address 0x${context.address}. " +
                         "Please use the Decompile pane if marking a stack block.",
                 )
+
+        if (BlockLayoutDataType.isDataTypeBlockType(dataAtLocation.dataType)) {
+            throw IllegalArgumentException("The data at address 0x${context.address} is already a block.")
+        }
+
         if (dataAtLocation.dataType !is Pointer) {
             throw IllegalArgumentException(
                 "The address 0x${context.address} does not contain a pointer. " +
@@ -89,6 +94,19 @@ class MarkAsBlockAction : DockingAction("Mark As Objective-C Block", null) {
                         "This is probably not a stack block. " +
                         "Please start with an instruction that operates on the stack.",
                 )
+
+        if (
+            function
+                .stackFrame
+                .stackVariables
+                .firstOrNull { it.stackOffset == stackReference.stackOffset }
+                ?.dataType
+                ?.let { BlockLayoutDataType.isDataTypeBlockType(it) } == true
+        ) {
+            throw IllegalArgumentException(
+                "Variable at stack offset ${stackReference.stackOffset} is already a block.",
+            )
+        }
 
         /**
          * We will use the result of this function to start emulating the function as it builds up the stack
