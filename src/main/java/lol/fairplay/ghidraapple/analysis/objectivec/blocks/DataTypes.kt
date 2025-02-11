@@ -58,8 +58,11 @@ class BlockLayoutDataType(
 
         fun isDataTypeBlockType(dataType: DataType) =
             dataType is BlockLayoutDataType ||
-                // Sometimes the class reference is lost. In those cases, we fall back to the name.
-                dataType.name.startsWith(minimalBlockType().name)
+                // Mos times the class reference is lost. In those cases, we fall back to the name and category path.
+                (
+                    dataType.name.startsWith(minimalBlockType().name) &&
+                        dataType.categoryPath.toString() == BLOCK_CATEGORY_PATH_STRING
+                )
     }
     constructor(
         dataTypeManager: DataTypeManager,
