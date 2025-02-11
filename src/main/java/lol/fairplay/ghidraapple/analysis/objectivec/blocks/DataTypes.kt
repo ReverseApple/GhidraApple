@@ -31,24 +31,27 @@ enum class BlockFlag(
 
 class BlockLayoutDataType(
     dataTypeManager: DataTypeManager,
-    suffix: String?,
+    rootDataTypeSuffix: String?,
+    invokeFunctionTypeSuffix: String?,
     invokeReturnType: DataType,
     parameters: Array<ParameterDefinitionImpl>,
     importedVariables: Array<Triple<DataType, String, String?>>,
 ) : StructureDataType(
-        "Block_layout${if (suffix != null) "_${suffix.filterNot { it.isWhitespace() }}" else ""}",
+        "Block_layout${rootDataTypeSuffix?.let { "_$it" } ?: ""}",
         0,
         dataTypeManager,
     ) {
     constructor(
         dataTypeManager: DataTypeManager,
-        suffix: String?,
+        mainTypeSuffix: String?,
+        invokeFunctionTypeSuffix: String?,
         invokeReturnType: DataType,
         parameters: Array<ParameterDefinitionImpl>,
         extraBytes: Int,
     ) : this(
         dataTypeManager,
-        suffix,
+        mainTypeSuffix,
+        invokeFunctionTypeSuffix,
         invokeReturnType,
         parameters,
         arrayOf(
@@ -61,7 +64,7 @@ class BlockLayoutDataType(
         add(IntegerDataType.dataType, "flags", null)
         add(IntegerDataType.dataType, "reserved", null)
         val invokeFunctionType =
-            FunctionDefinitionDataType("invoke").apply {
+            FunctionDefinitionDataType("invoke${invokeFunctionTypeSuffix?.let { "_$it" } ?: ""}").apply {
                 returnType = invokeReturnType
                 arguments =
                     arrayOf(
@@ -69,8 +72,8 @@ class BlockLayoutDataType(
                             "block",
                             PointerDataType(
                                 // Throwing this all together at once seems to avoid data type conflicts. If this
-                                //  were instead defined outside the `apply` block and then used inside, it could
-                                //  cause two data types do be defined for this singular block layout type.
+                                //  were instead defined outside the `apply` block and then used inside, it seems
+                                //  to cause two data types to be defined for this singular block layout type.
                                 this@BlockLayoutDataType,
                                 dataTypeManager,
                             ),

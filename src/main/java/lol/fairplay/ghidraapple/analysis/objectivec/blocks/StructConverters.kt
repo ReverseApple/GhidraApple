@@ -15,6 +15,7 @@ import ghidra.program.model.listing.Program
 import ghidra.program.model.listing.ReturnParameterImpl
 import ghidra.program.model.symbol.SourceType
 import lol.fairplay.ghidraapple.analysis.objectivec.TypeResolver
+import lol.fairplay.ghidraapple.analysis.utilities.address
 import lol.fairplay.ghidraapple.core.objc.encodings.EncodedSignature
 import lol.fairplay.ghidraapple.core.objc.encodings.EncodedSignatureType
 import lol.fairplay.ghidraapple.core.objc.encodings.parseSignature
@@ -33,13 +34,13 @@ import java.nio.ByteOrder
 class BlockLayout(
     private val program: Program,
     buffer: ByteBuffer,
-    private val dataTypeSuffix: String? = null,
+    private val rootDataTypeSuffix: String? = null,
 ) : StructConverter {
     val isaPointer =
         buffer.getLong().also { it ->
             val isaSymbol =
                 program.symbolTable
-                    .getSymbols(program.addressFactory.defaultAddressSpace.getAddress(it))
+                    .getSymbols(program.address(it))
                     .firstOrNull { it.isPrimary }
                     ?: throw IOException("The `isa` field of the block doesn't point to a known symbol.")
             if (isaSymbol.name !in
@@ -69,19 +70,19 @@ class BlockLayout(
     private val descriptorHasCopyDispose = flags.contains(BlockFlag.BLOCK_HAS_COPY_DISPOSE)
     private val descriptorHasSignature = flags.contains(BlockFlag.BLOCK_HAS_SIGNATURE)
 
-    private val descriptor1Address = program.addressFactory.defaultAddressSpace.getAddress(descriptorPointer)
+    private val descriptor1Address = program.address(descriptorPointer)
     private val descriptor2Address =
         if (descriptorHasCopyDispose) {
-            program.addressFactory.defaultAddressSpace
-                .getAddress(descriptorPointer)
+            program
+                .address(descriptorPointer)
                 .add(BlockDescriptor1DataType(program.dataTypeManager).length.toLong())
         } else {
             null
         }
     private val descriptor3Address =
         if (descriptorHasSignature) {
-            program.addressFactory.defaultAddressSpace
-                .getAddress(descriptorPointer)
+            program
+                .address(descriptorPointer)
                 .add(BlockDescriptor1DataType(program.dataTypeManager).length.toLong())
                 .apply {
                     if (descriptorHasCopyDispose) {
@@ -128,7 +129,7 @@ class BlockLayout(
     val encodedSignature = descriptor3?.encodedSignature
 
     /**
-     * Generates data types from the encoded signature. MUST be executed from a transaction.
+     * Generates data types from the encoded signature.
      */
     fun generateDataTypesFromEncodedSignature(): Pair<DataType, Array<ParameterDefinitionImpl>> {
         if (encodedSignature != null) {
@@ -218,7 +219,7 @@ class BlockLayout(
                     ?.dataType as? PointerDataType
             )?.dataType as? FunctionDefinitionDataType ?: return
         program.listing
-            .getFunctionAt(program.addressFactory.defaultAddressSpace.getAddress(invokePointer))
+            .getFunctionAt(program.address(invokePointer))
             .let {
                 it.updateFunction(
                     // Keep the same calling convention
@@ -252,7 +253,8 @@ class BlockLayout(
             val minimalBlockType =
                 BlockLayoutDataType(
                     program.dataTypeManager,
-                    address.toString(),
+                    null,
+                    null,
                     VoidDataType.dataType,
                     emptyArray(),
                     emptyArray(),
@@ -279,7 +281,8 @@ class BlockLayout(
         val minimalBlockSize =
             BlockLayoutDataType(
                 program.dataTypeManager,
-                dataTypeSuffix,
+                rootDataTypeSuffix,
+                program.address(invokePointer).toString(),
                 VoidDataType.dataType,
                 emptyArray(),
                 emptyArray(),
@@ -287,7 +290,8 @@ class BlockLayout(
         val actualBlockSize = descriptor1.blockSize
         return BlockLayoutDataType(
             program.dataTypeManager,
-            dataTypeSuffix,
+            rootDataTypeSuffix,
+            program.address(invokePointer).toString(),
             blockReturnType,
             blockParameters,
             extraBytes = (actualBlockSize - minimalBlockSize).toInt(),
