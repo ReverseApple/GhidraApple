@@ -234,15 +234,7 @@ class BlockLayout(
     constructor(program: Program, address: Address) : this(
         program,
         {
-            val minimalBlockType =
-                BlockLayoutDataType(
-                    program.dataTypeManager,
-                    null,
-                    null,
-                    VoidDataType.dataType,
-                    emptyArray(),
-                    emptyArray(),
-                )
+            val minimalBlockType = BlockLayoutDataType.minimalBlockType(program.dataTypeManager)
             val blockBytes = ByteArray(minimalBlockType.length)
             val bytesRead = program.memory.getBytes(address, blockBytes)
             if (bytesRead != blockBytes.size) {
@@ -260,15 +252,7 @@ class BlockLayout(
             } else {
                 Pair(VoidDataType.dataType, emptyArray())
             }
-        val minimalBlockSize =
-            BlockLayoutDataType(
-                program.dataTypeManager,
-                rootDataTypeSuffix,
-                program.address(invokePointer).toString(),
-                VoidDataType.dataType,
-                emptyArray(),
-                emptyArray(),
-            ).length
+        val minimalBlockSize = BlockLayoutDataType.minimalBlockType(program.dataTypeManager).length
         val actualBlockSize = descriptor1.blockSize
         return BlockLayoutDataType(
             program.dataTypeManager,

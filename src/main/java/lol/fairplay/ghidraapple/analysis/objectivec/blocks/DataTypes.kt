@@ -41,6 +41,17 @@ class BlockLayoutDataType(
         0,
         dataTypeManager,
     ) {
+    companion object {
+        fun minimalBlockType(dataTypeManager: DataTypeManager) =
+            BlockLayoutDataType(
+                dataTypeManager,
+                null,
+                null,
+                VoidDataType.dataType,
+                emptyArray(),
+                emptyArray(),
+            )
+    }
     constructor(
         dataTypeManager: DataTypeManager,
         mainTypeSuffix: String?,
