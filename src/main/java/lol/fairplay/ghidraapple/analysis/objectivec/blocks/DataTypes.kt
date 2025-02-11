@@ -30,7 +30,7 @@ enum class BlockFlag(
 }
 
 class BlockLayoutDataType(
-    dataTypeManager: DataTypeManager,
+    dataTypeManager: DataTypeManager?,
     rootDataTypeSuffix: String?,
     invokeFunctionTypeSuffix: String?,
     invokeReturnType: DataType,
@@ -42,7 +42,7 @@ class BlockLayoutDataType(
         dataTypeManager,
     ) {
     companion object {
-        fun minimalBlockType(dataTypeManager: DataTypeManager) =
+        fun minimalBlockType(dataTypeManager: DataTypeManager? = null) =
             BlockLayoutDataType(
                 dataTypeManager,
                 null,
@@ -51,6 +51,11 @@ class BlockLayoutDataType(
                 emptyArray(),
                 emptyArray(),
             )
+
+        fun isDataTypeBlockType(dataType: DataType) =
+            dataType is BlockLayoutDataType ||
+                // Sometimes the class reference is lost. In those cases, we fall back to the name.
+                dataType.name.startsWith(minimalBlockType().name)
     }
     constructor(
         dataTypeManager: DataTypeManager,
@@ -99,7 +104,7 @@ class BlockLayoutDataType(
 }
 
 class BlockDescriptor1DataType(
-    dataTypeManager: DataTypeManager,
+    dataTypeManager: DataTypeManager?,
 ) : StructureDataType("Block_descriptor_1", 0, dataTypeManager) {
     init {
         add(UnsignedLongLongDataType.dataType, "reserved", null)
@@ -108,7 +113,7 @@ class BlockDescriptor1DataType(
 }
 
 class BlockDescriptor2DataType(
-    dataTypeManager: DataTypeManager,
+    dataTypeManager: DataTypeManager?,
 ) : StructureDataType("Block_descriptor_2", 0, dataTypeManager) {
     init {
         val copyHelperFunctionDataType =
