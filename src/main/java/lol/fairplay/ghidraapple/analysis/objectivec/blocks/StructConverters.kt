@@ -65,8 +65,6 @@ class BlockLayout(
     val invokePointer = buffer.getLong()
     val descriptorPointer = buffer.getLong()
 
-    private var memoryAddress: Address? = null
-
     private val descriptorHasCopyDispose = flags.contains(BlockFlag.BLOCK_HAS_COPY_DISPOSE)
     private val descriptorHasSignature = flags.contains(BlockFlag.BLOCK_HAS_SIGNATURE)
 
@@ -159,19 +157,6 @@ class BlockLayout(
     }
 
     /**
-     * Marks up the block in the program, assuming it is at the given address.
-     */
-    private fun markupBlock(address: Address) {
-        DataUtilities.createData(
-            program,
-            address,
-            this.toDataType(),
-            -1,
-            DataUtilities.ClearDataMode.CLEAR_ALL_CONFLICT_DATA,
-        )
-    }
-
-    /**
      * Marks up the block's descriptor in the program.
      */
     private fun markupDescriptorParts() {
@@ -239,7 +224,6 @@ class BlockLayout(
      * Marks up the program with the derived data types and updates the invoke function.
      */
     fun updateProgram() {
-        this.memoryAddress?.let { markupBlock(it) }
         markupDescriptorParts()
         updateInvokeFunction()
     }
@@ -267,9 +251,7 @@ class BlockLayout(
             ByteBuffer.wrap(blockBytes).order(ByteOrder.LITTLE_ENDIAN)
         }(),
         address.toString(),
-    ) {
-        this.memoryAddress = address
-    }
+    )
 
     override fun toDataType(): DataType {
         val (blockReturnType, blockParameters) =
