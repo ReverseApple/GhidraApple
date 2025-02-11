@@ -81,12 +81,13 @@ class BlockLayout(
         if (descriptorHasSignature) {
             program
                 .address(descriptorPointer)
-                .add(BlockDescriptor1DataType(program.dataTypeManager).length.toLong())
-                .apply {
+                .let {
                     if (descriptorHasCopyDispose) {
-                        add(BlockDescriptor2DataType(program.dataTypeManager).length.toLong())
+                        it.add(BlockDescriptor2DataType(program.dataTypeManager).length.toLong())
+                    } else {
+                        it
                     }
-                }
+                }.add(BlockDescriptor1DataType(program.dataTypeManager).length.toLong())
         } else {
             null
         }
@@ -308,7 +309,7 @@ class BlockDescriptor3(
             signaturePointer.let {
                 val signatureString =
                     program.listing
-                        .getDataAt(program.addressFactory.defaultAddressSpace.getAddress(it))
+                        .getDataAt(program.address(it))
                         .bytes
                         .decodeToString()
                 parseSignature(signatureString, EncodedSignatureType.BLOCK_SIGNATURE)
