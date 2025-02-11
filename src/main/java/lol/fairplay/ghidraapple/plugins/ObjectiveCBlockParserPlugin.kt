@@ -6,19 +6,19 @@ import ghidra.framework.plugintool.PluginInfo
 import ghidra.framework.plugintool.PluginTool
 import ghidra.framework.plugintool.util.PluginStatus
 import lol.fairplay.ghidraapple.GhidraApplePluginPackage
-import lol.fairplay.ghidraapple.actions.setasblock.SetAsBlockAction
+import lol.fairplay.ghidraapple.actions.markasblock.MarkAsBlockAction
 
 @PluginInfo(
     status = PluginStatus.STABLE,
     packageName = GhidraApplePluginPackage.PKG_NAME,
-    category = PluginCategoryNames.COMMON,
-    shortDescription = "Objective-C Block Parser Plugin",
+    category = PluginCategoryNames.ANALYSIS,
+    shortDescription = "Objective-C Block Parser",
     description = "A plugin to help with Objective-C blocks",
 )
 class ObjectiveCBlockParserPlugin(
     tool: PluginTool,
 ) : ProgramPlugin(tool) {
     override fun init() {
-        tool.addAction(SetAsBlockAction())
+        tool.addAction(MarkAsBlockAction())
     }
 }
