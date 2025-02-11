@@ -42,7 +42,7 @@ class MarkAsBlockAction : DockingAction("Mark As Objective-C Block", null) {
                         "Please use the Decompile pane if marking a stack block.",
                 )
 
-        if (BlockLayoutDataType.isDataTypeBlockType(dataAtLocation.dataType)) {
+        if (BlockLayoutDataType.isDataTypeBlockLayoutType(dataAtLocation.dataType)) {
             throw IllegalArgumentException("The data at address 0x${context.address} is already a block.")
         }
 
@@ -101,7 +101,7 @@ class MarkAsBlockAction : DockingAction("Mark As Objective-C Block", null) {
                 .stackVariables
                 .firstOrNull { it.stackOffset == stackReference.stackOffset }
                 ?.dataType
-                ?.let { BlockLayoutDataType.isDataTypeBlockType(it) } == true
+                ?.let { BlockLayoutDataType.isDataTypeBlockLayoutType(it) } == true
         ) {
             throw IllegalArgumentException(
                 "Variable at stack offset ${stackReference.stackOffset} is already a block.",

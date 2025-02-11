@@ -56,7 +56,7 @@ class BlockLayoutDataType(
                 emptyArray(),
             )
 
-        fun isDataTypeBlockType(dataType: DataType) =
+        fun isDataTypeBlockLayoutType(dataType: DataType) =
             dataType is BlockLayoutDataType ||
                 // Mos times the class reference is lost. In those cases, we fall back to the name and category path.
                 (
