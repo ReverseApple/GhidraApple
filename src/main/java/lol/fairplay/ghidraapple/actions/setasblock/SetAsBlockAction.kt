@@ -101,51 +101,60 @@ class SetAsBlockAction : DockingAction("Set As Objective-C Block", null) {
          *  instruction after its instruction and return that. This hopefully ensures that our emulator will
          *  correctly build the relevant portions of the stack block in its emulated stack.
          */
-        fun getFirstRelevantInstructionAddress(): Long {
-            // For some reason, the line number in [context] is more accurate than the one in [decompilerLocation].
-            val precedingLineNumber = context.lineNumber - 1
+        val firstRelevantInstructionAddress =
+            {
+                // For some reason, the line number in [context] is more accurate than the one in [decompilerLocation].
+                val precedingLineNumber = context.lineNumber - 1
 
-            // We have to iterate through the tokens for one with the line parent we want, and then take the parent.
-            val precedingLine =
-                decompilerLocation.decompile.cCodeMarkup
-                    .tokenIterator(true)
-                    .iterator()
-                    .asSequence()
-                    .firstOrNull { it.lineParent?.lineNumber == precedingLineNumber }
-                    ?.lineParent
-                    ?: throw IllegalStateException("Could not find preceding line $precedingLineNumber in $function.")
+                // We have to iterate through the tokens for one with the line parent we want, and then take the parent.
+                val precedingLine =
+                    decompilerLocation.decompile.cCodeMarkup
+                        .tokenIterator(true)
+                        .iterator()
+                        .asSequence()
+                        .firstOrNull { it.lineParent?.lineNumber == precedingLineNumber }
+                        ?.lineParent
+                        ?: throw IllegalStateException("Could not find preceding line $precedingLineNumber in $function.")
 
-            val precedingLineMaxAddress =
-                precedingLine.allTokens.maxByOrNull { it.maxAddress ?: context.program.minAddress }?.maxAddress
-                    ?: throw IllegalStateException(
-                        "Could not find the max address for preceding line $precedingLineNumber in $function.",
-                    )
+                val precedingLineMaxAddress =
+                    precedingLine.allTokens.maxByOrNull { it.maxAddress ?: context.program.minAddress }?.maxAddress
+                        ?: throw IllegalStateException(
+                            "Could not find the max address for preceding line $precedingLineNumber in $function.",
+                        )
 
-            val lastPrecedingInstruction =
-                context.program.listing.getInstructionAt(precedingLineMaxAddress)
-                    ?: throw IllegalStateException(
-                        "Failed to read preceding instruction at $precedingLineMaxAddress.",
-                    )
+                val lastPrecedingInstruction =
+                    context.program.listing.getInstructionAt(precedingLineMaxAddress)
+                        ?: throw IllegalStateException(
+                            "Failed to read preceding instruction at $precedingLineMaxAddress.",
+                        )
 
-            return precedingLineMaxAddress.offset + lastPrecedingInstruction.length
-        }
-
-        val firstRelevantInstructionAddress = getFirstRelevantInstructionAddress()
+                precedingLineMaxAddress.offset + lastPrecedingInstruction.length
+            }()
 
         // This is an older API, but the newer [PcodeEmulator] API is honestly a bit overkill for our purposes here.
         val helper = EmulatorHelper(context.program)
         helper.emulator.setExecuteAddress(firstRelevantInstructionAddress)
+        var instructionsExecuted = 0
         do {
             helper.emulator.executeInstruction(false, null)
+            instructionsExecuted += 1
+            // Most stack blocks are built using a low-double-digit amount of instructions, so this maximum is likely
+            //  much higher than necessary, but it should be ok to give at least some room to grow for edge cases.
+            if (instructionsExecuted > 100) {
+                throw IllegalStateException("Too many potential stack block building instructions found!")
+            }
 
-            fun isBlockFinishedBeingBuilt(): Boolean =
-                context.program
-                    .listing
-                    // We get the offset of the execute address and re-contextualize it within our program.
-                    .getInstructionAt(context.program.address(helper.emulator.executeAddress.offset))
-                    .flowType
-                    // Execute until we hit a jump or call. This is probably the end of the block setup code.
-                    .let { it.isJump || it.isCall }
+            fun isBlockFinishedBeingBuilt(): Boolean {
+                val nextInstruction =
+                    context.program.listing
+                        // We get the offset of the execute address and re-contextualize it within our program.
+                        .getInstructionAt(context.program.address(helper.emulator.executeAddress.offset))
+                        // If we ever fail to find the next instruction, just return true to break out of the loop.
+                        ?: return true
+
+                // Execute until we hit a jump or call. This is probably the end of the block setup code.
+                return nextInstruction.flowType.let { it.isJump || it.isCall }
+            }
         } while (!isBlockFinishedBeingBuilt())
 
         // The stack reference gives us a negative offset relative to the function's stack frame, but we need to
