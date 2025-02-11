@@ -8,8 +8,10 @@ import ghidra.app.decompiler.DecompilerLocation
 import ghidra.app.emulator.EmulatorHelper
 import ghidra.app.plugin.core.codebrowser.CodeViewerActionContext
 import ghidra.app.plugin.core.decompile.DecompilerActionContext
+import ghidra.program.model.data.DataUtilities
 import ghidra.program.model.data.Pointer
 import ghidra.program.model.data.VoidDataType
+import ghidra.program.model.symbol.SourceType
 import ghidra.program.model.symbol.StackReference
 import lol.fairplay.ghidraapple.GhidraApplePluginPackage
 import lol.fairplay.ghidraapple.analysis.objectivec.blocks.BlockLayout
@@ -52,7 +54,16 @@ class SetAsBlockAction : DockingAction("Set As Objective-C Block", null) {
         BlockLayout(context.program, context.address)
             .apply {
                 // TODO: Determine if we can get this to be undone with a single undo command instead of several.
-                context.program.withTransaction<Exception>("update program") { updateProgram() }
+                context.program.withTransaction<Exception>("update program") {
+                    DataUtilities.createData(
+                        context.program,
+                        context.address,
+                        toDataType(),
+                        -1,
+                        DataUtilities.ClearDataMode.CLEAR_ALL_CONFLICT_DATA,
+                    )
+                    updateProgram()
+                }
             }
     }
 
@@ -82,52 +93,60 @@ class SetAsBlockAction : DockingAction("Set As Objective-C Block", null) {
                         "Please start with an instruction that operates on the stack.",
                 )
 
-        // We will emulate the function, but we make need to emulate some instructions prior to the one associated
-        //  with the passed-in location. So we find the last address associated with the preceding decompiled line
-        //  and then start with the instruction after the one at that address.
-        // TODO: Maybe find a nicer way to do this.
+        /**
+         * We will use the result of this function to start emulating the function as it builds up the stack
+         *  block. The function this is within should be triggered from the first decompilation line for the
+         *  building of the stack block. However, the relevant assembly instructions may extend earlier than
+         *  the contextual address. So, we find the preceding decompilation line and calculate the very next
+         *  instruction after its instruction and return that. This hopefully ensures that our emulator will
+         *  correctly build the relevant portions of the stack block in its emulated stack.
+         */
+        fun getFirstRelevantInstructionAddress(): Long {
+            // For some reason, the line number in [context] is more accurate than the one in [decompilerLocation].
+            val precedingLineNumber = context.lineNumber - 1
 
-        // For some reason, the line number in [context] is more accurate than the one in [decompilerLocation].
-        val precedingLineNumber = context.lineNumber - 1
+            // We have to iterate through the tokens for one with the line parent we want, and then take the parent.
+            val precedingLine =
+                decompilerLocation.decompile.cCodeMarkup
+                    .tokenIterator(true)
+                    .iterator()
+                    .asSequence()
+                    .firstOrNull { it.lineParent?.lineNumber == precedingLineNumber }
+                    ?.lineParent
+                    ?: throw IllegalStateException("Could not find preceding line $precedingLineNumber in $function.")
 
-        // We have to iterate through the tokens for one with the line parent we want, and then take the parent.
-        val precedingLine =
-            decompilerLocation.decompile.cCodeMarkup
-                .tokenIterator(true)
-                .iterator()
-                .asSequence()
-                .firstOrNull { it.lineParent?.lineNumber == precedingLineNumber }
-                ?.lineParent
-                ?: throw IllegalStateException("Could not find preceding line $precedingLineNumber in $function.")
+            val precedingLineMaxAddress =
+                precedingLine.allTokens.maxByOrNull { it.maxAddress ?: context.program.minAddress }?.maxAddress
+                    ?: throw IllegalStateException(
+                        "Could not find the max address for preceding line $precedingLineNumber in $function.",
+                    )
 
-        val precedingLineMaxAddress =
-            precedingLine.allTokens.maxByOrNull { it.maxAddress ?: context.program.minAddress }?.maxAddress
-                ?: throw IllegalStateException(
-                    "Could not find the max address for preceding line $precedingLineNumber in $function.",
-                )
+            val lastPrecedingInstruction =
+                context.program.listing.getInstructionAt(precedingLineMaxAddress)
+                    ?: throw IllegalStateException(
+                        "Failed to read preceding instruction at $precedingLineMaxAddress.",
+                    )
 
-        val lastPrecedingInstruction =
-            context.program.listing.getInstructionAt(precedingLineMaxAddress)
-                ?: throw IllegalStateException(
-                    "Failed to read preceding instruction at $precedingLineMaxAddress.",
-                )
-        val firstRelevantInstructionAddress =
-            precedingLineMaxAddress.offset + lastPrecedingInstruction.length
+            return precedingLineMaxAddress.offset + lastPrecedingInstruction.length
+        }
 
-        // This is an older API, but the newer [PcodeEmulator] API is honestly a bit overkill for our purposes.
+        val firstRelevantInstructionAddress = getFirstRelevantInstructionAddress()
+
+        // This is an older API, but the newer [PcodeEmulator] API is honestly a bit overkill for our purposes here.
         val helper = EmulatorHelper(context.program)
         helper.emulator.setExecuteAddress(firstRelevantInstructionAddress)
         do {
             helper.emulator.executeInstruction(false, null)
-        } while (
-            context.program
-                .listing
-                // We get the offset of the execute address and re-contextualize it within our program.
-                .getInstructionAt(context.program.address(helper.emulator.executeAddress.offset))
-                .flowType
-                // Execute until we hit a jump or call. This is probably the end of the block setup code.
-                .let { !it.isJump && !it.isCall }
-        )
+
+            fun isBlockFinishedBeingBuilt(): Boolean =
+                context.program
+                    .listing
+                    // We get the offset of the execute address and re-contextualize it within our program.
+                    .getInstructionAt(context.program.address(helper.emulator.executeAddress.offset))
+                    .flowType
+                    // Execute until we hit a jump or call. This is probably the end of the block setup code.
+                    .let { it.isJump || it.isCall }
+        } while (!isBlockFinishedBeingBuilt())
 
         // The stack reference gives us a negative offset relative to the function's stack frame, but we need to
         //  make it positive in order to read from our emulated stack.
@@ -161,12 +180,20 @@ class SetAsBlockAction : DockingAction("Set As Objective-C Block", null) {
         BlockLayout(
             context.program,
             ByteBuffer.wrap(stackBlockBytes).order(ByteOrder.LITTLE_ENDIAN),
-            firstRelevantInstructionAddress.toString(),
+            context.program.address(firstRelevantInstructionAddress).toString(),
         ).apply {
             // TODO: Determine if we can get this to be undone with a single undo command instead of several.
-            // TODO: Type the in-decompilation variable as the block type.
-            context.program.withTransaction<Exception>("update program") { updateProgram() }
+            context.program.withTransaction<Exception>("update program") {
+                function.stackFrame.createVariable(
+                    "block_${context.program.address(invokePointer)}",
+                    stackReference.stackOffset,
+                    toDataType(),
+                    SourceType.ANALYSIS,
+                )
+                updateProgram()
+            }
         }
+        // TODO: Maybe perform a second pass to get better typing for the imported variables.
     }
 
     override fun isEnabledForContext(context: ActionContext?): Boolean = context is ProgramLocationActionContext
