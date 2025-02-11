@@ -2,6 +2,7 @@ package lol.fairplay.ghidraapple.analysis.objectivec.blocks
 
 import ghidra.program.model.data.ArrayDataType
 import ghidra.program.model.data.ByteDataType
+import ghidra.program.model.data.CategoryPath
 import ghidra.program.model.data.CharDataType
 import ghidra.program.model.data.DataType
 import ghidra.program.model.data.DataTypeManager
@@ -12,6 +13,8 @@ import ghidra.program.model.data.PointerDataType
 import ghidra.program.model.data.StructureDataType
 import ghidra.program.model.data.UnsignedLongLongDataType
 import ghidra.program.model.data.VoidDataType
+
+private const val BLOCK_CATEGORY_PATH_STRING = "/GA_BLOCK"
 
 enum class BlockFlag(
     val value: Int,
@@ -37,6 +40,7 @@ class BlockLayoutDataType(
     parameters: Array<ParameterDefinitionImpl>,
     importedVariables: Array<Triple<DataType, String, String?>>,
 ) : StructureDataType(
+        CategoryPath(BLOCK_CATEGORY_PATH_STRING),
         "Block_layout${rootDataTypeSuffix?.let { "_$it" } ?: ""}",
         0,
         dataTypeManager,
@@ -80,7 +84,10 @@ class BlockLayoutDataType(
         add(IntegerDataType.dataType, "flags", null)
         add(IntegerDataType.dataType, "reserved", null)
         val invokeFunctionType =
-            FunctionDefinitionDataType("invoke${invokeFunctionTypeSuffix?.let { "_$it" } ?: ""}").apply {
+            FunctionDefinitionDataType(
+                CategoryPath(BLOCK_CATEGORY_PATH_STRING),
+                "invoke${invokeFunctionTypeSuffix?.let { "_$it" } ?: ""}",
+            ).apply {
                 returnType = invokeReturnType
                 arguments =
                     arrayOf(
@@ -105,7 +112,7 @@ class BlockLayoutDataType(
 
 class BlockDescriptor1DataType(
     dataTypeManager: DataTypeManager?,
-) : StructureDataType("Block_descriptor_1", 0, dataTypeManager) {
+) : StructureDataType(CategoryPath(BLOCK_CATEGORY_PATH_STRING), "Block_descriptor_1", 0, dataTypeManager) {
     init {
         add(UnsignedLongLongDataType.dataType, "reserved", null)
         add(UnsignedLongLongDataType.dataType, "size", null)
@@ -114,7 +121,7 @@ class BlockDescriptor1DataType(
 
 class BlockDescriptor2DataType(
     dataTypeManager: DataTypeManager?,
-) : StructureDataType("Block_descriptor_2", 0, dataTypeManager) {
+) : StructureDataType(CategoryPath(BLOCK_CATEGORY_PATH_STRING), "Block_descriptor_2", 0, dataTypeManager) {
     init {
         val copyHelperFunctionDataType =
             FunctionDefinitionDataType("copy_helper").apply {
@@ -141,7 +148,7 @@ class BlockDescriptor2DataType(
 
 class BlockDescriptor3DataType(
     dataTypeManager: DataTypeManager,
-) : StructureDataType("Block_descriptor_3", 0, dataTypeManager) {
+) : StructureDataType(CategoryPath(BLOCK_CATEGORY_PATH_STRING), "Block_descriptor_3", 0, dataTypeManager) {
     init {
         add(PointerDataType(CharDataType.dataType, dataTypeManager), "signature", null)
         // TODO: Potentially handle this data type better (it appears to be polymorphic).
