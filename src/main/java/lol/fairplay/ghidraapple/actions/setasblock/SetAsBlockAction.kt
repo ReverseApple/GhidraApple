@@ -29,7 +29,6 @@ class SetAsBlockAction : DockingAction("Set As Objective-C Block", null) {
             actionContext as? ProgramLocationActionContext ?: return
 
         when (typedContext) {
-            // TODO: Maybe handle cases where the address of an instruction is right clicked.
             is CodeViewerActionContext -> handleDisassemblerLocation(typedContext)
             is DecompilerActionContext -> handleDecompilerLocation(typedContext)
         }
@@ -39,9 +38,8 @@ class SetAsBlockAction : DockingAction("Set As Objective-C Block", null) {
         val dataAtLocation =
             context.program.listing.getDataAt(context.address)
                 ?: throw IllegalArgumentException(
-                    "No data at address 0x${context.address}. Please operate only on data. " +
-                        // TODO: Support stack blocks.
-                        "Stack blocks are not yet supported.",
+                    "No data at address 0x${context.address}. " +
+                        "Please use the Decompile pane if setting a stack block.",
                 )
         if (dataAtLocation.dataType !is Pointer) {
             throw IllegalArgumentException(
