@@ -4,7 +4,7 @@ import docking.ActionContext
 import docking.action.DockingAction
 import docking.action.MenuData
 import ghidra.app.plugin.core.codebrowser.CodeViewerActionContext
-import ghidra.program.model.data.PointerDataType
+import ghidra.program.model.data.Pointer
 import lol.fairplay.ghidraapple.GhidraApplePluginPackage
 import lol.fairplay.ghidraapple.analysis.objectivec.blocks.BlockLayout
 
@@ -24,7 +24,7 @@ class SetAsBlockAction : DockingAction("Set As Objective-C Block", null) {
                         // TODO: Support stack blocks.
                         "Stack blocks are not yet supported.",
                 )
-        if (dataAtLocation.dataType != PointerDataType.dataType) {
+        if (dataAtLocation.dataType !is Pointer) {
             throw IllegalArgumentException(
                 "The address 0x${typedContext.address} does not contain a pointer. " +
                     "This is probably not a block. Please start with an address that contains a pointer.",
