@@ -10,7 +10,6 @@ import ghidra.app.plugin.core.codebrowser.CodeViewerActionContext
 import ghidra.app.plugin.core.decompile.DecompilerActionContext
 import ghidra.program.model.data.DataUtilities
 import ghidra.program.model.data.Pointer
-import ghidra.program.model.data.VoidDataType
 import ghidra.program.model.symbol.SourceType
 import ghidra.program.model.symbol.StackReference
 import lol.fairplay.ghidraapple.GhidraApplePluginPackage
@@ -162,14 +161,7 @@ class SetAsBlockAction : DockingAction("Set As Objective-C Block", null) {
         val positiveStackOffset = function.stackFrame.frameSize + stackReference.stackOffset
 
         val minimalBlockType =
-            BlockLayoutDataType(
-                context.program.dataTypeManager,
-                null,
-                null,
-                VoidDataType.dataType,
-                emptyArray(),
-                emptyArray(),
-            )
+            BlockLayoutDataType.minimalBlockType(context.program.dataTypeManager)
 
         val stackBlockBytes =
             helper
