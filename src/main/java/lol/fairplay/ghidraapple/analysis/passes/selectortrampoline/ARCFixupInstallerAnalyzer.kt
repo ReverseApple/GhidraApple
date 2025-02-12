@@ -26,26 +26,23 @@ class ARCFixupInstallerAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerTy
         setSupportsOneTimeAnalysis()
     }
 
-    override fun canAnalyze(program: Program?): Boolean {
-        return ObjectiveC2_Constants.isObjectiveC2(program)
-    }
+    override fun canAnalyze(program: Program?): Boolean = ObjectiveC2_Constants.isObjectiveC2(program)
 
     private fun createCallFixupXML(
         name: String,
         code: String,
         vararg targets: String,
-    ): String {
-        return """
-            <callfixup name="$name">
-              ${targets.joinToString("\n") { "<target name=\"$it\"/>" }}
-              <pcode>
-                <body><![CDATA[
-                        $code
-                 ]]></body>
-              </pcode>
-            </callfixup>
-            """.trimIndent()
-    }
+    ): String =
+        """
+        <callfixup name="$name">
+          ${targets.joinToString("\n") { "<target name=\"$it\"/>" }}
+          <pcode>
+            <body><![CDATA[
+                    $code
+             ]]></body>
+          </pcode>
+        </callfixup>
+        """.trimIndent()
 
     override fun added(
         program: Program?,
@@ -55,6 +52,7 @@ class ARCFixupInstallerAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerTy
     ): Boolean {
         val specExtension = SpecExtension(program)
 
+        val retainRegisters = (0..28).map { "objc_retain_x$it" }
         val retainSpec =
             createCallFixupXML(
                 "_objc_retain",
@@ -68,13 +66,16 @@ class ARCFixupInstallerAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerTy
                 "_objc_claimAutoreleasedReturnValue",
                 "___chkstk_darwin",
                 "_objc_opt_self",
+                *retainRegisters.toTypedArray(),
             )
 
+        val releaseRegisters = (0..28).map { "objc_release_x$it" }
         val releaseSpec =
             createCallFixupXML(
                 "objc_release",
                 "x0 = 0;",
                 "_objc_release",
+                *releaseRegisters.toTypedArray(),
             )
 
         val storeStrongSpec =
