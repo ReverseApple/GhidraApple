@@ -60,6 +60,7 @@ kotlin {
 
 tasks.test {
     useJUnitPlatform()
+    maxParallelForks = Runtime.getRuntime().availableProcessors().div(2)
 }
 
 sourceSets {
