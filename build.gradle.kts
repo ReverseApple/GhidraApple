@@ -44,6 +44,14 @@ dependencies {
     testImplementation("org.json:json:20240303")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.3")
     testRuntimeOnly("org.junit.vintage:junit-vintage-engine:5.10.3")
+    runtimeOnly(
+        fileTree(
+            mapOf(
+                "dir" to "$ghidraInstallDir/Ghidra/Extensions",
+                "include" to listOf("**/*.jar"),
+            ),
+        ),
+    )
 }
 
 kotlin {
