@@ -61,7 +61,7 @@ class ObjectiveCBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType
                         )
                         markGlobalBlock(program, reference.fromAddress)
                     } catch (e: Exception) {
-                        println("Failed to mark global block at address ${reference.fromAddress} \n\t ${e.message}")
+                        println("Failed to mark stack block at address ${reference.fromAddress} \n\t ${e.message}")
                     }
                 }
             }
