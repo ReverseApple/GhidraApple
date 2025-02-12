@@ -53,11 +53,8 @@ fun markStackBlock(
         generateSequence(instruction) { currentInstruction ->
             program.listing.getInstructionBefore(currentInstruction.address)
         }.take(50)
-            .takeWhile { instruction ->
-                program.listing
-                    .getInstructionBefore(instruction.address)
-                    ?.flowType
-                    ?.let { !it.isJump && !it.isCall } != false
+            .takeWhile {
+                it.flowType?.let { !it.isJump && !it.isCall && !it.isTerminal } == true
             }.lastOrNull()
             ?.address
             ?.offset ?: throw IllegalStateException("Failed to find start of stack block building instructions.")
@@ -84,7 +81,7 @@ fun markStackBlock(
                     ?: return true
 
             // Execute until we hit a jump or call. This is probably the end of the block setup code.
-            return nextInstruction.flowType.let { it.isJump || it.isCall }
+            return nextInstruction.flowType.let { it.isJump || it.isCall || it.isTerminal }
         }
     } while (!isBlockFinishedBeingBuilt())
 
