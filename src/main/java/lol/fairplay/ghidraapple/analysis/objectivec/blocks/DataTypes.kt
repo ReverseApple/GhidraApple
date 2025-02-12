@@ -64,8 +64,9 @@ class BlockLayoutDataType(
                 ?.let { isDataTypeBlockLayoutType(it.dataType) } == true ||
                 location.program.listing
                     .getFunctionContaining(location.address)
-                    .stackFrame.stackVariables
-                    .firstOrNull {
+                    ?.stackFrame
+                    ?.stackVariables
+                    ?.firstOrNull {
                         it.stackOffset ==
                             location.program.listing
                                 .getInstructionAt(location.address)
