@@ -22,11 +22,6 @@ fun markGlobalBlock(
 ) {
     BlockLayout(program, address)
         .apply {
-            // The [BlockLayout] constructor does some minimal checks to where we can be fairly certain that
-            //  what we just parsed was, in fact, a block layout. However, it shouldn't hurt to perform some
-            //  additional checks. We expect this to be a global block, so if the parsed flags have that bit
-            //  set, that's more assurance that we parsed a block layout, and it's global as expected. After
-            //  that, we can finally mark up the program and invoke function with the data types.
             if (BlockFlag.BLOCK_IS_GLOBAL !in flags) throw IOException("This is not a global block.")
             // TODO: Determine if we can get this to be undone with a single undo command instead of several.
             program.withTransaction<Exception>("update program") {
@@ -139,6 +134,7 @@ fun markStackBlock(
         ByteBuffer.wrap(stackBlockBytes).order(ByteOrder.LITTLE_ENDIAN),
         program.address(firstRelevantInstructionAddress).toString(),
     ).apply {
+        if (BlockFlag.BLOCK_IS_GLOBAL in flags) throw IOException("This is a global block, not a stack block.")
         // TODO: Determine if we can get this to be undone with a single undo command instead of several.
         program.withTransaction<Exception>("update program") {
             function.stackFrame.createVariable(
