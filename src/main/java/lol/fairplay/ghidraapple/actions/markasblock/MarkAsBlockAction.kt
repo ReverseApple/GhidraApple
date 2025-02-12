@@ -8,9 +8,12 @@ import ghidra.app.decompiler.DecompilerLocation
 import ghidra.app.plugin.core.codebrowser.CodeViewerActionContext
 import ghidra.app.plugin.core.decompile.DecompilerActionContext
 import ghidra.program.model.data.Pointer
-import ghidra.program.model.symbol.StackReference
+import ghidra.program.model.symbol.RefType
 import lol.fairplay.ghidraapple.GhidraApplePluginPackage
 import lol.fairplay.ghidraapple.analysis.objectivec.blocks.BlockLayoutDataType
+import lol.fairplay.ghidraapple.analysis.utilities.address
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 class MarkAsBlockAction : DockingAction("Mark As Objective-C Block", null) {
     init {
@@ -22,89 +25,66 @@ class MarkAsBlockAction : DockingAction("Mark As Objective-C Block", null) {
             actionContext as? ProgramLocationActionContext ?: return
 
         when (typedContext) {
-            is CodeViewerActionContext -> handleDisassemblyLocation(typedContext)
-            is DecompilerActionContext -> handleDecompilationLocation(typedContext)
+            is CodeViewerActionContext ->
+                typedContext.program.listing
+                    .getInstructionAt(typedContext.address)
+                    ?.let {
+                        markStackBlock(
+                            typedContext.program,
+                            typedContext.program.listing.getFunctionContaining(typedContext.address),
+                            it,
+                        )
+                    }
+                    ?: run {
+                        markGlobalBlock(typedContext.program, typedContext.address)
+                    }
+            is DecompilerActionContext -> {
+                val decompilerLocation =
+                    typedContext.location as DecompilerLocation
+                val selectedInstruction =
+                    typedContext.program.listing.getInstructionAt(typedContext.address)
+
+                markStackBlock(
+                    typedContext.program,
+                    typedContext.function,
+                    selectedInstruction,
+                )
+            }
         }
     }
 
-    /**
-     * Ran when the user selects the action from an address in the disassembly. Performs some sanity
-     *  checks on the context before passing to the function that actually handles the block.
-     */
-    private fun handleDisassemblyLocation(context: CodeViewerActionContext) {
-        val dataAtLocation =
-            context.program.listing.getDataAt(context.address)
-                ?: throw IllegalArgumentException(
-                    "No data at address 0x${context.address}. " +
-                        "Please use the Decompile pane if marking a stack block.",
+    override fun isEnabledForContext(context: ActionContext?): Boolean {
+        val typedContext =
+            context as? ProgramLocationActionContext ?: return false
+        if (BlockLayoutDataType.isLocationBlockLayout(typedContext.location)) return false
+
+        typedContext.program.listing.getInstructionAt(typedContext.address)?.let {
+            val pointerAddress =
+                it.referencesFrom
+                    .firstOrNull { it.referenceType == RefType.DATA }
+                    ?.toAddress ?: return false
+            typedContext.program.symbolTable
+                .getSymbols(pointerAddress)
+                .firstOrNull { it.isPrimary }
+                ?.apply { if (name != "__NSConcreteStackBlock") return false }
+                ?: return false
+            return true
+        } ?: run {
+            val dataAtLocation =
+                typedContext.program.listing.getDataAt(typedContext.address) ?: return false
+            if (BlockLayoutDataType.isDataTypeBlockLayoutType(dataAtLocation.dataType)) return false
+            if (dataAtLocation.dataType !is Pointer) return false
+            val pointerAddress =
+                typedContext.program.address(
+                    ByteBuffer.wrap(dataAtLocation.bytes).order(ByteOrder.LITTLE_ENDIAN).long,
                 )
-
-        if (BlockLayoutDataType.isDataTypeBlockLayoutType(dataAtLocation.dataType)) {
-            throw IllegalArgumentException("The data at address 0x${context.address} is already a block.")
+            typedContext.program.symbolTable
+                .getSymbols(pointerAddress)
+                .firstOrNull { it.isPrimary }
+                ?.apply { if (name != "__NSConcreteGlobalBlock") return false }
+                ?: return false
+            return true
         }
-
-        if (dataAtLocation.dataType !is Pointer) {
-            throw IllegalArgumentException(
-                "The address 0x${context.address} does not contain a pointer. " +
-                    "This is probably not a block. Please start with an address that contains a pointer.",
-            )
-        }
-
-        markGlobalBlock(context.program, context.address)
+        return false
     }
-
-    /**
-     * Ran when the user selects the action from a location in the decompilation. Performs some sanity
-     *  checks on the context before passing to the function that actually handles the block.
-     */
-    private fun handleDecompilationLocation(context: DecompilerActionContext) {
-        val function =
-            context.program.listing.getFunctionContaining(context.address)
-                ?: throw IllegalArgumentException(
-                    "Address 0x${context.address} is not part of a function.",
-                )
-
-        val decompilerLocation =
-            context.location as? DecompilerLocation
-                ?: throw IllegalStateException(
-                    "Received a DecompilerActionContext with a non-DecompilerLocation location.",
-                )
-
-        val selectedInstruction =
-            context.program.listing.getInstructionAt(context.address)
-                ?: throw IllegalArgumentException("Address 0x${context.address} does not contain an instruction.")
-
-        // We're basically assuming this is a stack block at this point, so we ensure this is a stack-y instruction.
-        val stackReference =
-            selectedInstruction.referencesFrom.filterIsInstance<StackReference>().firstOrNull()
-                ?: throw IllegalArgumentException(
-                    "The instruction at address 0x${context.address} does not operate on the stack. " +
-                        "This is probably not a stack block. " +
-                        "Please start with an instruction that operates on the stack.",
-                )
-
-        if (
-            function
-                .stackFrame
-                .stackVariables
-                .firstOrNull { it.stackOffset == stackReference.stackOffset }
-                ?.dataType
-                ?.let { BlockLayoutDataType.isDataTypeBlockLayoutType(it) } == true
-        ) {
-            throw IllegalArgumentException(
-                "Variable at stack offset ${stackReference.stackOffset} is already a block.",
-            )
-        }
-
-        markStackBlock(
-            context.program,
-            function,
-            // For some reason, the line number in [context] is more accurate than the one in [decompilerLocation].
-            context.lineNumber,
-            decompilerLocation,
-            stackReference,
-        )
-    }
-
-    override fun isEnabledForContext(context: ActionContext?): Boolean = context is ProgramLocationActionContext
 }

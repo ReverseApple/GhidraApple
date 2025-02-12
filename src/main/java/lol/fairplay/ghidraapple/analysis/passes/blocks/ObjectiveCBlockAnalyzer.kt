@@ -11,6 +11,7 @@ import ghidra.program.model.symbol.SourceType
 import ghidra.program.model.symbol.Symbol
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.actions.markasblock.markGlobalBlock
+import lol.fairplay.ghidraapple.actions.markasblock.markStackBlock
 
 class ObjectiveCBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYTE_ANALYZER) {
     companion object {
@@ -22,8 +23,7 @@ class ObjectiveCBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType
     var stackBlockSymbol: Symbol? = null
 
     init {
-        // TODO: Confirm if this is the correct priority
-        priority = AnalysisPriority.REFERENCE_ANALYSIS.after()
+        priority = AnalysisPriority.DATA_TYPE_PROPOGATION.after()
         setSupportsOneTimeAnalysis()
     }
 
@@ -53,15 +53,16 @@ class ObjectiveCBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType
         stackBlockSymbol?.let {
             for (reference in program.referenceManager.getReferencesTo(it.address)) {
                 if (reference.referenceType == RefType.DATA && reference.source == SourceType.ANALYSIS) {
-                    val function = program.listing.getFunctionContaining(reference.fromAddress)
-                    // TODO: Figure out a way to get the other parameters without redoing the decompilation.
-//                    markStackBlock(
-//                        program,
-//                        function,
-//                        0,
-//                        null,
-//                        null,
-//                    )
+                    try {
+                        markStackBlock(
+                            program,
+                            program.listing.getFunctionContaining(reference.fromAddress),
+                            program.listing.getInstructionAt(reference.fromAddress),
+                        )
+                        markGlobalBlock(program, reference.fromAddress)
+                    } catch (e: Exception) {
+                        println("Failed to mark global block at address ${reference.fromAddress} \n\t ${e.message}")
+                    }
                 }
             }
         }

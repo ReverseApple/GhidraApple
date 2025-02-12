@@ -13,6 +13,8 @@ import ghidra.program.model.data.PointerDataType
 import ghidra.program.model.data.StructureDataType
 import ghidra.program.model.data.UnsignedLongLongDataType
 import ghidra.program.model.data.VoidDataType
+import ghidra.program.model.symbol.StackReference
+import ghidra.program.util.ProgramLocation
 
 private const val BLOCK_CATEGORY_PATH_STRING = "/GA_BLOCK"
 
@@ -55,6 +57,22 @@ class BlockLayoutDataType(
                 emptyArray(),
                 emptyArray(),
             )
+
+        fun isLocationBlockLayout(location: ProgramLocation): Boolean =
+            location.program.listing
+                .getDataAt(location.address)
+                ?.let { isDataTypeBlockLayoutType(it.dataType) } == true ||
+                location.program.listing
+                    .getFunctionContaining(location.address)
+                    .stackFrame.stackVariables
+                    .firstOrNull {
+                        it.stackOffset ==
+                            location.program.listing
+                                .getInstructionAt(location.address)
+                                .referencesFrom
+                                .firstOrNull { it is StackReference }
+                                ?.let { (it as StackReference).stackOffset }
+                    }?.let { isDataTypeBlockLayoutType(it.dataType) } == true
 
         fun isDataTypeBlockLayoutType(dataType: DataType) =
             dataType is BlockLayoutDataType ||
