@@ -1,18 +1,17 @@
 package lol.fairplay.ghidraapple.actions.markasblock
 
-import ghidra.app.decompiler.DecompilerLocation
 import ghidra.app.emulator.EmulatorHelper
 import ghidra.program.model.address.Address
 import ghidra.program.model.data.DataUtilities
 import ghidra.program.model.listing.Function
+import ghidra.program.model.listing.Instruction
 import ghidra.program.model.listing.Program
+import ghidra.program.model.scalar.Scalar
 import ghidra.program.model.symbol.SourceType
 import ghidra.program.model.symbol.StackReference
-import lol.fairplay.ghidraapple.analysis.objectivec.blocks.BlockFlag
 import lol.fairplay.ghidraapple.analysis.objectivec.blocks.BlockLayout
 import lol.fairplay.ghidraapple.analysis.objectivec.blocks.BlockLayoutDataType
 import lol.fairplay.ghidraapple.analysis.utilities.address
-import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -22,7 +21,6 @@ fun markGlobalBlock(
 ) {
     BlockLayout(program, address)
         .apply {
-            if (BlockFlag.BLOCK_IS_GLOBAL !in flags) throw IOException("This is not a global block.")
             // TODO: Determine if we can get this to be undone with a single undo command instead of several.
             program.withTransaction<Exception>("update program") {
                 DataUtilities.createData(
@@ -40,9 +38,7 @@ fun markGlobalBlock(
 fun markStackBlock(
     program: Program,
     function: Function,
-    lineNumber: Int,
-    decompilerLocation: DecompilerLocation,
-    stackReference: StackReference,
+    instruction: Instruction,
 ) {
     /**
      * We will use the result of this function to start emulating the function as it builds up the stack
@@ -53,33 +49,18 @@ fun markStackBlock(
      *  correctly build the relevant portions of the stack block in its emulated stack.
      */
     val firstRelevantInstructionAddress =
-        {
-            val precedingLineNumber = lineNumber - 1
 
-            // We have to iterate through the tokens for one with the line parent we want, and then take the parent.
-            val precedingLine =
-                decompilerLocation.decompile.cCodeMarkup
-                    .tokenIterator(true)
-                    .iterator()
-                    .asSequence()
-                    .firstOrNull { it.lineParent?.lineNumber == precedingLineNumber }
-                    ?.lineParent
-                    ?: throw IllegalStateException("Could not find preceding line $precedingLineNumber in $function.")
-
-            val precedingLineMaxAddress =
-                precedingLine.allTokens.maxByOrNull { it.maxAddress ?: program.minAddress }?.maxAddress
-                    ?: throw IllegalStateException(
-                        "Could not find the max address for preceding line $precedingLineNumber in $function.",
-                    )
-
-            val lastPrecedingInstruction =
-                program.listing.getInstructionAt(precedingLineMaxAddress)
-                    ?: throw IllegalStateException(
-                        "Failed to read preceding instruction at $precedingLineMaxAddress.",
-                    )
-
-            precedingLineMaxAddress.offset + lastPrecedingInstruction.length
-        }()
+        generateSequence(instruction) { currentInstruction ->
+            program.listing.getInstructionBefore(currentInstruction.address)
+        }.take(50)
+            .takeWhile { instruction ->
+                program.listing
+                    .getInstructionBefore(instruction.address)
+                    ?.flowType
+                    ?.let { !it.isJump && !it.isCall } != false
+            }.lastOrNull()
+            ?.address
+            ?.offset ?: throw IllegalStateException("Failed to find start of stack block building instructions.")
 
     // This is an older API, but the newer [PcodeEmulator] API is honestly a bit overkill for our purposes here.
     val helper = EmulatorHelper(program)
@@ -107,22 +88,39 @@ fun markStackBlock(
         }
     } while (!isBlockFinishedBeingBuilt())
 
-    // The stack reference gives us a negative offset relative to the function's stack frame, but we need to
-    //  make it positive in order to read from our emulated stack.
-    val positiveStackOffset = function.stackFrame.frameSize + stackReference.stackOffset
+    // This is the offset into the function's stack frame where the actual program will write the
+    //  stack block. We'll use it we'll use to type that part of the function's stack frame.
+    val trueStackOffset =
+        instruction.referencesFrom
+            .filterIsInstance<StackReference>()
+            .first()
+            .stackOffset
 
-    val minimalBlockType =
-        BlockLayoutDataType.minimalBlockType(program.dataTypeManager)
+    // This is the offset where out emulator will write the stack block. The given instruction should
+    //  be a store instruction that writes the first field the block into the stack. It may sometimes
+    //  include a scalar that is summed with the value of the stack pointer to create the destination
+    //  address. Since the emulator starts with a stack pointer value of zero, we can use this scalar
+    //  (if it exits) to determine where in the emulator's memory to look for the stack block.
+    val emulatedStackOffset =
+        instruction.getOpObjects(1).let {
+            if (it[0] != program.getRegister("sp")) {
+                throw IllegalArgumentException("Cannot calculate stack offset.")
+            }
+            (it.getOrNull(1) as? Scalar)?.value ?: 0
+        }
+
+    val minimalBlockLength =
+        BlockLayoutDataType.minimalBlockType(program.dataTypeManager).length
 
     val stackBlockBytes =
         helper
-            .readStackValue(positiveStackOffset, minimalBlockType.length, false)
+            .readStackValue(emulatedStackOffset.toInt(), minimalBlockLength, false)
             // The above returns a BigInteger, which we don't want, so we need to convert it to a ByteArray.
             .toByteArray()
             // The above also doesn't bother with leading zeros (as it thinks we want a number), so we have
             //  to add any zero bytes back onto the beginning.
             .let {
-                val remainingBytes = minimalBlockType.length - it.size
+                val remainingBytes = minimalBlockLength - it.size
                 // TODO: Confirm that ByteArray(n) is guaranteed to contain only null bytes.
                 if (remainingBytes != 0) ByteArray(remainingBytes) + it else it
             }
@@ -134,12 +132,11 @@ fun markStackBlock(
         ByteBuffer.wrap(stackBlockBytes).order(ByteOrder.LITTLE_ENDIAN),
         program.address(firstRelevantInstructionAddress).toString(),
     ).apply {
-        if (BlockFlag.BLOCK_IS_GLOBAL in flags) throw IOException("This is a global block, not a stack block.")
         // TODO: Determine if we can get this to be undone with a single undo command instead of several.
         program.withTransaction<Exception>("update program") {
             function.stackFrame.createVariable(
                 "block_${program.address(invokePointer)}",
-                stackReference.stackOffset,
+                trueStackOffset,
                 toDataType(),
                 SourceType.ANALYSIS,
             )

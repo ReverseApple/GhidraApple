@@ -36,26 +36,7 @@ class BlockLayout(
     buffer: ByteBuffer,
     private val rootDataTypeSuffix: String? = null,
 ) : StructConverter {
-    val isaPointer =
-        buffer.getLong().also { it ->
-            val isaSymbol =
-                program.symbolTable
-                    .getSymbols(program.address(it))
-                    .firstOrNull { it.isPrimary }
-                    ?: throw IOException("The `isa` field of the block doesn't point to a known symbol.")
-            if (isaSymbol.name !in
-                listOf(
-                    "__NSConcreteStackBlock",
-                    "__NSConcreteMallocBlock",
-                    "__NSConcreteAutoBlock",
-                    "__NSConcreteFinalizingBlock",
-                    "__NSConcreteGlobalBlock",
-                    "__NSConcreteWeakBlockVariable",
-                )
-            ) {
-                throw IOException("The `isa` field of the block doesn't point to a valid target.")
-            }
-        }
+    val isaPointer = buffer.getLong()
     val flagsBitfield = buffer.getInt()
     val flags: Set<BlockFlag> =
         BlockFlag.entries
