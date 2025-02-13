@@ -51,8 +51,6 @@ fun markStackBlock(
                         ?.let { !it.isJump && !it.isCall } == true
             }
 
-    // Emulated stack
-
     // This is the offset where out emulator will write the stack block. The given instruction should
     //  be a store instruction that writes the first field the block into the stack. It may sometimes
     //  include a scalar that is summed with the value of the stack pointer to create the destination
@@ -69,7 +67,7 @@ fun markStackBlock(
 
     // This is the offset into the function's stack frame where the actual program will write the
     //  stack block. We'll use it we'll use to type that part of the function's stack frame.
-    val trueStackOffset =
+    val baseStackOffset =
         instruction.referencesFrom
             .filterIsInstance<StackReference>()
             .first()
@@ -78,7 +76,7 @@ fun markStackBlock(
     val minimalBlockLayoutSize =
         BlockLayoutDataType.minimalBlockType(program.dataTypeManager).length
 
-    val stackReferenceByteList = mutableListOf<Byte>()
+    val stackReferenceBlockBytes = ByteArray(minimalBlockLayoutSize)
 
     run instructionLoop@{
         instructions.forEach { instruction ->
@@ -98,35 +96,36 @@ fun markStackBlock(
                         Pair(stackReference, it.filterNot { it == stackReference })
                     }
                 if (stackReference != null) {
-                    when {
-                        otherReferences.isEmpty() -> {
-                            // This (probably) only happens when writing the flags to the stack. Our emulator
-                            //  should help cover the gaps there. In any case, assume we're trying to write a
-                            //  long-sized data block to the stack and write an empty list of bytes.
-                            stackReferenceByteList += ByteArray(Long.SIZE_BYTES).toList()
-                        }
-                        else ->
-                            otherReferences.forEach {
-                                stackReferenceByteList +=
-                                    ByteBuffer
-                                        .allocate(Long.SIZE_BYTES)
-                                        .order(ByteOrder.LITTLE_ENDIAN)
-                                        .putLong(it.toAddress.offset)
-                                        .array()
-                                        .toList()
-                            }
+                    val positiveStackOffsetForThisInstruction = stackReference.stackOffset - baseStackOffset
+                    // If the offset isn't within the range for our stack block, skip it.
+                    if (
+                        positiveStackOffsetForThisInstruction < 0 ||
+                        positiveStackOffsetForThisInstruction >= minimalBlockLayoutSize
+                    ) {
+                        return@let
                     }
+                    val bytesToWrite =
+                        when {
+                            otherReferences.isEmpty() -> {
+                                // This (probably) only happens when writing the flags to the stack. Our emulator
+                                //  should help cover the gaps there. In any case, assume we're trying to write a
+                                //  long-sized data block to the stack and write an empty list of bytes.
+                                ByteArray(Long.SIZE_BYTES)
+                            }
+                            else ->
+                                ByteBuffer
+                                    .allocate(Long.SIZE_BYTES * otherReferences.size)
+                                    .order(ByteOrder.LITTLE_ENDIAN)
+                                    .apply { otherReferences.forEach { putLong(it.toAddress.offset) } }
+                                    .array()
+                        }
+                    bytesToWrite.copyInto(stackReferenceBlockBytes, positiveStackOffsetForThisInstruction)
                 } else {
                     // TODO: Do we need to do anything here?
                 }
             }
-            // If our stack-reference-built stack byte list is the right size, break out of the loop.
-            if (stackReferenceByteList.size == minimalBlockLayoutSize) return@instructionLoop
         }
     }
-
-    // Get the stack we built up from references.
-    val stackReferenceBlockBytes = stackReferenceByteList.toByteArray()
 
     // Get the state of the stack in our emulator.
     val emulatedStackBlockBytes =
@@ -182,7 +181,7 @@ fun markStackBlock(
         program.withTransaction<Exception>("update program") {
             function.stackFrame.createVariable(
                 "block_${program.address(invokePointer)}",
-                trueStackOffset,
+                baseStackOffset,
                 toDataType(),
                 SourceType.ANALYSIS,
             )
