@@ -21,8 +21,7 @@ fun markGlobalBlock(
 ) {
     BlockLayout(program, address)
         .apply {
-            // TODO: Determine if we can get this to be undone with a single undo command instead of several.
-            program.withTransaction<Exception>("update program") {
+            program.withTransaction<Exception>("Mark Global Block at 0x$address") {
                 DataUtilities.createData(
                     program,
                     address,
@@ -169,9 +168,12 @@ fun markStackBlock(
         program,
         resultBuffer.position(0),
         instruction.address.toString(),
-    ).apply {
-        // TODO: Determine if we can get this to be undone with a single undo command instead of several.
-        program.withTransaction<Exception>("update program") {
+    ).let {
+        if (it.flagsBitfield != 0) return@let it
+        // TODO: Handle case where flags are empty.
+        return@let it
+    }.apply {
+        program.withTransaction<Exception>("Mark Stack Block at 0x${instruction.address}") {
             function.stackFrame.createVariable(
                 "block_${program.address(invokePointer)}",
                 baseStackOffset,

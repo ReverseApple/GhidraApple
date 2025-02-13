@@ -1,10 +1,9 @@
 package lol.fairplay.ghidraapple.actions.markasblock
 
 import docking.ActionContext
-import docking.action.DockingAction
 import docking.action.MenuData
 import ghidra.app.context.ProgramLocationActionContext
-import ghidra.app.decompiler.DecompilerLocation
+import ghidra.app.context.ProgramLocationContextAction
 import ghidra.app.plugin.core.codebrowser.CodeViewerActionContext
 import ghidra.app.plugin.core.decompile.DecompilerActionContext
 import ghidra.program.model.data.Pointer
@@ -15,38 +14,39 @@ import lol.fairplay.ghidraapple.analysis.utilities.address
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-class MarkAsBlockAction : DockingAction("Mark As Objective-C Block", null) {
+class MarkAsBlockAction : ProgramLocationContextAction("Mark As Objective-C Block", null) {
+    companion object {
+        private fun makeMenuItemText(blockType: String) = "Mark as Objective-C $blockType Block"
+    }
+
     init {
         popupMenuData = MenuData(arrayOf(this.name), GhidraApplePluginPackage.PKG_NAME)
     }
 
-    override fun actionPerformed(actionContext: ActionContext?) {
-        val typedContext =
-            actionContext as? ProgramLocationActionContext ?: return
-
-        when (typedContext) {
-            is CodeViewerActionContext ->
-                typedContext.program.listing
-                    .getInstructionAt(typedContext.address)
+    override fun actionPerformed(context: ProgramLocationActionContext) {
+        when (context) {
+            is CodeViewerActionContext -> {
+                context.program.listing
+                    .getInstructionAt(context.address)
                     ?.let {
                         markStackBlock(
-                            typedContext.program,
-                            typedContext.program.listing.getFunctionContaining(typedContext.address),
+                            context.program,
+                            context.program.listing.getFunctionContaining(context.address),
                             it,
                         )
                     }
                     ?: run {
-                        markGlobalBlock(typedContext.program, typedContext.address)
+                        markGlobalBlock(context.program, context.address)
                     }
+            }
+
             is DecompilerActionContext -> {
-                val decompilerLocation =
-                    typedContext.location as DecompilerLocation
                 val selectedInstruction =
-                    typedContext.program.listing.getInstructionAt(typedContext.address)
+                    context.program.listing.getInstructionAt(context.address)
 
                 markStackBlock(
-                    typedContext.program,
-                    typedContext.function,
+                    context.program,
+                    context.function,
                     selectedInstruction,
                 )
             }
@@ -67,6 +67,13 @@ class MarkAsBlockAction : DockingAction("Mark As Objective-C Block", null) {
                 .getSymbols(pointerAddress)
                 .firstOrNull { it.isPrimary }
                 ?.apply { if (name != "__NSConcreteStackBlock") return false }
+                ?.also {
+                    popupMenuData =
+                        MenuData(
+                            arrayOf(makeMenuItemText("Stack")),
+                            GhidraApplePluginPackage.PKG_NAME,
+                        )
+                }
                 ?: return false
             return true
         } ?: run {
@@ -82,6 +89,13 @@ class MarkAsBlockAction : DockingAction("Mark As Objective-C Block", null) {
                 .getSymbols(pointerAddress)
                 .firstOrNull { it.isPrimary }
                 ?.apply { if (name != "__NSConcreteGlobalBlock") return false }
+                ?.also {
+                    popupMenuData =
+                        MenuData(
+                            arrayOf(makeMenuItemText("Global")),
+                            GhidraApplePluginPackage.PKG_NAME,
+                        )
+                }
                 ?: return false
             return true
         }
