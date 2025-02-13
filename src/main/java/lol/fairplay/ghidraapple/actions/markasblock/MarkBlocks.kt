@@ -104,22 +104,15 @@ fun markStackBlock(
                     ) {
                         return@let
                     }
-                    val bytesToWrite =
-                        when {
-                            otherReferences.isEmpty() -> {
-                                // This (probably) only happens when writing the flags to the stack. Our emulator
-                                //  should help cover the gaps there. In any case, assume we're trying to write a
-                                //  long-sized data block to the stack and write an empty list of bytes.
-                                ByteArray(Long.SIZE_BYTES)
-                            }
-                            else ->
-                                ByteBuffer
-                                    .allocate(Long.SIZE_BYTES * otherReferences.size)
-                                    .order(ByteOrder.LITTLE_ENDIAN)
-                                    .apply { otherReferences.forEach { putLong(it.toAddress.offset) } }
-                                    .array()
-                        }
-                    bytesToWrite.copyInto(stackReferenceBlockBytes, positiveStackOffsetForThisInstruction)
+                    otherReferences.apply {
+                        if (isEmpty()) return@apply
+                        ByteBuffer
+                            .allocate(Long.SIZE_BYTES * otherReferences.size)
+                            .order(ByteOrder.LITTLE_ENDIAN)
+                            .apply { forEach { putLong(it.toAddress.offset) } }
+                            .array()
+                            .copyInto(stackReferenceBlockBytes, positiveStackOffsetForThisInstruction)
+                    }
                 } else {
                     // TODO: Do we need to do anything here?
                 }
