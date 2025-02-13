@@ -8,6 +8,7 @@ import ghidra.app.plugin.ProgramPlugin
 import ghidra.framework.plugintool.PluginInfo
 import ghidra.framework.plugintool.PluginTool
 import ghidra.framework.plugintool.util.PluginStatus
+import ghidra.util.Msg
 import lol.fairplay.ghidraapple.GhidraApplePluginPackage
 import lol.fairplay.ghidraapple.analysis.objectivec.modelling.StructureParsing
 import lol.fairplay.ghidraapple.core.objc.modelling.OCClass
@@ -25,18 +26,18 @@ class ClassParserTestingPlugin(tool: PluginTool) : ProgramPlugin(tool) {
     }
 
     private fun printClassInfo(klass: OCClass) {
-        println(klass)
-        println("inheritance: ${klass.getInheritance()?.joinToString(", ") { it.name }}")
+        Msg.debug(this, klass)
+        Msg.debug(this, "inheritance: ${klass.getInheritance()?.joinToString(", ") { it.name }}")
 
-        println("Resolved methods:")
+        Msg.debug(this, "Resolved methods:")
         klass.resolvedMethods().forEach {
-            it.abstract().last().let { println("\t${it.name} FROM ${it.parent.name}") }
+            it.abstract().last().let { Msg.debug(this, "\t${it.name} FROM ${it.parent.name}") }
         }
 
-        println("Resolved properties:")
+        Msg.debug(this, "Resolved properties:")
         klass.resolvedProperties().forEach {
             val abstract = it.abstract().last()
-            println("\t${it.name} FROM ${abstract.parent.name} IVAR: ${ abstract.getBackingIvar()?.name ?: "None"}")
+            Msg.debug(this, "\t${it.name} FROM ${abstract.parent.name} IVAR: ${ abstract.getBackingIvar()?.name ?: "None"}")
         }
     }
 

@@ -99,7 +99,7 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
             }
 
             if (method.parent != klass) {
-                Msg.info(this, "Method ${klass.name}->${method.name} does not belong to class ${klass.name}! Skipping...")
+                Msg.debug(this, "Method ${klass.name}->${method.name} does not belong to class ${klass.name}! Skipping...")
                 return@forEach
             }
 
@@ -144,7 +144,7 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
         resolution: ResolvedMethod,
         fcnEntity: Function,
     ) {
-        println("Applying method insights to ${resolution.concrete().name}...")
+        Msg.debug(this, "Applying method insights to ${resolution.concrete().name}...")
         val method = resolution.concrete()
         val chain = definitionChain(resolution, "        ")
 
@@ -196,7 +196,7 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
                     )
                 }.getOrNull() ?: return@forEachIndexed
 
-            Msg.info(this, "Applying argument ${i + 2} type to function for ${klass.name}->${method.name}...")
+            Msg.debug(this, "Applying argument ${i + 2} type to function for ${klass.name}->${method.name}...")
 
             parameters.add(ParameterImpl(newNames[i], paramDT, stackOffset, program))
         }
@@ -206,7 +206,7 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
             returnVar.setDataType(returnDT, SourceType.ANALYSIS)
         }
 
-        println(newNames)
+        Msg.debug(this, newNames)
 
         fcnEntity.updateFunction(
             null,
@@ -226,7 +226,7 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
         val declaration = resolution.concrete().declaration()
         val definitionChain = definitionChain(resolution, "        ")
 
-        println("Applying property insights to ${resolution.concrete().name}...")
+        Msg.debug(this, "Applying property insights to ${resolution.concrete().name}...")
 
         getter.addTag(PROPERTY_TAG_GETTER)
         val comment =

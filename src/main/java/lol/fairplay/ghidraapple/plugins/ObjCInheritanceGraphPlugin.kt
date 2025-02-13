@@ -9,6 +9,7 @@ import ghidra.app.services.GraphDisplayBroker
 import ghidra.framework.plugintool.PluginInfo
 import ghidra.framework.plugintool.PluginTool
 import ghidra.framework.plugintool.util.PluginStatus
+import ghidra.util.Msg
 import ghidra.util.task.TaskLauncher
 import lol.fairplay.ghidraapple.GhidraApplePluginPackage
 import lol.fairplay.ghidraapple.analysis.objectivec.modelling.StructureParsing
@@ -37,7 +38,7 @@ class ObjCInheritanceGraphPlugin(tool: PluginTool) : ProgramPlugin(tool) {
 
                     val parser = StructureParsing(currentProgram)
                     val classModel = parser.parseClass(data.address.unsignedOffset)!!
-                    println(classModel)
+                    Msg.debug(this, classModel)
 
                     // Construct a graph of the abstraction.
                     val graphDisplayBroker = tool.getService(GraphDisplayBroker::class.java)

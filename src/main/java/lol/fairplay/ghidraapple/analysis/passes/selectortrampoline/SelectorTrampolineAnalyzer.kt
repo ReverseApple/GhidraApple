@@ -20,6 +20,7 @@ import ghidra.program.model.listing.Variable
 import ghidra.program.model.mem.MemoryBlock
 import ghidra.program.model.pcode.PcodeOp
 import ghidra.program.model.symbol.SourceType
+import ghidra.util.Msg
 import ghidra.util.exception.CancelledException
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.analysis.utilities.getConstantFromVarNode
@@ -124,7 +125,7 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
                     m.increment()
 
                     if (results.highFunction == null) {
-                        println("function name: ${results.function.name}")
+                        Msg.debug(this, "function name: ${results.function.name}")
                         return results.function to null
                     }
 

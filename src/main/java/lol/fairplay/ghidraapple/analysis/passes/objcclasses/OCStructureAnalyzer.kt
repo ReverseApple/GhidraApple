@@ -106,7 +106,7 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
         taskMonitor?.message = "Creating nullary types..."
 
         externalClasses.forEach {
-            println("Creating nullary: $it")
+            Msg.debug(this, "Creating nullary: $it")
             program.dataTypeManager.addDataType(StructureDataType(structureCategory, it, 0), null)
         }
 
