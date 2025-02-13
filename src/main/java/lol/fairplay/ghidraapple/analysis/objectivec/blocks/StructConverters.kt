@@ -37,7 +37,12 @@ class BlockLayout(
     private val rootDataTypeSuffix: String? = null,
 ) : StructConverter {
     val isaPointer = buffer.getLong()
-    val flagsBitfield = buffer.getInt()
+    val flagsBitfield =
+        buffer.getInt().also {
+            // We use the flags to propagate types and such. If we don't have any, something
+            //  probably went wrong.
+            if (it == 0) throw IllegalStateException("No flags recovered!")
+        }
     val flags: Set<BlockFlag> =
         BlockFlag.entries
             .filter { (flagsBitfield and it.value) != 0 }
