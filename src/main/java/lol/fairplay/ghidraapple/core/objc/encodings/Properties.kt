@@ -1,6 +1,10 @@
 package lol.fairplay.ghidraapple.core.objc.encodings
 
-enum class PropertyAttribute(val code: Char) {
+import ghidra.util.Msg
+
+enum class PropertyAttribute(
+    val code: Char,
+) {
     READ_ONLY('R'),
     BY_COPY('C'),
     BY_REFERENCE('&'),
@@ -48,7 +52,7 @@ data class EncodedProperty(
 )
 
 fun parseEncodedProperty(input: String): EncodedProperty {
-    println("Property: $input")
+    Msg.debug("parseEncodedProperty", "Property: $input")
     val stmts = input.split(',')
     var type: Pair<TypeNode, List<SignatureTypeModifier>?>? = null
     var ivarName: String? = null

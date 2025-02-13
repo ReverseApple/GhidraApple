@@ -4,6 +4,7 @@ import ghidra.program.model.data.CategoryPath
 import ghidra.program.model.data.DataType
 import ghidra.program.model.data.PointerDataType
 import ghidra.program.model.listing.Program
+import ghidra.util.Msg
 import lol.fairplay.ghidraapple.core.objc.encodings.EncodingLexer
 import lol.fairplay.ghidraapple.core.objc.encodings.TypeEncodingParser
 import lol.fairplay.ghidraapple.core.objc.encodings.TypeNode
@@ -12,7 +13,7 @@ class TypeResolver(val program: Program) {
     private val dtm = program.dataTypeManager
 
     fun parseEncoded(encodedType: String): DataType? {
-        println("input: $encodedType")
+        Msg.debug(this, "input: $encodedType")
 
         val result = TypeEncodingParser(EncodingLexer(encodedType)).parse()
         return buildParsed(result)
