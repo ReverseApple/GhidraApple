@@ -45,14 +45,37 @@ class ObjectiveCBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType
         log: MessageLog,
     ): Boolean {
         globalBlockSymbol?.let {
-            for (reference in program.referenceManager.getReferencesTo(it.address)) {
-                if (reference.referenceType == RefType.DATA) {
-                    try {
-                        markGlobalBlock(program, reference.fromAddress)
-                    } catch (_: Exception) {
-                        println("Failed to mark global block at address 0x${reference.fromAddress}")
+            ConcurrentQ<Reference, Boolean>(
+                object : QCallback<Reference, Boolean> {
+                    override fun process(
+                        reference: Reference,
+                        monitor: TaskMonitor?,
+                    ): Boolean {
+                        if (reference.referenceType == RefType.DATA) {
+                            markGlobalBlock(program, reference.fromAddress)
+                        }
+                        return true
+                    }
+                },
+                // [ConcurrentQ] doesn't seem to support passing in a filled [LinkedList] as a constructor
+                //  parameter, so we instead pass an empty list. The references will be added below.
+                LinkedList(),
+                GThreadPool.getPrivateThreadPool("Global Block Parser Thread Pool"),
+                null,
+                true,
+                0,
+                false,
+            ).apply {
+                add(program.referenceManager.getReferencesTo(it.address))
+                for (result in waitForResults()) {
+                    result.error?.let {
+                        println(
+                            "Parsing failed for global block with address ${result.item.fromAddress}.",
+                        )
+                        it.printStackTrace()
                     }
                 }
+                dispose()
             }
         }
 
