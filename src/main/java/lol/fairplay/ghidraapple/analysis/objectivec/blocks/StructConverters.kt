@@ -1,7 +1,9 @@
 package lol.fairplay.ghidraapple.analysis.objectivec.blocks
 
+import ghidra.app.cmd.disassemble.DisassembleCommand
 import ghidra.app.util.bin.StructConverter
 import ghidra.program.model.address.Address
+import ghidra.program.model.address.AddressSet
 import ghidra.program.model.data.DataType
 import ghidra.program.model.data.DataUtilities
 import ghidra.program.model.data.FunctionDefinitionDataType
@@ -190,9 +192,31 @@ class BlockLayout(
                     ?.firstOrNull { it.fieldName == "invoke" }
                     ?.dataType as? PointerDataType
             )?.dataType as? FunctionDefinitionDataType ?: return
+        val invokeAddress = program.address(invokePointer)
         program.listing
-            .getFunctionAt(program.address(invokePointer))
+            .getFunctionAt(invokeAddress)
             .let {
+                it
+                    // In some rare cases, Ghidra may have failed to understand that there is a function at
+                    //  the invoke address. We'll clear what's there, disassemble the bytes, and attempt to
+                    //  create a new function. This will probably only work fully if there is only a single
+                    //  mistaken code unit at the invoke address. The disassembly may not be fully accurate
+                    //  if there are additional code units in the way that are not cleared.
+                    // TODO: Is there a way that we can **safely** clear more than just the invoke address?
+                    ?: run {
+                        // Clear what is at the invoke address.
+                        program.listing.clearCodeUnits(invokeAddress, invokeAddress, true)
+                        // Disassemble, starting from the invoke address.
+                        DisassembleCommand(invokeAddress, null, true).applyTo(program)
+                        // Create a new function at the address.
+                        program.listing.createFunction(
+                            "FUN_$invokeAddress",
+                            invokeAddress,
+                            AddressSet(invokeAddress),
+                            SourceType.ANALYSIS,
+                        )
+                    }
+            }.let {
                 it.updateFunction(
                     // Keep the same calling convention
                     it.callingConventionName,
