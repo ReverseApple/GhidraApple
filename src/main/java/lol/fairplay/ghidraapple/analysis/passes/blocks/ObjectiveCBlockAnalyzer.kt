@@ -45,16 +45,16 @@ class ObjectiveCBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType
         log: MessageLog,
     ): Boolean {
         globalBlockSymbol?.let {
-            ConcurrentQ<Reference, Boolean>(
-                object : QCallback<Reference, Boolean> {
+            ConcurrentQ<Reference, Nothing>(
+                object : QCallback<Reference, Nothing> {
                     override fun process(
                         reference: Reference,
                         monitor: TaskMonitor?,
-                    ): Boolean {
+                    ): Nothing? {
                         if (reference.referenceType == RefType.DATA) {
                             markGlobalBlock(program, reference.fromAddress)
                         }
-                        return true
+                        return null
                     }
                 },
                 // [ConcurrentQ] doesn't seem to support passing in a filled [LinkedList] as a constructor
@@ -81,12 +81,12 @@ class ObjectiveCBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType
 
         stackBlockSymbol?.let {
             // We parallelize as some runs of [markStackBlock] may trigger the decompiler.
-            ConcurrentQ<Reference, Boolean>(
-                object : QCallback<Reference, Boolean> {
+            ConcurrentQ<Reference, Nothing>(
+                object : QCallback<Reference, Nothing> {
                     override fun process(
                         reference: Reference,
                         monitor: TaskMonitor?,
-                    ): Boolean {
+                    ): Nothing? {
                         if (reference.referenceType == RefType.DATA && reference.source == SourceType.ANALYSIS) {
                             markStackBlock(
                                 program,
@@ -94,7 +94,7 @@ class ObjectiveCBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType
                                 program.listing.getInstructionAt(reference.fromAddress),
                             )
                         }
-                        return true
+                        return null
                     }
                 },
                 // [ConcurrentQ] doesn't seem to support passing in a filled [LinkedList] as a constructor
