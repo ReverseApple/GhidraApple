@@ -167,24 +167,14 @@ fun markStackBlock(
                                         .filter { it.seqnum.target == iteratedInstruction.address }
                                         .toList()
 
-                                targetOps.apply {
-                                    if (size > 1) return@attempt_with_decompile
-                                    first().inputs.apply {
-                                        if (size > 1) return@attempt_with_decompile
-                                        first().def?.apply {
-                                            if (inputs.size > 1) return@attempt_with_decompile
-                                        } ?: return@attempt_with_decompile
-                                    }
-                                }
-
                                 val source =
                                     targetOps
-                                        .first()
-                                        .inputs
-                                        ?.first()
+                                        .singleOrNull()
+                                        ?.inputs
+                                        ?.singleOrNull()
                                         ?.def
                                         ?.inputs
-                                        ?.first() ?: return@attempt_with_decompile
+                                        ?.singleOrNull() ?: return@attempt_with_decompile
                                 val sourceBytes = ByteArray(source.size)
                                 val bytesRead = program.memory.getBytes(source.address, sourceBytes)
                                 if (bytesRead != sourceBytes.size) return@attempt_with_decompile
