@@ -45,7 +45,7 @@ class ObjectiveCBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType
                     try {
                         markGlobalBlock(program, reference.fromAddress)
                     } catch (e: Exception) {
-                        println("Failed to mark global block at address ${reference.fromAddress} \n\t ${e.message}")
+                        println("Failed to mark global block at address 0x${reference.fromAddress} \n\t ${e.message}")
                     }
                 }
             }
@@ -60,7 +60,7 @@ class ObjectiveCBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType
                             program.listing.getInstructionAt(reference.fromAddress),
                         )
                     } catch (e: Exception) {
-                        println("Failed to mark stack block at address ${reference.fromAddress} \n\t ${e.message}")
+                        println("Failed to mark stack block at address 0x${reference.fromAddress} \n\t ${e.message}")
                     }
                 }
             }
