@@ -3,10 +3,12 @@ package lol.fairplay.ghidraapple.actions.markasblock
 import ghidra.app.emulator.EmulatorHelper
 import ghidra.program.model.address.Address
 import ghidra.program.model.data.DataUtilities
+import ghidra.program.model.lang.Register
 import ghidra.program.model.listing.Function
 import ghidra.program.model.listing.Instruction
 import ghidra.program.model.listing.Program
 import ghidra.program.model.scalar.Scalar
+import ghidra.program.model.symbol.RefType
 import ghidra.program.model.symbol.SourceType
 import ghidra.program.model.symbol.StackReference
 import lol.fairplay.ghidraapple.analysis.objectivec.blocks.BlockLayout
@@ -104,7 +106,45 @@ fun markStackBlock(
                         return@let
                     }
                     otherReferences.apply {
-                        if (isEmpty()) return@apply
+                        if (isEmpty()) {
+                            // If there are no other references, check for a source register.
+                            val sourceRegister = instruction.getOpObjects(0)[0] as? Register ?: return@apply
+                            // If it's a zero register, don't worry about it, those will be zero in the emulator too.
+                            if (Register.TYPE_ZERO and sourceRegister.typeFlags != 0) return@apply
+                            // Read the value of the register in the emulator.
+                            val emulatedValue = helper.readRegister(sourceRegister)
+                            // If the emulator has a value, skip this and trust it.
+                            if (emulatedValue.longValueExact() != 0L) return@apply
+                            // If we're here, the emulator has a zero value. Let's check for a potential load.
+                            val matchingLoads =
+                                function.body
+                                    .flatMap { it }
+                                    .mapNotNull { program.listing.getInstructionAt(it) }
+                                    .filter {
+                                        it.resultObjects.filterIsInstance<Register>().let {
+                                            it.size == 1 && it.first().name == sourceRegister.name
+                                        } &&
+                                            it.referencesFrom.isNotEmpty()
+                                    }.mapNotNull {
+                                        it.referencesFrom
+                                            .firstOrNull { it.referenceType == RefType.READ }
+                                            ?.let {
+                                                val registerBytes = ByteArray(sourceRegister.numBytes)
+                                                val readBytes =
+                                                    program.memory.getBytes(it.toAddress, registerBytes)
+                                                if (readBytes != registerBytes.size) return@let null
+                                                return@let registerBytes
+                                            }
+                                    }
+                            // If all the loads are the same, we can use any one of them. We'll use the first one.
+                            if (matchingLoads.all { it.contentEquals(matchingLoads.first()) }) {
+                                matchingLoads
+                                    .first()
+                                    .copyInto(stackReferenceBlockBytes, positiveStackOffsetForThisInstruction)
+                            }
+                            // If some of the loads were different, we can't be sure. Don't do anything.
+                            return@apply
+                        }
                         ByteBuffer
                             .allocate(Long.SIZE_BYTES * otherReferences.size)
                             .order(ByteOrder.LITTLE_ENDIAN)
