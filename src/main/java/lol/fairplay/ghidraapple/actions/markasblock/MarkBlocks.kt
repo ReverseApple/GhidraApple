@@ -107,32 +107,43 @@ fun markStackBlock(
                         return@let
                     }
                     otherReferences.apply {
+                        // If we cannot use the other references, we'll need to confirm if we'll be able to capture
+                        //  the values that will be written to the stack.
                         if (isEmpty()) {
-                            // If there are no other references, check for a source register.
-                            val sourceRegister = iteratedInstruction.getOpObjects(0)[0] as? Register ?: return@apply
-                            // If it's a zero register, don't worry about it, those will be zero in the emulator too.
+                            // Check for a source register.
+                            val sourceRegister =
+                                iteratedInstruction.getOpObjects(0)[0] as? Register ?: return@apply
+                            // If it's a zero register, don't worry about it, it will be zero in the emulator too.
                             if (Register.TYPE_ZERO and sourceRegister.typeFlags != 0) return@apply
                             // Read the value of the register in the emulator.
                             val emulatedValue = helper.readRegister(sourceRegister)
                             // If the emulator has a value, skip this and trust it.
                             if (emulatedValue.longValueExact() != 0L) return@apply
 
-                            // If we're here, the emulator has a zero value. Let's check for a potential load.
+                            // If we're here, the emulator has a zero value. While that might be the value we want to
+                            //  write, it may very likely not be. Let's look for a value for the register.
 
                             run attempt_without_decompile@{
+                                // Look for matching load instructions in the function.
                                 val matchingLoads =
                                     function.body
                                         .flatMap { it }
                                         .mapNotNull { program.listing.getInstructionAt(it) }
                                         .filter {
+                                            // It should have one register result and that register's name should
+                                            //  match that of the register we're possibly missing a value from.
                                             it.resultObjects.filterIsInstance<Register>().let {
                                                 it.size == 1 && it.first().name == sourceRegister.name
                                             } &&
+                                                // It should also have some parsed references we can use to read
+                                                //  potential values from memory.
                                                 it.referencesFrom.isNotEmpty()
                                         }.mapNotNull {
                                             it.referencesFrom
+                                                // Look for READ references.
                                                 .firstOrNull { it.referenceType == RefType.READ }
                                                 ?.let {
+                                                    // Read the bytes from program memory.
                                                     val registerBytes = ByteArray(sourceRegister.numBytes)
                                                     val readBytes =
                                                         program.memory.getBytes(it.toAddress, registerBytes)
@@ -140,18 +151,25 @@ fun markStackBlock(
                                                     return@let registerBytes
                                                 }
                                         }
+
                                 // If all the loads are the same, we can use any one of them. We'll use the first one.
                                 if (matchingLoads.all { it.contentEquals(matchingLoads.first()) }) {
+                                    // Copy the load bytes into the stack-reference-based stack block.
                                     matchingLoads
                                         .first()
                                         .copyInto(stackReferenceBlockBytes, positiveStackOffsetForThisInstruction)
+                                    // Return early. We found the value.
                                     return@apply
                                 }
-                                // If some of the loads were different, we can't be sure. Don't do anything.
-                                return@attempt_without_decompile
+                                // If some of the loads were different, we can't be sure. Don't do anything and
+                                //  instead fallthrough to the next attempt.
                             }
 
+                            // Our attempts to find the register value without using the decompiler failed. We need
+                            //  to use the decompiler now :(
+
                             run attempt_with_decompile@{
+                                // Decompile the function.
                                 val results =
                                     DecompInterface().let { decompiler ->
                                         decompiler.openProgram(program)
@@ -160,6 +178,7 @@ fun markStackBlock(
                                             .also { decompiler.dispose() }
                                     }
 
+                                // Find the PCode operation that's associated with the currently iterated instruction.
                                 val targetOps =
                                     results.highFunction.pcodeOps
                                         .iterator()
@@ -167,21 +186,30 @@ fun markStackBlock(
                                         .filter { it.seqnum.target == iteratedInstruction.address }
                                         .toList()
 
+                                // Find the source [Varnode] for the register.
                                 val source =
                                     targetOps
+                                        // We need only one operation to have matched.
                                         .singleOrNull()
                                         ?.inputs
+                                        // We need an operation with only one input.
                                         ?.singleOrNull()
                                         ?.def
                                         ?.inputs
+                                        // We need a defining operation with only one input.
                                         ?.singleOrNull() ?: return@attempt_with_decompile
+
+                                // Read the source bytes from memory. If the source [Varnode] is not in program
+                                //  memory, this may fail (but so far it has always been in program memory).
                                 val sourceBytes = ByteArray(source.size)
                                 val bytesRead = program.memory.getBytes(source.address, sourceBytes)
                                 if (bytesRead != sourceBytes.size) return@attempt_with_decompile
+                                // Copy the source bytes into the stack-reference-based stack block.
                                 sourceBytes
                                     .copyInto(stackReferenceBlockBytes, positiveStackOffsetForThisInstruction)
                             }
                         } else {
+                            // Otherwise, if we have other references, it's far more simple.
                             ByteBuffer
                                 .allocate(Long.SIZE_BYTES * otherReferences.size)
                                 .order(ByteOrder.LITTLE_ENDIAN)
@@ -190,8 +218,6 @@ fun markStackBlock(
                                 .copyInto(stackReferenceBlockBytes, positiveStackOffsetForThisInstruction)
                         }
                     }
-                } else {
-                    // TODO: Do we need to do anything here?
                 }
             }
         }
@@ -213,16 +239,18 @@ fun markStackBlock(
             // We need to reverse the array if we are in little-endian territory.
             .let { if (program.memory.isBigEndian) it else it.reversed().toByteArray() }
 
-    // Ensure they are the same length.
+    // Ensure our stack-reference-based stack block and emulated stack block are the same size.
     assert(stackReferenceBlockBytes.size == emulatedStackBlockBytes.size)
 
-    // Put them into byte buffers
+    // Put them into byte buffers.
     val stackReferenceStackBlockBuffer =
         ByteBuffer.wrap(stackReferenceBlockBytes).order(ByteOrder.LITTLE_ENDIAN)
     val emulatedStackBlockBuffer =
         ByteBuffer.wrap(emulatedStackBlockBytes).order(ByteOrder.LITTLE_ENDIAN)
 
-    // Loop over them, putting non-zero long-sized chunks into the result buffer.
+    // Loop over them, putting non-zero long-sized chunks into the result buffer. In many cases, neither stack
+    //  will have the full picture of the actual stack state, so we merge them together to get a more accurate
+    //  stack state to pass into the [StructConverter].
 
     val resultBuffer =
         ByteBuffer.allocate(minimalBlockLayoutSize).order(ByteOrder.LITTLE_ENDIAN)
@@ -246,11 +274,7 @@ fun markStackBlock(
         program,
         resultBuffer.position(0),
         instruction.address.toString(),
-    ).let {
-        if (it.flagsBitfield != 0) return@let it
-        // TODO: Handle case where flags are empty.
-        return@let it
-    }.apply {
+    ).apply {
         program.withTransaction<Exception>("Mark Stack Block at 0x${instruction.address}") {
             function.stackFrame.createVariable(
                 "block_${program.address(invokePointer)}",
