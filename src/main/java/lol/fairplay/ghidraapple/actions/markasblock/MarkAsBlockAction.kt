@@ -31,7 +31,8 @@ class MarkAsBlockAction : ProgramLocationContextAction("Mark As Objective-C Bloc
                     ?.let {
                         markStackBlock(
                             context.program,
-                            context.program.listing.getFunctionContaining(context.address),
+                            context.program.listing
+                                .getFunctionContaining(context.address),
                             it,
                         )
                     }
@@ -41,13 +42,11 @@ class MarkAsBlockAction : ProgramLocationContextAction("Mark As Objective-C Bloc
             }
 
             is DecompilerActionContext -> {
-                val selectedInstruction =
-                    context.program.listing.getInstructionAt(context.address)
-
                 markStackBlock(
                     context.program,
                     context.function,
-                    selectedInstruction,
+                    context.program.listing
+                        .getInstructionAt(context.address),
                 )
             }
         }
