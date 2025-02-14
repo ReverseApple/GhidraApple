@@ -156,7 +156,7 @@ fun markStackBlock(
                                     DecompInterface().let { decompiler ->
                                         decompiler.openProgram(program)
                                         decompiler
-                                            .decompileFunction(function, 5, null)
+                                            .decompileFunction(function, 30, null)
                                             .also { decompiler.dispose() }
                                     }
 
