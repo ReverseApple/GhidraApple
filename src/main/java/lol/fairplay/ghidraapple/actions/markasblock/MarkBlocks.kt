@@ -1,5 +1,6 @@
 package lol.fairplay.ghidraapple.actions.markasblock
 
+import ghidra.app.decompiler.DecompInterface
 import ghidra.app.emulator.EmulatorHelper
 import ghidra.program.model.address.Address
 import ghidra.program.model.data.DataUtilities
@@ -79,9 +80,9 @@ fun markStackBlock(
 
     val stackReferenceBlockBytes = ByteArray(minimalBlockLayoutSize)
 
-    run instructionLoop@{
-        instructions.forEach { instruction ->
-            helper.emulator.setExecuteAddress(instruction.address.offset)
+    run instruction_loop@{
+        instructions.forEach { iteratedInstruction ->
+            helper.emulator.setExecuteAddress(iteratedInstruction.address.offset)
             try {
                 helper.emulator.executeInstruction(false, null)
             } catch (_: Exception) {
@@ -89,10 +90,10 @@ fun markStackBlock(
                 //  wasn't important enough to where we would break things by skipping it.
             }
             // Use the references to build up another copy of the stack.
-            instruction.referencesFrom.let { references ->
+            iteratedInstruction.referencesFrom.let { references ->
                 if (references.isEmpty()) return@let
                 val (stackReference, otherReferences) =
-                    instruction.referencesFrom.toList().let {
+                    iteratedInstruction.referencesFrom.toList().let {
                         val stackReference = it.filterIsInstance<StackReference>().firstOrNull()
                         Pair(stackReference, it.filterNot { it == stackReference })
                     }
@@ -108,49 +109,97 @@ fun markStackBlock(
                     otherReferences.apply {
                         if (isEmpty()) {
                             // If there are no other references, check for a source register.
-                            val sourceRegister = instruction.getOpObjects(0)[0] as? Register ?: return@apply
+                            val sourceRegister = iteratedInstruction.getOpObjects(0)[0] as? Register ?: return@apply
                             // If it's a zero register, don't worry about it, those will be zero in the emulator too.
                             if (Register.TYPE_ZERO and sourceRegister.typeFlags != 0) return@apply
                             // Read the value of the register in the emulator.
                             val emulatedValue = helper.readRegister(sourceRegister)
                             // If the emulator has a value, skip this and trust it.
                             if (emulatedValue.longValueExact() != 0L) return@apply
+
                             // If we're here, the emulator has a zero value. Let's check for a potential load.
-                            val matchingLoads =
-                                function.body
-                                    .flatMap { it }
-                                    .mapNotNull { program.listing.getInstructionAt(it) }
-                                    .filter {
-                                        it.resultObjects.filterIsInstance<Register>().let {
-                                            it.size == 1 && it.first().name == sourceRegister.name
-                                        } &&
-                                            it.referencesFrom.isNotEmpty()
-                                    }.mapNotNull {
-                                        it.referencesFrom
-                                            .firstOrNull { it.referenceType == RefType.READ }
-                                            ?.let {
-                                                val registerBytes = ByteArray(sourceRegister.numBytes)
-                                                val readBytes =
-                                                    program.memory.getBytes(it.toAddress, registerBytes)
-                                                if (readBytes != registerBytes.size) return@let null
-                                                return@let registerBytes
-                                            }
+
+                            run attempt_without_decompile@{
+                                val matchingLoads =
+                                    function.body
+                                        .flatMap { it }
+                                        .mapNotNull { program.listing.getInstructionAt(it) }
+                                        .filter {
+                                            it.resultObjects.filterIsInstance<Register>().let {
+                                                it.size == 1 && it.first().name == sourceRegister.name
+                                            } &&
+                                                it.referencesFrom.isNotEmpty()
+                                        }.mapNotNull {
+                                            it.referencesFrom
+                                                .firstOrNull { it.referenceType == RefType.READ }
+                                                ?.let {
+                                                    val registerBytes = ByteArray(sourceRegister.numBytes)
+                                                    val readBytes =
+                                                        program.memory.getBytes(it.toAddress, registerBytes)
+                                                    if (readBytes != registerBytes.size) return@let null
+                                                    return@let registerBytes
+                                                }
+                                        }
+                                // If all the loads are the same, we can use any one of them. We'll use the first one.
+                                if (matchingLoads.all { it.contentEquals(matchingLoads.first()) }) {
+                                    matchingLoads
+                                        .first()
+                                        .copyInto(stackReferenceBlockBytes, positiveStackOffsetForThisInstruction)
+                                    return@apply
+                                }
+                                // If some of the loads were different, we can't be sure. Don't do anything.
+                                return@attempt_without_decompile
+                            }
+
+                            run attempt_with_decompile@{
+                                val decompiler = DecompInterface()
+                                decompiler.openProgram(program)
+                                val results =
+                                    decompiler.decompileFunction(
+                                        function,
+                                        5,
+                                        null,
+                                    )
+
+                                val targetOps =
+                                    results.highFunction.pcodeOps
+                                        .iterator()
+                                        .asSequence()
+                                        .filter { it.seqnum.target == iteratedInstruction.address }
+                                        .toList()
+
+                                targetOps.apply {
+                                    if (size > 1) return@attempt_with_decompile
+                                    first().inputs.apply {
+                                        if (size > 1) return@attempt_with_decompile
+                                        first().def?.apply {
+                                            if (inputs.size > 1) return@attempt_with_decompile
+                                        } ?: return@attempt_with_decompile
                                     }
-                            // If all the loads are the same, we can use any one of them. We'll use the first one.
-                            if (matchingLoads.all { it.contentEquals(matchingLoads.first()) }) {
-                                matchingLoads
-                                    .first()
+                                }
+
+                                val source =
+                                    targetOps
+                                        .first()
+                                        .inputs
+                                        ?.first()
+                                        ?.def
+                                        ?.inputs
+                                        ?.first() ?: return@attempt_with_decompile
+                                val sourceBytes = ByteArray(source.size)
+                                val bytesRead = program.memory.getBytes(source.address, sourceBytes)
+                                if (bytesRead != sourceBytes.size) return@attempt_with_decompile
+                                sourceBytes
                                     .copyInto(stackReferenceBlockBytes, positiveStackOffsetForThisInstruction)
                             }
-                            // If some of the loads were different, we can't be sure. Don't do anything.
-                            return@apply
+                        } else {
+                            ByteBuffer
+                                .allocate(Long.SIZE_BYTES * otherReferences.size)
+                                .order(ByteOrder.LITTLE_ENDIAN)
+                                .apply { forEach { putLong(it.toAddress.offset) } }
+                                .array()
+                                .copyInto(stackReferenceBlockBytes, positiveStackOffsetForThisInstruction)
                         }
-                        ByteBuffer
-                            .allocate(Long.SIZE_BYTES * otherReferences.size)
-                            .order(ByteOrder.LITTLE_ENDIAN)
-                            .apply { forEach { putLong(it.toAddress.offset) } }
-                            .array()
-                            .copyInto(stackReferenceBlockBytes, positiveStackOffsetForThisInstruction)
                     }
                 } else {
                     // TODO: Do we need to do anything here?
