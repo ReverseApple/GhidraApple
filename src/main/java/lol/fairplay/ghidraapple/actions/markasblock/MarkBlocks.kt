@@ -152,14 +152,13 @@ fun markStackBlock(
                             }
 
                             run attempt_with_decompile@{
-                                val decompiler = DecompInterface()
-                                decompiler.openProgram(program)
                                 val results =
-                                    decompiler.decompileFunction(
-                                        function,
-                                        5,
-                                        null,
-                                    )
+                                    DecompInterface().let { decompiler ->
+                                        decompiler.openProgram(program)
+                                        decompiler
+                                            .decompileFunction(function, 5, null)
+                                            .also { decompiler.dispose() }
+                                    }
 
                                 val targetOps =
                                     results.highFunction.pcodeOps
