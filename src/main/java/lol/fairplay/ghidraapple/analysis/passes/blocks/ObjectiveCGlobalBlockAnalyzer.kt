@@ -12,6 +12,7 @@ import ghidra.program.model.listing.Program
 import ghidra.program.model.symbol.RefType
 import ghidra.program.model.symbol.Reference
 import ghidra.program.model.symbol.Symbol
+import ghidra.util.Msg
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.actions.markasblock.markGlobalBlock
 import java.util.LinkedList
@@ -69,7 +70,8 @@ class ObjectiveCGlobalBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, Analyz
                 )
                 for (result in waitForResults()) {
                     result.error?.let {
-                        println(
+                        Msg.warn(
+                            this,
                             "Parsing failed for global block with address ${result.item.fromAddress}.",
                         )
                         it.printStackTrace()

@@ -16,6 +16,7 @@ import ghidra.program.model.listing.ParameterImpl
 import ghidra.program.model.listing.Program
 import ghidra.program.model.listing.ReturnParameterImpl
 import ghidra.program.model.symbol.SourceType
+import ghidra.util.Msg
 import lol.fairplay.ghidraapple.analysis.objectivec.TypeResolver
 import lol.fairplay.ghidraapple.analysis.utilities.address
 import lol.fairplay.ghidraapple.core.objc.encodings.EncodedSignature
@@ -119,7 +120,10 @@ class BlockLayout(
             val returnType =
                 typeResolver.buildParsed(it.returnType.first) ?: {
                     // We don't fail here because the return value is not memory-critical.
-                    println("Failed to resolve return type for block with descriptor address $descriptor1Address.")
+                    Msg.debug(
+                        this,
+                        "Failed to resolve return type for block with descriptor address $descriptor1Address.",
+                    )
                     VoidDataType.dataType
                 }()
             val parameters =

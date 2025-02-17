@@ -13,6 +13,7 @@ import ghidra.program.model.symbol.RefType
 import ghidra.program.model.symbol.Reference
 import ghidra.program.model.symbol.SourceType
 import ghidra.program.model.symbol.Symbol
+import ghidra.util.Msg
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.actions.markasblock.markStackBlock
 import java.util.LinkedList
@@ -75,7 +76,8 @@ class ObjectiveCStackBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, Analyze
                 )
                 for (result in waitForResults()) {
                     result.error?.let {
-                        println(
+                        Msg.warn(
+                            this,
                             "Parsing failed for stack block with address ${result.item.fromAddress}.",
                         )
                         it.printStackTrace()
