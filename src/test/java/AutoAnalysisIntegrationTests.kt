@@ -59,12 +59,13 @@ class AutoAnalysisIntegrationTests : AbstractGhidraHeadlessIntegrationTest() {
                         val program = results.primaryDomainObject
                         results.releaseNonPrimary(this)
                         return@map program
-                    }.first { it.name.contains("AARCH") }
+                    }
+                    // We're only going to support AARCH (ARM) binaries for now.
+                    .first { it.name.contains("AARCH") }
             } else {
                 ghidraProject.importProgram(file)
             }
 
-        val autoAnalyzer = AutoAnalysisManager.getAnalysisManager(program)
         val options = program.getOptions(Program.ANALYSIS_PROPERTIES)
         val disabledAnalyzers: List<String> =
             listOf(
@@ -93,11 +94,8 @@ class AutoAnalysisIntegrationTests : AbstractGhidraHeadlessIntegrationTest() {
     }
 
     @Test
-    fun testAirportD() {
-        val program =
-            setupProgramForBinary(
-                File("/usr/libexec/airportd"),
-            )
+    fun testBlockAnalyzers() {
+        val program = setupProgramForBinary(File(System.getenv("PATH_TO_BINARY_WITH_BLOCKS")))
 
         // Ensure the global blocks are typed correctly.
         program.symbolTable.getSymbols("__NSConcreteGlobalBlock").firstOrNull()?.let {
