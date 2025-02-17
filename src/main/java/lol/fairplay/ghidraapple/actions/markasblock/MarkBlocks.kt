@@ -26,7 +26,6 @@ fun markGlobalBlock(
             // We use the flags to propagate types and such. If we don't have any, something probably went wrong.
             if (flagsBitfield == 0) {
                 throw IllegalStateException("No flags recovered from global block at $address!")
-                return@apply
             }
             Msg.info(this, "Marking global block at 0x$address.")
             program.withTransaction<Exception>("Mark Global Block at 0x$address") {
@@ -131,13 +130,13 @@ fun markStackBlock(
                                             it.referencesFrom
                                                 // Look for READ references.
                                                 .firstOrNull { it.referenceType == RefType.READ }
-                                                ?.let {
+                                                ?.let firstReferenceLet@{
                                                     // Read the bytes from program memory.
                                                     val registerBytes = ByteArray(sourceRegister.numBytes)
                                                     val readBytes =
                                                         program.memory.getBytes(it.toAddress, registerBytes)
-                                                    if (readBytes != registerBytes.size) return@let null
-                                                    return@let registerBytes
+                                                    if (readBytes != registerBytes.size) return@firstReferenceLet null
+                                                    return@firstReferenceLet registerBytes
                                                 }
                                         }
 
@@ -227,10 +226,8 @@ fun markStackBlock(
         // We use the flags to propagate types and such. If we don't have any, something probably went wrong.
         if (flagsBitfield == 0) {
             throw IllegalStateException("No flags recovered from stack block at ${instruction.address}!")
-            return@apply
         }
         Msg.info(this, "Marking stack block at 0x${instruction.address}")
-
         program.withTransaction<Exception>("Mark Stack Block at 0x${instruction.address}") {
             function.stackFrame.createVariable(
                 "block_${program.address(invokePointer)}",
