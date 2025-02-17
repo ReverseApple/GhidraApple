@@ -14,28 +14,25 @@ import ghidra.program.model.symbol.Reference
 import ghidra.program.model.symbol.SourceType
 import ghidra.program.model.symbol.Symbol
 import ghidra.util.task.TaskMonitor
-import lol.fairplay.ghidraapple.actions.markasblock.markGlobalBlock
 import lol.fairplay.ghidraapple.actions.markasblock.markStackBlock
 import java.util.LinkedList
 
-class ObjectiveCBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYTE_ANALYZER) {
+class ObjectiveCStackBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.INSTRUCTION_ANALYZER) {
     companion object {
-        const val NAME = "Objective-C: Blocks"
-        private const val DESCRIPTION = "Analyzes the program for Objective-C blocks."
+        const val NAME = "Objective-C: Stack Blocks"
+        private const val DESCRIPTION = "Analyzes the program for Objective-C stack blocks."
     }
 
-    var globalBlockSymbol: Symbol? = null
     var stackBlockSymbol: Symbol? = null
 
     init {
-        priority = AnalysisPriority.DATA_TYPE_PROPOGATION.after()
+        priority = AnalysisPriority.LOW_PRIORITY
         setSupportsOneTimeAnalysis()
     }
 
     override fun canAnalyze(program: Program): Boolean {
-        globalBlockSymbol = program.symbolTable.getSymbols("__NSConcreteGlobalBlock").firstOrNull()
         stackBlockSymbol = program.symbolTable.getSymbols("__NSConcreteStackBlock").firstOrNull()
-        return (globalBlockSymbol != null || stackBlockSymbol != null)
+        return (stackBlockSymbol != null)
     }
 
     override fun added(
@@ -44,41 +41,6 @@ class ObjectiveCBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType
         monitor: TaskMonitor,
         log: MessageLog,
     ): Boolean {
-        globalBlockSymbol?.let {
-            ConcurrentQ<Reference, Nothing>(
-                object : QCallback<Reference, Nothing> {
-                    override fun process(
-                        reference: Reference,
-                        monitor: TaskMonitor?,
-                    ): Nothing? {
-                        if (reference.referenceType == RefType.DATA) {
-                            markGlobalBlock(program, reference.fromAddress)
-                        }
-                        return null
-                    }
-                },
-                // [ConcurrentQ] doesn't seem to support passing in a filled [LinkedList] as a constructor
-                //  parameter, so we instead pass an empty list. The references will be added below.
-                LinkedList(),
-                GThreadPool.getPrivateThreadPool("Global Block Parser Thread Pool"),
-                null,
-                true,
-                0,
-                false,
-            ).apply {
-                add(program.referenceManager.getReferencesTo(it.address))
-                for (result in waitForResults()) {
-                    result.error?.let {
-                        println(
-                            "Parsing failed for global block with address ${result.item.fromAddress}.",
-                        )
-                        it.printStackTrace()
-                    }
-                }
-                dispose()
-            }
-        }
-
         stackBlockSymbol?.let {
             // We parallelize as some runs of [markStackBlock] may trigger the decompiler.
             ConcurrentQ<Reference, Nothing>(
@@ -106,7 +68,11 @@ class ObjectiveCBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType
                 0,
                 false,
             ).apply {
-                add(program.referenceManager.getReferencesTo(it.address))
+                add(
+                    program.referenceManager.getReferencesTo(it.address).filter {
+                        set.contains(it.fromAddress)
+                    },
+                )
                 for (result in waitForResults()) {
                     result.error?.let {
                         println(

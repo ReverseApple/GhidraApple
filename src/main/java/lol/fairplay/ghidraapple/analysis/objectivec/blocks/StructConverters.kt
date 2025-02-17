@@ -39,13 +39,8 @@ class BlockLayout(
     private val rootDataTypeSuffix: String? = null,
 ) : StructConverter {
     val isaPointer = buffer.getLong()
-    val flagsBitfield =
-        buffer.getInt().also {
-            // We use the flags to propagate types and such. If we don't have any, something
-            //  probably went wrong.
-            if (it == 0) throw IllegalStateException("No flags recovered!")
-        }
-    val flags: Set<BlockFlag> =
+    val flagsBitfield = buffer.getInt()
+    val flags: Set<BlockFlag> get() =
         BlockFlag.entries
             .filter { (flagsBitfield and it.value) != 0 }
             .toSet()
@@ -53,11 +48,11 @@ class BlockLayout(
     val invokePointer = buffer.getLong()
     val descriptorPointer = buffer.getLong()
 
-    private val descriptorHasCopyDispose = flags.contains(BlockFlag.BLOCK_HAS_COPY_DISPOSE)
-    private val descriptorHasSignature = flags.contains(BlockFlag.BLOCK_HAS_SIGNATURE)
+    private val descriptorHasCopyDispose get() = flags.contains(BlockFlag.BLOCK_HAS_COPY_DISPOSE)
+    private val descriptorHasSignature get() = flags.contains(BlockFlag.BLOCK_HAS_SIGNATURE)
 
     private val descriptor1Address = program.address(descriptorPointer)
-    private val descriptor2Address =
+    private val descriptor2Address get() =
         if (descriptorHasCopyDispose) {
             program
                 .address(descriptorPointer)
@@ -65,7 +60,7 @@ class BlockLayout(
         } else {
             null
         }
-    private val descriptor3Address =
+    private val descriptor3Address get() =
         if (descriptorHasSignature) {
             program
                 .address(descriptorPointer)
@@ -91,13 +86,13 @@ class BlockLayout(
         return byteBufferToPart(ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN))
     }
 
-    val descriptor1 =
+    val descriptor1: BlockDescriptor1 get() =
         readDescriptorPart(
             descriptor1Address,
             BlockDescriptor1DataType(program.dataTypeManager).length,
         ) { BlockDescriptor1(program, it) }
 
-    val descriptor2 =
+    val descriptor2: BlockDescriptor2? get() =
         descriptor2Address?.let {
             readDescriptorPart(
                 it,
@@ -105,7 +100,7 @@ class BlockLayout(
             ) { BlockDescriptor2(program, it) }
         }
 
-    val descriptor3 =
+    val descriptor3: BlockDescriptor3? get() =
         descriptor3Address?.let {
             readDescriptorPart(
                 it,
@@ -113,22 +108,22 @@ class BlockLayout(
             ) { BlockDescriptor3(program, it) }
         }
 
-    val encodedSignature = descriptor3?.encodedSignature
+    val encodedSignature: EncodedSignature? get() = descriptor3?.encodedSignature
 
     /**
      * Generates data types from the encoded signature.
      */
     fun generateDataTypesFromEncodedSignature(): Pair<DataType, Array<ParameterDefinitionImpl>> {
-        if (encodedSignature != null) {
+        encodedSignature?.let {
             val typeResolver = TypeResolver(program)
             val returnType =
-                typeResolver.buildParsed(encodedSignature.returnType.first) ?: {
+                typeResolver.buildParsed(it.returnType.first) ?: {
                     // We don't fail here because the return value is not memory-critical.
                     println("Failed to resolve return type for block with descriptor address $descriptor1Address.")
                     VoidDataType.dataType
                 }()
             val parameters =
-                encodedSignature.parameters
+                it.parameters
                     .mapIndexed { index, (typeNode) ->
                         val oneBasedIndex = index + 1
                         val parameterType =
@@ -140,9 +135,7 @@ class BlockLayout(
                         return@mapIndexed ParameterDefinitionImpl("parameter_$oneBasedIndex", parameterType, null)
                     }.toTypedArray()
             return Pair(returnType, parameters)
-        } else {
-            return Pair(VoidDataType.dataType, emptyArray())
-        }
+        } ?: return Pair(VoidDataType.dataType, emptyArray())
     }
 
     /**
@@ -161,7 +154,7 @@ class BlockLayout(
             DataUtilities.createData(
                 program,
                 descriptor2Address,
-                this.descriptor2.toDataType(),
+                it.toDataType(),
                 -1,
                 DataUtilities.ClearDataMode.CLEAR_ALL_CONFLICT_DATA,
             )
@@ -171,7 +164,7 @@ class BlockLayout(
             DataUtilities.createData(
                 program,
                 descriptor3Address,
-                this.descriptor3.toDataType(),
+                it.toDataType(),
                 -1,
                 DataUtilities.ClearDataMode.CLEAR_ALL_CONFLICT_DATA,
             )
