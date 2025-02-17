@@ -1,14 +1,12 @@
 package lol.fairplay.ghidraapple.actions.markasblock
 
 import ghidra.app.decompiler.DecompInterface
-import ghidra.app.emulator.EmulatorHelper
 import ghidra.program.model.address.Address
 import ghidra.program.model.data.DataUtilities
 import ghidra.program.model.lang.Register
 import ghidra.program.model.listing.Function
 import ghidra.program.model.listing.Instruction
 import ghidra.program.model.listing.Program
-import ghidra.program.model.scalar.Scalar
 import ghidra.program.model.symbol.RefType
 import ghidra.program.model.symbol.SourceType
 import ghidra.program.model.symbol.StackReference
@@ -60,20 +58,6 @@ fun markStackBlock(
                         ?.let { !it.isJump && !it.isCall } == true
             }
 
-    // This is the offset where out emulator will write the stack block. The given instruction should
-    //  be a store instruction that writes the first field the block into the stack. It may sometimes
-    //  include a scalar that is summed with the value of the stack pointer to create the destination
-    //  address. Since the emulator starts with a stack pointer value of zero, we can use this scalar
-    //  (if it exits) to determine where in the emulator's memory to look for the stack block.
-    val emulatedStackOffset =
-        instruction.getOpObjects(1).let {
-            (it.getOrNull(1) as? Scalar)?.value ?: 0
-        }
-
-    // This is an older API, but the newer [PcodeEmulator] API is honestly a bit overkill for our purposes here.
-    val helper = EmulatorHelper(program)
-    helper.emulator.setExecuteAddress(instructions.first().address.offset)
-
     // This is the offset into the function's stack frame where the actual program will write the
     //  stack block. We'll use it we'll use to type that part of the function's stack frame.
     val baseStackOffset =
@@ -89,13 +73,6 @@ fun markStackBlock(
 
     run instruction_loop@{
         instructions.forEach { iteratedInstruction ->
-            helper.emulator.setExecuteAddress(iteratedInstruction.address.offset)
-            try {
-                helper.emulator.executeInstruction(false, null)
-            } catch (_: Exception) {
-                // Silently fail if the emulator couldn't execute the instruction. It hopefully
-                //  wasn't important enough to where we would break things by skipping it.
-            }
             // Use the references to build up another copy of the stack.
             iteratedInstruction.referencesFrom.let { references ->
                 if (references.isEmpty()) return@let
@@ -134,23 +111,13 @@ fun markStackBlock(
                         // Check for a source register.
                         val sourceRegister =
                             iteratedInstruction.getOpObjects(0)[0] as? Register ?: return
-                        // If it's a zero register, don't worry about it, it will be zero in the emulator too.
+                        // If it's a zero register, don't worry about it.
                         if (Register.TYPE_ZERO and sourceRegister.typeFlags != 0) return
-                        // Read the value of the register in the emulator.
-                        val emulatedValue = helper.readRegister(sourceRegister)
-                        // If the emulator has a value, skip this and trust it.
-                        if (emulatedValue.longValueExact() != 0L) return
-
-                        // If we're here, the emulator has a zero value. While that might be the value we want to
-                        //  write, it may very likely not be. Let's look for a value just in case.
 
                         run find_register_value@{
                             run attempt_without_decompile@{
-                                // Look for matching load instructions in the function.
-                                val matchingLoads =
-                                    function.body
-                                        .flatMap { it }
-                                        .mapNotNull { program.listing.getInstructionAt(it) }
+                                fun matchingLoadsInInstructions(list: List<Instruction>) =
+                                    list
                                         .filter {
                                             // It should have one register result and that register's name should
                                             //  match that of the register we're possibly missing a value from.
@@ -173,6 +140,19 @@ fun markStackBlock(
                                                     return@let registerBytes
                                                 }
                                         }
+
+                                // Look for matching load instructions in the function.
+                                val matchingLoads =
+                                    matchingLoadsInInstructions(
+                                        generateSequence(iteratedInstruction) { it.previous }
+                                            .takeWhile { it.address.offset > instructions.first().address.offset }
+                                            .toList(),
+                                    ).takeIf { it.isNotEmpty() }
+                                        ?: matchingLoadsInInstructions(
+                                            function.body
+                                                .flatMap { it }
+                                                .mapNotNull { program.listing.getInstructionAt(it) },
+                                        )
 
                                 // If all the loads are the same, we can use any one of them. We'll use the first one.
                                 if (matchingLoads.all { it.contentEquals(matchingLoads.first()) }) {
@@ -237,56 +217,11 @@ fun markStackBlock(
         }
     }
 
-    // Get the state of the stack in our emulator.
-    val emulatedStackBlockBytes =
-        helper
-            .readStackValue(emulatedStackOffset.toInt(), minimalBlockLayoutSize, false)
-            // The above returns a BigInteger, which we don't want, so we need to convert it to a ByteArray.
-            .toByteArray()
-            // The above also doesn't bother with leading zeros (as it thinks we want a number), so we have
-            //  to add any zero bytes back onto the beginning.
-            .let {
-                val remainingBytes = minimalBlockLayoutSize - it.size
-                // TODO: Confirm that ByteArray(n) is guaranteed to contain only null bytes.
-                if (remainingBytes != 0) ByteArray(remainingBytes) + it else it
-            }
-            // We need to reverse the array if we are in little-endian territory.
-            .let { if (program.memory.isBigEndian) it else it.reversed().toByteArray() }
-
-    // Ensure our stack-reference-based stack block and emulated stack block are the same size.
-    assert(stackReferenceBlockBytes.size == emulatedStackBlockBytes.size)
-
-    // Put them into byte buffers.
-    val stackReferenceStackBlockBuffer =
-        ByteBuffer.wrap(stackReferenceBlockBytes).order(ByteOrder.LITTLE_ENDIAN)
-    val emulatedStackBlockBuffer =
-        ByteBuffer.wrap(emulatedStackBlockBytes).order(ByteOrder.LITTLE_ENDIAN)
-
-    // Loop over them, putting non-zero long-sized chunks into the result buffer. In many cases, neither stack
-    //  will have the full picture of the actual stack state, so we merge them together to get a more accurate
-    //  stack state to pass into the [StructConverter].
-
-    val resultBuffer =
-        ByteBuffer.allocate(minimalBlockLayoutSize).order(ByteOrder.LITTLE_ENDIAN)
-
-    for (i in 0 until minimalBlockLayoutSize step Long.SIZE_BYTES) {
-        val stackReferenceLong = stackReferenceStackBlockBuffer.getLong(i)
-        val emulatedStackLong = emulatedStackBlockBuffer.getLong(i)
-        resultBuffer.putLong(
-            when {
-                // Prefer the chunks from the reference-built stack over the ones from the emulated stack.
-                stackReferenceLong != 0L -> stackReferenceLong
-                emulatedStackLong != 0L -> emulatedStackLong
-                else -> 0
-            },
-        )
-    }
-
     // Finally build and markup the stack block.
 
     BlockLayout(
         program,
-        resultBuffer.position(0),
+        ByteBuffer.wrap(stackReferenceBlockBytes).order(ByteOrder.LITTLE_ENDIAN),
         instruction.address.toString(),
     ).apply {
         // We use the flags to propagate types and such. If we don't have any, something probably went wrong.
