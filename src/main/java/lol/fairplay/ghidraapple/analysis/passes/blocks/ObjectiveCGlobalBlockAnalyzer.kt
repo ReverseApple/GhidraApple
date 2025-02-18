@@ -28,7 +28,6 @@ class ObjectiveCGlobalBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, Analyz
     init {
         priority = AnalysisPriority.DATA_TYPE_PROPOGATION
         setSupportsOneTimeAnalysis()
-        setDefaultEnablement(true)
     }
 
     override fun canAnalyze(program: Program): Boolean {
