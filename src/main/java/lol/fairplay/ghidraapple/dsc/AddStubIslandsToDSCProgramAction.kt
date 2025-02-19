@@ -10,6 +10,7 @@ import ghidra.program.model.address.AddressRange
 import ghidra.program.model.address.AddressRangeImpl
 import ghidra.program.model.address.AddressSet
 import ghidra.program.model.listing.Program
+import ghidra.program.model.symbol.Reference
 import ghidra.util.task.Task
 import ghidra.util.task.TaskLauncher
 import ghidra.util.task.TaskMonitor
@@ -21,10 +22,8 @@ class AddStubIslandsToDSCProgramAction : ProgramContextAction("Add Stub Islands 
     }
 
     override fun actionPerformed(context: ProgramActionContext) {
-
         val fsrl = FSRL.fromProgram(context.program)
         val cacheFile = File(fsrl.fs.toPrettyFullpathString().removeSuffix("|"))
-
         TaskLauncher.launch(
             AddStubIslandsToDSCProgramTask(
                 context.program,
@@ -39,6 +38,7 @@ class AddStubIslandsToDSCProgramTask(
     val file: File,
 ) : Task("Add Stub Islands to DSC Program", true, true, true) {
     val MAX_GAP = 0x4_0000
+
     override fun run(monitor: TaskMonitor) {
         val lines = file.readLines()
         val stubSymbolMap =
@@ -56,24 +56,27 @@ class AddStubIslandsToDSCProgramTask(
                 .toMap()
         monitor.message = "Sorting stubs and existing ranges"
 
-
-
-        val missingDestinations = getReferencedAddressesOutsideCurrentAddressSpace().map { it to stubSymbolMap[it] }.filter { it.second != null }
-        val missingRanges = missingDestinations.fold(mutableListOf<AddressRange>()) {
-            acc, (address, _) ->
-            if (acc.isEmpty()) {
-                acc.add(AddressRangeImpl(address, address))
-            } else {
-                // Check if the distance to the last range is less than the maximum gap
-                val lastRange = acc.last().maxAddress
-                if (address.subtract(lastRange) < MAX_GAP) {
-                    acc[acc.size - 1] = AddressRangeImpl(acc.last().minAddress, address)
-                } else {
+        val missingDestinations =
+            Companion.getReferencedAddressesOutsideCurrentAddressSpace(program)
+                .map { it.key }
+                .map { it to stubSymbolMap[it] }
+                .filter { it.second != null }
+        val missingRanges =
+            missingDestinations.fold(mutableListOf<AddressRange>()) {
+                    acc, (address, _) ->
+                if (acc.isEmpty()) {
                     acc.add(AddressRangeImpl(address, address))
+                } else {
+                    // Check if the distance to the last range is less than the maximum gap
+                    val lastRange = acc.last().maxAddress
+                    if (address.subtract(lastRange) < MAX_GAP) {
+                        acc[acc.size - 1] = AddressRangeImpl(acc.last().minAddress, address)
+                    } else {
+                        acc.add(AddressRangeImpl(address, address))
+                    }
                 }
+                acc
             }
-            acc
-        }
 
         program
             .withTransaction<Exception>("Creating Placeholder DSC Mappings") {
@@ -98,7 +101,7 @@ class AddStubIslandsToDSCProgramTask(
                     }.map { (address, symbol) ->
                         CreateThunkFunctionCmd(
                             address,
-                            AddressSet(address, address.add(16)),
+                            AddressSet(address, address.add(8)),
                             symbol,
                         )
                     }.map {
@@ -110,29 +113,37 @@ class AddStubIslandsToDSCProgramTask(
             }
     }
 
-    private fun getReferencedAddressesOutsideCurrentAddressSpace(): List<Address> {
-        val existingRanges = program.memory.blocks.map { it.addressRange }.sortedBy { it.minAddress }
+    companion object {
+        public fun getReferencedAddressesOutsideCurrentAddressSpace(program: Program): Map<Address, List<Reference>> {
+            val existingRanges = program.memory.blocks.map { it.addressRange }.sortedBy { it.minAddress }
 
+            val intermediateGaps =
+                existingRanges.windowed(2).map { (first, second) ->
+                    AddressRangeImpl(first.maxAddress, second.minAddress)
+                }
+            val initialGap =
+                AddressRangeImpl(
+                    program.addressFactory.defaultAddressSpace.getAddress(0),
+                    existingRanges.first().minAddress,
+                )
+            val finalGap =
+                AddressRangeImpl(
+                    existingRanges.last().maxAddress,
+                    program.addressFactory.defaultAddressSpace.getAddress(
+                        program.maxAddress.offset,
+                    ),
+                )
+            val gaps: List<AddressRangeImpl> = listOf(initialGap) + intermediateGaps + listOf(finalGap)
 
-        val intermediateGaps = existingRanges.windowed(2).map { (first, second) ->
-            AddressRangeImpl(first.maxAddress, second.minAddress)
+            val gapSet =
+                gaps.fold(AddressSet()) { acc, gap ->
+                    acc.add(gap)
+                    acc
+                }
+
+            val outSideDestinations = program.referenceManager.getReferenceDestinationIterator(gapSet, true).toList()
+            return outSideDestinations.associateWith { program.referenceManager.getReferencesTo(it).toList() }
         }
-        val initialGap = AddressRangeImpl(
-            program.addressFactory.defaultAddressSpace.getAddress(0),
-            existingRanges.first().minAddress
-        )
-        val finalGap = AddressRangeImpl(
-            existingRanges.last().maxAddress,
-            program.addressFactory.defaultAddressSpace.getAddress(program.maxAddress.offset)
-        )
-        val gaps: List<AddressRangeImpl> = listOf(initialGap) + intermediateGaps + listOf(finalGap)
-
-        val gapSet = gaps.fold(AddressSet()) { acc, gap ->
-            acc.add(gap)
-            acc
-        }
-
-        return program.referenceManager.getReferenceDestinationIterator(gapSet, true).toList()
     }
 }
 
