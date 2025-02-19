@@ -9,6 +9,7 @@ jobs:
       matrix:
         ghidra:
 #          - "latest"
+          - "11.3"
           - "11.2.1"
           # - "11.1.1"
           # - "11.1"
@@ -39,6 +40,8 @@ jobs:
     - name: Linting with klint
       run: gradle ktlintCheck
 
+    - name: Test
+      run: gradle test
 
     - name: Build
       run: gradle buildExtension
