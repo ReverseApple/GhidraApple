@@ -32,7 +32,7 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
 
     init {
         priority = PRIORITY
-        setPrototype()
+        setDefaultEnablement(true)
     }
 
     override fun canAnalyze(program: Program): Boolean {
