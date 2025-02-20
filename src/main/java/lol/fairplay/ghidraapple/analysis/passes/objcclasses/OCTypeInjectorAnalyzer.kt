@@ -13,6 +13,7 @@ import ghidra.program.model.listing.Function
 import ghidra.program.model.listing.FunctionSignature
 import ghidra.program.model.listing.ParameterImpl
 import ghidra.program.model.listing.Program
+import ghidra.program.model.pcode.HighFunctionDBUtil
 import ghidra.program.model.pcode.PcodeOp
 import ghidra.program.model.symbol.Reference
 import ghidra.program.model.symbol.SourceType
@@ -87,9 +88,12 @@ class OCTypeInjectorAnalyzer :
                 ALLOC_DATA,
             )
         propMap.addCollection(result.map { (ref, clsAddr) -> ref.fromAddress to clsAddr?.offset })
-//            val function = program.functionManager.getFunctionContaining(ref.fromAddress)
-//            val signature = generateFunctionSignatureForType(getDataTypeFromSymbol(program.symbolTable.getPrimarySymbol(clsAddr)))
-//            HighFunctionDBUtil.writeOverride(function, ref.fromAddress, signature)
+        result.forEach { (ref, clsAddr) ->
+            val function = program.functionManager.getFunctionContaining(ref.fromAddress)
+            val signature = generateFunctionSignatureForType(getDataTypeFromSymbol(program.symbolTable.getPrimarySymbol(clsAddr)))
+            HighFunctionDBUtil.writeOverride(function, ref.fromAddress, signature)
+        }
+
     }
 
     override fun configureDecompiler(): DecompileConfigurer =
