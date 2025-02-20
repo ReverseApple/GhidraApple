@@ -2,7 +2,9 @@ package lol.fairplay.ghidraapple.core.objc.encodings
 
 const val EOF_RAW = '\u0000'
 
-class EncodingLexer(private val input: String) {
+class EncodingLexer(
+    private val input: String,
+) {
     private var pos = 0
     var latestToken: Token? = null
 
@@ -16,9 +18,7 @@ class EncodingLexer(private val input: String) {
         pos++
     }
 
-    private fun peek(n: Int): Char {
-        return if (pos + n < input.length) input[pos + n] else EOF_RAW
-    }
+    private fun peek(n: Int): Char = if (pos + n < input.length) input[pos + n] else EOF_RAW
 
     fun getNextToken(): Token {
         while (currentChar != EOF_RAW) {
@@ -111,11 +111,13 @@ class EncodingLexer(private val input: String) {
                 }
 
                 if (currentChar in setOf('r', 'n', 'N', 'o', 'O', 'R', 'V')) {
-                    return Token.TypeModifier(currentChar)
+                    return Token
+                        .TypeModifier(currentChar)
                         .also { advance() }
                 }
 
-                return Token.PrimitiveType(currentChar)
+                return Token
+                    .PrimitiveType(currentChar)
                     .also { advance() }
             }
             in '0'..'9' -> {
@@ -153,7 +155,8 @@ class EncodingLexer(private val input: String) {
             advance()
         }
 
-        return Token.StringLiteral(input.substring(start, pos))
+        return Token
+            .StringLiteral(input.substring(start, pos))
             .also { advance() }
     }
 }

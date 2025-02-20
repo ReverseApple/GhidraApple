@@ -1,10 +1,7 @@
 package lol.fairplay.ghidraapple.core.objc.encodings
-
 import ghidra.util.Msg
 
-enum class PropertyAttribute(
-    val code: Char,
-) {
+enum class PropertyAttribute(val code: Char) {
     READ_ONLY('R'),
     BY_COPY('C'),
     BY_REFERENCE('&'),

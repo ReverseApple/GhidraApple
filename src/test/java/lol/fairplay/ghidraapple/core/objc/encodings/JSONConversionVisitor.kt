@@ -6,13 +6,9 @@ import org.json.JSONObject
 class JSONConversionVisitor : TypeNodeVisitor {
     private var result: JSONObject? = null
 
-    fun getJSON(): JSONObject? {
-        return result
-    }
+    fun getJSON(): JSONObject? = result
 
-    fun extend(): JSONConversionVisitor {
-        return JSONConversionVisitor()
-    }
+    fun extend(): JSONConversionVisitor = JSONConversionVisitor()
 
     override fun visitStruct(struct: TypeNode.Struct) {
         val json = JSONObject()

@@ -1,6 +1,9 @@
 package lol.fairplay.ghidraapple.core.objc.encodings
 
-class SignatureParser(lexer: EncodingLexer, val sigType: EncodedSignatureType) : EncodingParser(lexer) {
+class SignatureParser(
+    lexer: EncodingLexer,
+    val sigType: EncodedSignatureType,
+) : EncodingParser(lexer) {
     fun parse(): EncodedSignature {
         val startingEntry = parseEntry()
 

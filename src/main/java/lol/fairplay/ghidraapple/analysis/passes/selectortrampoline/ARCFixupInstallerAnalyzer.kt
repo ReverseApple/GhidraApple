@@ -66,6 +66,7 @@ class ARCFixupInstallerAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerTy
                 "_objc_claimAutoreleasedReturnValue",
                 "___chkstk_darwin",
                 "_objc_opt_self",
+                "_objc_unsafeClaimAutoreleasedReturnValue",
                 *retainRegisters.toTypedArray(),
             )
 
