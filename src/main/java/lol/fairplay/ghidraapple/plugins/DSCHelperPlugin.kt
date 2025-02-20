@@ -8,14 +8,14 @@ import ghidra.framework.plugintool.util.PluginStatus
 import lol.fairplay.ghidraapple.GhidraApplePluginPackage
 import lol.fairplay.ghidraapple.dsc.AddStubIslandsToDSCProgramAction
 
-//@formatter:off
+// @formatter:off
 @PluginInfo(
     status = PluginStatus.STABLE,
     packageName = GhidraApplePluginPackage.PKG_NAME,
     category = PluginCategoryNames.COMMON,
     shortDescription = "Helpers for the Dynamic Shared Cache",
-    description = ""
-) //@formatter:on
+    description = "",
+) // @formatter:on
 class DSCHelperPlugin(plugintool: PluginTool) : ProgramPlugin(plugintool) {
     init {
         setupActions()
