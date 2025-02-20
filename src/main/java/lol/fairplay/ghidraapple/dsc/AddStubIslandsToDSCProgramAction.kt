@@ -37,8 +37,6 @@ class AddStubIslandsToDSCProgramTask(
     val program: Program,
     val file: File,
 ) : Task("Add Stub Islands to DSC Program", true, true, true) {
-    val MAX_GAP = 0x4_0000
-
     override fun run(monitor: TaskMonitor) {
         val lines = file.readLines()
         val stubSymbolMap =
@@ -69,7 +67,7 @@ class AddStubIslandsToDSCProgramTask(
                 } else {
                     // Check if the distance to the last range is less than the maximum gap
                     val lastRange = acc.last().maxAddress
-                    if (address.subtract(lastRange) < MAX_GAP) {
+                    if (address.subtract(lastRange) < Companion.MAX_GAP) {
                         acc[acc.size - 1] = AddressRangeImpl(acc.last().minAddress, address)
                     } else {
                         acc.add(AddressRangeImpl(address, address))
@@ -144,6 +142,8 @@ class AddStubIslandsToDSCProgramTask(
             val outSideDestinations = program.referenceManager.getReferenceDestinationIterator(gapSet, true).toList()
             return outSideDestinations.associateWith { program.referenceManager.getReferencesTo(it).toList() }
         }
+
+        const val MAX_GAP = 0x4_0000
     }
 }
 
