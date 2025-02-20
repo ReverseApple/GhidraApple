@@ -7,6 +7,7 @@ import ghidra.framework.plugintool.PluginTool
 import ghidra.framework.plugintool.util.PluginStatus
 import lol.fairplay.ghidraapple.GhidraApplePluginPackage
 import lol.fairplay.ghidraapple.dsc.AddStubIslandsToDSCProgramAction
+import lol.fairplay.ghidraapple.dsc.SetExternalDSCPathsAction
 
 //@formatter:off
 @PluginInfo(
@@ -23,5 +24,6 @@ class DSCHelperPlugin(plugintool: PluginTool) : ProgramPlugin(plugintool) {
 
     private fun setupActions() {
         tool.addAction(AddStubIslandsToDSCProgramAction())
+        tool.addAction(SetExternalDSCPathsAction())
     }
 }
