@@ -18,6 +18,16 @@ import ghidra.program.util.ProgramLocation
 
 private const val BLOCK_CATEGORY_PATH_STRING = "/GA_BLOCK"
 
+/**
+ * A data type representing a block.
+ *
+ * @param dataTypeManager The data type manager to create the type in the context of.
+ * @param rootDataTypeSuffix A suffix for the root data type (this one).
+ * @param invokeFunctionTypeSuffix A suffix for the function type used for the "invoke" component.
+ * @param invokeReturnType The return type to use for the "invoke" function type.
+ * @param parameters The parameters to use for the "invoke" function type.
+ * @param importedVariables The captured variables from outside the scope of the block.
+ */
 class BlockLayoutDataType(
     dataTypeManager: DataTypeManager?,
     rootDataTypeSuffix: String?,
@@ -67,6 +77,13 @@ class BlockLayoutDataType(
                         dataType.categoryPath.toString() == BLOCK_CATEGORY_PATH_STRING
                 )
     }
+
+    /**
+     * A data type representing a block with a given amount of bytes of imported variables.
+     *
+     * @param extraBytes The length of the imported variables, in bytes.
+     * @see [lol.fairplay.ghidraapple.analysis.objectivec.blocks.BlockLayoutDataType]
+     */
     constructor(
         dataTypeManager: DataTypeManager,
         mainTypeSuffix: String?,
@@ -80,6 +97,8 @@ class BlockLayoutDataType(
         invokeFunctionTypeSuffix,
         invokeReturnType,
         parameters,
+        // We don't know what the imported variables are, but at least we know how long they are. For now,
+        //  we'll just put in a byte array and allow the user to re-type the struct as necessary.
         arrayOf(
             Triple(ArrayDataType(ByteDataType.dataType, extraBytes), "unknown", null),
         ),

@@ -36,7 +36,7 @@ fun markGlobalBlock(
                     -1,
                     DataUtilities.ClearDataMode.CLEAR_ALL_CONFLICT_DATA,
                 )
-                updateProgram()
+                markupAdditionalTypes()
             }
         }
 }
@@ -235,7 +235,7 @@ fun markStackBlock(
                 toDataType(),
                 SourceType.ANALYSIS,
             )
-            updateProgram()
+            markupAdditionalTypes()
         }
     }
     // TODO: Maybe perform a second pass to get better typing for the imported variables.

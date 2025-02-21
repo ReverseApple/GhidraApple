@@ -52,11 +52,15 @@ enum class BlockFlag(
 
 /**
  * An Objective-C block (relevant to the given program) with the layout representation contained in the given buffer.
+ *
+ * @param program The program the block is in.
+ * @param buffer A [ByteBuffer] containing the bytes of the `Block_layout` for the block.
+ * @param dataTypeSuffix A suffix for the derived data type.
  */
 class BlockLayout(
     private val program: Program,
     buffer: ByteBuffer,
-    private val rootDataTypeSuffix: String? = null,
+    private val dataTypeSuffix: String? = null,
 ) : StructConverter {
     val isaPointer = buffer.getLong()
     val flagsBitfield = buffer.getInt()
@@ -68,8 +72,12 @@ class BlockLayout(
     val invokePointer = buffer.getLong()
     val descriptorPointer = buffer.getLong()
 
-    private val descriptorHasCopyDispose get() = flags.contains(BlockFlag.BLOCK_HAS_COPY_DISPOSE)
-    private val descriptorHasSignature get() = flags.contains(BlockFlag.BLOCK_HAS_SIGNATURE)
+    // A block has a descriptor, starting with, at the very least, a `Block_descriptor_1` struct. This is
+    //  then followed by (optionally) a `Block_descriptor_2` struct and/or a `Block_descriptor_3` struct,
+    //  with whatever structs are included being laid out in memory in ascending numerical order.
+
+    private val descriptorHasCopyDispose get() = BlockFlag.BLOCK_HAS_COPY_DISPOSE in flags
+    private val descriptorHasSignature get() = BlockFlag.BLOCK_HAS_SIGNATURE in flags
 
     private val descriptor1Address = program.address(descriptorPointer)
     private val descriptor2Address get() =
@@ -95,6 +103,13 @@ class BlockLayout(
             null
         }
 
+    /**
+     * Reads the bytes of a descriptor part and returns a typed instance [T] representing the data.
+     *
+     * @param address The base address of the descriptor part.
+     * @param byteCount The size, in bytes, of the descriptor part.
+     * @param byteBufferToPart An initialization function that turns a [ByteBuffer] into a typed instance [T].
+     */
     private inline fun <T : BlockDescriptorPart> readDescriptorPart(
         address: Address,
         byteCount: Int,
@@ -199,7 +214,7 @@ class BlockLayout(
      */
     private fun updateInvokeFunction() {
         // Return early if there is no signature. We can't trust the data type when that is the case.
-        if (BlockFlag.BLOCK_HAS_SIGNATURE !in flags) return
+        if (!descriptorHasSignature) return
         // We "steal" the invoke function definition from the data type.
         val invokeFunctionType =
             (
@@ -250,7 +265,7 @@ class BlockLayout(
     /**
      * Marks up the program with the derived data types and updates the invoke function.
      */
-    fun updateProgram() {
+    fun markupAdditionalTypes() {
         markupDescriptorParts()
         updateInvokeFunction()
     }
@@ -283,7 +298,7 @@ class BlockLayout(
         val actualBlockSize = descriptor1.blockSize
         return BlockLayoutDataType(
             program.dataTypeManager,
-            rootDataTypeSuffix,
+            dataTypeSuffix,
             program.address(invokePointer).toString(),
             blockReturnType,
             blockParameters,
@@ -330,7 +345,7 @@ class BlockDescriptor3(
     val signaturePointer = buffer.getLong()
     val layout = buffer.getLong()
 
-    val encodedSignature: EncodedSignature =
+    val encodedSignature get() =
         {
             signaturePointer.let {
                 val signatureString =
