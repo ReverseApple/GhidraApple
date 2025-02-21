@@ -98,6 +98,5 @@ class MarkAsBlockAction : ProgramLocationContextAction("Mark As Objective-C Bloc
                 ?: return false
             return true
         }
-        return false
     }
 }
