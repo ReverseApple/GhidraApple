@@ -10,6 +10,8 @@ import ghidra.program.model.data.PointerDataType
 import ghidra.program.model.listing.Data
 import ghidra.program.model.listing.Function
 import ghidra.program.model.listing.Program
+import ghidra.program.model.mem.Memory
+import ghidra.program.model.pcode.Varnode
 import ghidra.program.model.symbol.Namespace
 import ghidra.program.model.symbol.RefType
 import ghidra.program.model.symbol.ReferenceManager
@@ -17,6 +19,8 @@ import ghidra.program.model.symbol.SourceType
 import ghidra.program.model.symbol.Symbol
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.derefUntyped
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.get
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 /**
  * Converts a given long value to an Address object using the default address space.
@@ -150,3 +154,46 @@ fun <ROW_TYPE, COLUMN_TYPE> TableColumnDescriptor<ROW_TYPE>.addColumn(
         )
     }
 }
+
+/**
+ * Returns a [ByteArray] of the given [size], taken from the given [address].
+ *
+ * @throws [IllegalStateException] If a [ByteArray] of the given [size] cannot be taken from the given [address].
+ */
+fun Memory.getBytes(
+    address: Address,
+    size: Int,
+): ByteArray {
+    val bytes = ByteArray(size)
+    val bytesGotten = getBytes(address, bytes)
+    if (bytesGotten != size) throw IllegalStateException("Unable to get $size bytes at 0x$address.")
+    return bytes
+}
+
+fun Memory.getByteOrder(): ByteOrder = if (isBigEndian) ByteOrder.BIG_ENDIAN else ByteOrder.LITTLE_ENDIAN
+
+/**
+ * Gets the bytes of a [Varnode] within the given [program]. Only works in simple cases.
+ */
+fun Varnode.getBytes(program: Program): ByteArray =
+    when {
+        address.isMemoryAddress ->
+            program.memory.getBytes(address, size)
+
+        address.isConstantAddress ->
+            ByteBuffer
+                .allocate(size)
+                .order(program.memory.getByteOrder())
+                .putLong(address.offset)
+                .array()
+
+        address.isUniqueAddress ->
+            def.inputs
+                // If they're all the same, we can probably just continue.
+                .let { inputs -> if (inputs.all { it.address == inputs.first()?.address }) inputs else null }
+                // Take the first one.
+                ?.first()
+                // TODO: This sometimes results in a buffer overflow :(
+                ?.getBytes(program) ?: ByteArray(0)
+        else -> throw IllegalStateException("Unexpected Varnode.")
+    }
