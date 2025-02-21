@@ -68,7 +68,7 @@ fun markStackBlock(
     val minimalBlockLayoutSize =
         BlockLayoutDataType.minimalBlockType(program.dataTypeManager).length
 
-    val stackReferenceBlockBytes = ByteArray(minimalBlockLayoutSize)
+    val stackBlockByteArray = ByteArray(minimalBlockLayoutSize)
 
     run instruction_loop@{
         instructions.forEach { iteratedInstruction ->
@@ -80,8 +80,10 @@ fun markStackBlock(
                         val stackReference = it.filterIsInstance<StackReference>().firstOrNull()
                         Pair(stackReference, it.filterNot { it == stackReference })
                     }
-                // If this instruction doesn't reference the stack, skip it.
+                // If this instruction doesn't reference the stack, skip it. It's not writing to the stack.
                 if (stackReference == null) return@let
+
+                // From here we assume the stack reference is the place on the stack being written to.
 
                 val positiveStackOffsetForThisInstruction = stackReference.stackOffset - baseStackOffset
                 // If the offset isn't within the range for our stack block, skip it.
@@ -93,8 +95,9 @@ fun markStackBlock(
                 }
 
                 when {
-                    // When we have other references, just put their addresses together as longs and copy them
-                    //  into our stack-reference-based stack block.
+                    // The other references are (likely) what is being put onto the stack frame. We assume they
+                    //  are all the length of a long, and we combine them in the order they appear and put them
+                    //  onto our simulated stack.
                     otherReferences.isNotEmpty() ->
                         otherReferences.apply {
                             ByteBuffer
@@ -102,7 +105,7 @@ fun markStackBlock(
                                 .order(ByteOrder.LITTLE_ENDIAN)
                                 .apply { forEach { putLong(it.toAddress.offset) } }
                                 .array()
-                                .copyInto(stackReferenceBlockBytes, positiveStackOffsetForThisInstruction)
+                                .copyInto(stackBlockByteArray, positiveStackOffsetForThisInstruction)
                         }
                     // If we don't have any other references, we need to confirm if we'll correctly capture the
                     //  bytes being written to the stack.
@@ -115,6 +118,11 @@ fun markStackBlock(
 
                         run find_register_value@{
                             run attempt_without_decompile@{
+                                /**
+                                 * Iterates through the list of instructions, filtering them for those that operate
+                                 *  on the source register (and have a reference), and map to the bytes from memory
+                                 *  the references are to.
+                                 */
                                 fun matchingLoadsInInstructions(list: List<Instruction>) =
                                     list
                                         .filter {
@@ -124,7 +132,8 @@ fun markStackBlock(
                                                 it.size == 1 && it.first().name == sourceRegister.name
                                             } &&
                                                 // It should also have some parsed references we can use to read
-                                                //  potential values from memory.
+                                                //  potential values from memory. All encountered blocks to this
+                                                //  point have does things this way.
                                                 it.referencesFrom.isNotEmpty()
                                         }.mapNotNull {
                                             it.referencesFrom
@@ -142,11 +151,14 @@ fun markStackBlock(
 
                                 // Look for matching load instructions in the function.
                                 val matchingLoads =
+                                    // Start with only the instructions back up until the first instruction. If the
+                                    //  load is there (and it often is) it will save us a lot of time.
                                     matchingLoadsInInstructions(
                                         generateSequence(iteratedInstruction) { it.previous }
                                             .takeWhile { it.address.offset > instructions.first().address.offset }
                                             .toList(),
                                     ).takeIf { it.isNotEmpty() }
+                                        // If the above resulted in an empty list, we have to check the whole function.
                                         ?: matchingLoadsInInstructions(
                                             function.body
                                                 .flatMap { it }
@@ -158,7 +170,7 @@ fun markStackBlock(
                                     // Copy the load bytes into the stack-reference-based stack block.
                                     matchingLoads
                                         .first()
-                                        .copyInto(stackReferenceBlockBytes, positiveStackOffsetForThisInstruction)
+                                        .copyInto(stackBlockByteArray, positiveStackOffsetForThisInstruction)
                                     // Return early. We found the value.
                                     return@find_register_value
                                 }
@@ -187,14 +199,15 @@ fun markStackBlock(
                                         .filter { it.seqnum.target == iteratedInstruction.address }
                                         .toList()
 
-                                // Find the source [Varnode] for the register.
+                                // Find the source [Varnode] for the register, which should be an address to memory.
                                 val source =
                                     targetOps
                                         // We need only one operation to have matched.
                                         .singleOrNull()
                                         ?.inputs
-                                        // We need an operation with only one input.
+                                        // We need an operation with only one input, the source register.
                                         ?.singleOrNull()
+                                        // We then get the operation that defines the source register.
                                         ?.def
                                         ?.inputs
                                         // We need a defining operation with only one input.
@@ -207,7 +220,7 @@ fun markStackBlock(
                                 if (bytesRead != sourceBytes.size) return@attempt_with_decompile
                                 // Copy the source bytes into the stack-reference-based stack block.
                                 sourceBytes
-                                    .copyInto(stackReferenceBlockBytes, positiveStackOffsetForThisInstruction)
+                                    .copyInto(stackBlockByteArray, positiveStackOffsetForThisInstruction)
                             }
                         }
                     }
@@ -220,7 +233,7 @@ fun markStackBlock(
 
     BlockLayout(
         program,
-        ByteBuffer.wrap(stackReferenceBlockBytes).order(ByteOrder.LITTLE_ENDIAN),
+        ByteBuffer.wrap(stackBlockByteArray).order(ByteOrder.LITTLE_ENDIAN),
         instruction.address.toString(),
     ).apply {
         // We use the flags to propagate types and such. If we don't have any, something probably went wrong.
