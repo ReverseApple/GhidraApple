@@ -1,5 +1,6 @@
 package lol.fairplay.ghidraapple.analysis.objectivec.blocks
 
+import ghidra.program.model.address.Address
 import ghidra.program.model.data.ArrayDataType
 import ghidra.program.model.data.ByteDataType
 import ghidra.program.model.data.CategoryPath
@@ -13,6 +14,7 @@ import ghidra.program.model.data.PointerDataType
 import ghidra.program.model.data.StructureDataType
 import ghidra.program.model.data.UnsignedLongLongDataType
 import ghidra.program.model.data.VoidDataType
+import ghidra.program.model.listing.Program
 import ghidra.program.model.symbol.StackReference
 import ghidra.program.util.ProgramLocation
 
@@ -52,22 +54,26 @@ class BlockLayoutDataType(
                 emptyArray(),
             )
 
-        fun isLocationBlockLayout(location: ProgramLocation): Boolean =
-            location.program.listing
-                .getDataAt(location.address)
-                ?.let { isDataTypeBlockLayoutType(it.dataType) } == true ||
-                location.program.listing
-                    .getFunctionContaining(location.address)
-                    ?.stackFrame
-                    ?.stackVariables
-                    ?.firstOrNull {
-                        it.stackOffset ==
-                            location.program.listing
-                                .getInstructionAt(location.address)
-                                .referencesFrom
-                                .firstOrNull { it is StackReference }
-                                ?.let { (it as StackReference).stackOffset }
-                    }?.let { isDataTypeBlockLayoutType(it.dataType) } == true
+        fun isAddressBlockLayout(
+            program: Program,
+            address: Address,
+        ) = program.listing
+            .getDataAt(address)
+            ?.let { isDataTypeBlockLayoutType(it.dataType) } == true ||
+            program.listing
+                .getFunctionContaining(address)
+                ?.stackFrame
+                ?.stackVariables
+                ?.firstOrNull {
+                    it.stackOffset ==
+                        program.listing
+                            .getInstructionAt(address)
+                            .referencesFrom
+                            .firstOrNull { it is StackReference }
+                            ?.let { (it as StackReference).stackOffset }
+                }?.let { isDataTypeBlockLayoutType(it.dataType) } == true
+
+        fun isLocationBlockLayout(location: ProgramLocation) = isAddressBlockLayout(location.program, location.address)
 
         fun isDataTypeBlockLayoutType(dataType: DataType) =
             dataType is BlockLayoutDataType ||
