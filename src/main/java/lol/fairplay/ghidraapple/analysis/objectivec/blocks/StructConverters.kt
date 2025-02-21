@@ -32,6 +32,25 @@ import java.nio.ByteOrder
 // https://github.com/Kotlin/kotlin-spec/blob/release/docs/src/md/kotlin.core/declarations.md?plain=1#L881
 
 /**
+ * A flag for a block layout.
+ */
+enum class BlockFlag(
+    val value: Int,
+) {
+    BLOCK_INLINE_LAYOUT_STRING(1 shl 21),
+    BLOCK_SMALL_DESCRIPTOR(1 shl 22),
+    BLOCK_IS_NOESCAPE(1 shl 23),
+    BLOCK_NEEDS_FREE(1 shl 24),
+    BLOCK_HAS_COPY_DISPOSE(1 shl 25),
+    BLOCK_HAS_CTOR(1 shl 26),
+    BLOCK_IS_GC(1 shl 27),
+    BLOCK_IS_GLOBAL(1 shl 28),
+    BLOCK_USE_STRET(1 shl 29),
+    BLOCK_HAS_SIGNATURE(1 shl 30),
+    BLOCK_HAS_EXTENDED_LAYOUT(1 shl 31),
+}
+
+/**
  * An Objective-C block (relevant to the given program) with the layout representation contained in the given buffer.
  */
 class BlockLayout(
