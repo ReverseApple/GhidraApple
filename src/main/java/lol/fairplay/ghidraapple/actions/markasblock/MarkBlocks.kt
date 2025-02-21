@@ -23,9 +23,9 @@ fun markGlobalBlock(
 ) {
     BlockLayout(program, address)
         .apply {
-            // We use the flags to propagate types and such. If we don't have any, something probably went wrong.
-            if (flagsBitfield == 0) {
-                throw IllegalStateException("No flags recovered from global block at $address!")
+            // We use these to propagate types and such. If we don't have them, something probably went wrong.
+            if (flagsBitfield == 0 || descriptorPointer == 0L) {
+                throw IllegalStateException("Global block at $address is missing flags and/or descriptor!")
             }
             Msg.info(this, "Marking global block at 0x$address.")
             program.withTransaction<Exception>("Mark Global Block at 0x$address") {
@@ -51,11 +51,8 @@ fun markStackBlock(
         generateSequence(instruction) { program.listing.getInstructionAfter(it.address) }
             .takeWhile {
                 program.listing.getFunctionContaining(it.address)?.name == function.name &&
-                    program.listing
-                        .getInstructionAfter(it.address)
-                        ?.flowType
-                        ?.let { !it.isJump && !it.isCall } == true
-            }
+                    it.flowType?.let { !it.isJump && !it.isCall } == true
+            }.toList()
 
     // This is the offset into the function's stack frame where the actual program will write the
     //  stack block. We'll use it we'll use to type that part of the function's stack frame.
@@ -73,15 +70,15 @@ fun markStackBlock(
     run instruction_loop@{
         instructions.forEach { iteratedInstruction ->
             // Use the references to build up another copy of the stack.
-            iteratedInstruction.referencesFrom.let { references ->
-                if (references.isEmpty()) return@let
+            iteratedInstruction.referencesFrom.let operate_on_references@{ references ->
+                if (references.isEmpty()) return@operate_on_references
                 val (stackReference, otherReferences) =
                     iteratedInstruction.referencesFrom.toList().let {
                         val stackReference = it.filterIsInstance<StackReference>().firstOrNull()
                         Pair(stackReference, it.filterNot { it == stackReference })
                     }
                 // If this instruction doesn't reference the stack, skip it. It's not writing to the stack.
-                if (stackReference == null) return@let
+                if (stackReference == null) return@operate_on_references
 
                 // From here we assume the stack reference is the place on the stack being written to.
 
@@ -91,7 +88,7 @@ fun markStackBlock(
                     positiveStackOffsetForThisInstruction < 0 ||
                     positiveStackOffsetForThisInstruction >= minimalBlockLayoutSize
                 ) {
-                    return@let
+                    return@operate_on_references
                 }
 
                 when {
@@ -139,13 +136,13 @@ fun markStackBlock(
                                             it.referencesFrom
                                                 // Look for READ references.
                                                 .firstOrNull { it.referenceType == RefType.READ }
-                                                ?.let firstReferenceLet@{
+                                                ?.let first_reference@{
                                                     // Read the bytes from program memory.
                                                     val registerBytes = ByteArray(sourceRegister.numBytes)
                                                     val readBytes =
                                                         program.memory.getBytes(it.toAddress, registerBytes)
-                                                    if (readBytes != registerBytes.size) return@firstReferenceLet null
-                                                    return@firstReferenceLet registerBytes
+                                                    if (readBytes != registerBytes.size) return@first_reference null
+                                                    return@first_reference registerBytes
                                                 }
                                         }
 
@@ -237,8 +234,9 @@ fun markStackBlock(
         instruction.address.toString(),
     ).apply {
         // We use the flags to propagate types and such. If we don't have any, something probably went wrong.
-        if (flagsBitfield == 0) {
-            throw IllegalStateException("No flags recovered from stack block at ${instruction.address}!")
+        // We use these to propagate types and such. If we don't have them, something probably went wrong.
+        if (flagsBitfield == 0 || descriptorPointer == 0L) {
+            throw IllegalStateException("Stack block at ${instruction.address} is missing flags and/or descriptor!")
         }
         Msg.info(this, "Marking stack block at 0x${instruction.address}")
         program.withTransaction<Exception>("Mark Stack Block at 0x${instruction.address}") {
