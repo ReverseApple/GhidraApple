@@ -38,12 +38,12 @@ fun getRandomHexString(length: Int): String {
 /**
  * Converts a ``TypeNode`` tree into a Ghidra ``DataType``
  */
-class GhidraTypeBuilder(
-    val program: Program,
-) : TypeNodeVisitor {
+class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
     private lateinit var result: DataType
 
-    fun getResult(): DataType = result
+    fun getResult(): DataType {
+        return result
+    }
 
     /**
      * Create a new instance of this class with the same parameters.
@@ -51,7 +51,9 @@ class GhidraTypeBuilder(
      * This method is so that when we potentially change the constructor parameters, we won't
      * have to go and update each call.
      */
-    fun extend(): GhidraTypeBuilder = GhidraTypeBuilder(program)
+    fun extend(): GhidraTypeBuilder {
+        return GhidraTypeBuilder(program)
+    }
 
     fun getGAType(name: String): DataType? {
         val category = CategoryPath("/GA_OBJC")
@@ -86,12 +88,12 @@ class GhidraTypeBuilder(
             return
         }
 
-        for ((fieldName, node) in struct.fields) {
+        for ((name, node) in struct.fields) {
             val visitor = extend()
             node.accept(visitor)
             val visitorResult = visitor.getResult()
-            if (fieldName != null) {
-                ghidraStruct.add(visitorResult, visitorResult.length, fieldName, null)
+            if (name != null) {
+                ghidraStruct.add(visitorResult, visitorResult.length, name, null)
             } else {
                 ghidraStruct.add(visitorResult, visitorResult.length)
             }
@@ -134,13 +136,13 @@ class GhidraTypeBuilder(
             return
         }
 
-        for ((fieldName, node) in union.fields) {
+        for ((name, node) in union.fields) {
             val visitor = extend()
             node.accept(visitor)
             val visitorResult = visitor.getResult()
 
-            if (fieldName != null) {
-                ghidraUnion.add(visitorResult, visitorResult.length, fieldName, null)
+            if (name != null) {
+                ghidraUnion.add(visitorResult, visitorResult.length, name, null)
             } else {
                 ghidraUnion.add(visitor.getResult(), visitorResult.length)
             }
@@ -187,8 +189,9 @@ class GhidraTypeBuilder(
         result = PointerDataType(visitor.getResult(), 8)
     }
 
-    override fun visitBitfield(bitfield: TypeNode.Bitfield): Unit =
+    override fun visitBitfield(bitfield: TypeNode.Bitfield) {
         throw NotImplementedError("Bitfield type reconstruction is not implemented yet.")
+    }
 
     override fun visitBlock(block: TypeNode.Block) {
         result = program.dataTypeManager.getDataType("/_objc2_/ID")

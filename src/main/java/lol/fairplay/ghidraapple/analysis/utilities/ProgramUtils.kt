@@ -68,7 +68,7 @@ fun dataBlocksForNamespace(
 
 @Deprecated("Use parseObjCListSection instead.")
 fun idealClassStructures(program: Program): Map<String, Data>? {
-//    val result = mapOf<String, Data>()
+    val result = mapOf<String, Data>()
     val namespace = tryResolveNamespace(program, "objc", "class_t") ?: return null
 
     val idealStructures = mutableMapOf<String, Data>()
