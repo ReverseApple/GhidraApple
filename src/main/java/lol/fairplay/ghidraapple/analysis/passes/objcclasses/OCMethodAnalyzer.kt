@@ -123,7 +123,9 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
     ): String {
         // fixme: this is kind of sloppy
         val chain =
-            resolution.chain().reversed()
+            resolution
+                .chain()
+                .reversed()
                 .joinToString(" -> ") {
                     val type =
                         when (it.first) {
@@ -184,7 +186,7 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
         var newNames = parameterNamesForMethod(method.name)
 
         // Reconstruct and apply parameter types.
-        encSignature.parameters.forEachIndexed { i, (type, stackOffset, modifiers) ->
+        encSignature.parameters.forEachIndexed { i, (type, stackOffset, _) ->
             val paramDT =
                 runCatching {
                     typeResolver.buildParsed(type)
@@ -275,9 +277,7 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
         }
     }
 
-    fun splitCamelCase(input: String): List<String> {
-        return input.split(Regex("(?<=[a-zA-Z])(?=[A-Z])"))
-    }
+    fun splitCamelCase(input: String): List<String> = input.split(Regex("(?<=[a-zA-Z])(?=[A-Z])"))
 
     private fun parameterNamesForMethod(methodName: String): List<String> {
         // todo: make this optional.
@@ -286,7 +286,8 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
         val keywords = listOf("with", "for", "from", "to", "in", "at")
 
         val baseNames =
-            methodName.split(":")
+            methodName
+                .split(":")
                 .filter { !it.isEmpty() }
                 .map { part ->
                     val ccSplit = splitCamelCase(part)
