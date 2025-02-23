@@ -100,7 +100,6 @@ fun markStackBlock(
         ByteBuffer.wrap(stackBlockByteArray).order(ByteOrder.LITTLE_ENDIAN),
         instruction.address.toString(),
     ).apply {
-        // We use the flags to propagate types and such. If we don't have any, something probably went wrong.
         // We use these to propagate types and such. If we don't have them, something probably went wrong.
         if (flagsBitfield == 0 || descriptorPointer == 0L) {
             throw IllegalStateException("Stack block at ${instruction.address} is missing flags and/or descriptor!")
