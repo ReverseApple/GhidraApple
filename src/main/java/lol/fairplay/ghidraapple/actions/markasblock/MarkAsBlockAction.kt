@@ -15,12 +15,13 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 class MarkAsBlockAction : ProgramLocationContextAction("Mark As Objective-C Block", null) {
-    companion object {
-        private fun makeMenuItemText(blockType: String) = "Mark as Objective-C $blockType Block"
-    }
-
     init {
         popupMenuData = MenuData(arrayOf(this.name), GhidraApplePluginPackage.PKG_NAME)
+    }
+
+    private fun setMenuData(blockType: String) {
+        popupMenuData =
+            MenuData(arrayOf("Mark as Objective-C $blockType Block"), GhidraApplePluginPackage.PKG_NAME)
     }
 
     override fun actionPerformed(context: ProgramLocationActionContext) {
@@ -57,46 +58,36 @@ class MarkAsBlockAction : ProgramLocationContextAction("Mark As Objective-C Bloc
             context as? ProgramLocationActionContext ?: return false
         if (BlockLayoutDataType.isLocationBlockLayout(typedContext.location)) return false
 
+        // We first check if this is an instruction and look for the start of the building of a stack block.
         typedContext.program.listing.getInstructionAt(typedContext.address)?.let {
-            val pointerAddress =
-                it.referencesFrom
-                    .firstOrNull { it.referenceType == RefType.DATA }
-                    ?.toAddress ?: return false
             typedContext.program.symbolTable
-                .getSymbols(pointerAddress)
-                .firstOrNull { it.isPrimary }
+                .getSymbols(
+                    it.referencesFrom
+                        .firstOrNull { it.referenceType == RefType.DATA }
+                        ?.toAddress
+                        ?: return false,
+                ).firstOrNull { it.isPrimary }
                 ?.apply { if (name != "__NSConcreteStackBlock") return false }
-                ?.also {
-                    popupMenuData =
-                        MenuData(
-                            arrayOf(makeMenuItemText("Stack")),
-                            GhidraApplePluginPackage.PKG_NAME,
-                        )
-                }
-                ?: return false
-            return true
-        } ?: run {
-            val dataAtLocation =
-                typedContext.program.listing.getDataAt(typedContext.address) ?: return false
-            if (BlockLayoutDataType.isDataTypeBlockLayoutType(dataAtLocation.dataType)) return false
-            if (dataAtLocation.dataType !is Pointer) return false
-            val pointerAddress =
-                typedContext.program.address(
-                    ByteBuffer.wrap(dataAtLocation.bytes).order(ByteOrder.LITTLE_ENDIAN).long,
-                )
-            typedContext.program.symbolTable
-                .getSymbols(pointerAddress)
-                .firstOrNull { it.isPrimary }
-                ?.apply { if (name != "__NSConcreteGlobalBlock") return false }
-                ?.also {
-                    popupMenuData =
-                        MenuData(
-                            arrayOf(makeMenuItemText("Global")),
-                            GhidraApplePluginPackage.PKG_NAME,
-                        )
-                }
+                ?.also { setMenuData("Stack") }
                 ?: return false
             return true
         }
+            // If this wasn't an instruction, this should be data, so we look for the start global block.
+            ?: run {
+                val dataAtLocation =
+                    typedContext.program.listing.getDataAt(typedContext.address) ?: return false
+                if (BlockLayoutDataType.isDataTypeBlockLayoutType(dataAtLocation.dataType)) return false
+                if (dataAtLocation.dataType !is Pointer) return false
+                typedContext.program.symbolTable
+                    .getSymbols(
+                        typedContext.program.address(
+                            ByteBuffer.wrap(dataAtLocation.bytes).order(ByteOrder.LITTLE_ENDIAN).long,
+                        ),
+                    ).firstOrNull { it.isPrimary }
+                    ?.apply { if (name != "__NSConcreteGlobalBlock") return false }
+                    ?.also { setMenuData("Global") }
+                    ?: return false
+                return true
+            }
     }
 }
