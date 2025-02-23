@@ -209,6 +209,9 @@ fun Varnode.getBytes(program: Program): ByteArray =
         else -> throw IllegalStateException("Unexpected Varnode.")
     }
 
+/**
+ * Gets the bytes that this operation puts into the output [Varnode].
+ */
 fun PcodeOpAST.getOutputBytes(program: Program): ByteArray? {
     if (!isAssignment) return null
     return when (opcode) {
