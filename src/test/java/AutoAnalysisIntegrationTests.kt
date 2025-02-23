@@ -12,6 +12,7 @@ import lol.fairplay.ghidraapple.analysis.passes.blocks.ObjectiveCGlobalBlockAnal
 import lol.fairplay.ghidraapple.analysis.passes.blocks.ObjectiveCStackBlockAnalyzer
 import lol.fairplay.ghidraapple.analysis.passes.objcclasses.OCMethodAnalyzer
 import lol.fairplay.ghidraapple.analysis.passes.objcclasses.OCStructureAnalyzer
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import resources.ResourceManager
 import java.io.File
@@ -95,8 +96,9 @@ class AutoAnalysisIntegrationTests : AbstractGhidraHeadlessIntegrationTest() {
 
     @Test
     fun testBlockAnalyzers() {
-        val program = setupProgramForBinary(File(System.getenv("PATH_TO_BINARY_WITH_BLOCKS")))
-
+        val binaryPath = System.getenv("PATH_TO_BINARY_WITH_BLOCKS")
+        assumeTrue(binaryPath != null, "No binary path provided.")
+        val program = setupProgramForBinary(File(binaryPath))
         // Ensure the global blocks are typed correctly.
         program.symbolTable.getSymbols("__NSConcreteGlobalBlock").firstOrNull()?.let {
             program.referenceManager.getReferencesTo(it.address).forEach {
