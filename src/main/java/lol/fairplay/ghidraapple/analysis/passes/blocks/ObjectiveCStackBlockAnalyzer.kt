@@ -20,7 +20,7 @@ import java.util.LinkedList
 
 class ObjectiveCStackBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.INSTRUCTION_ANALYZER) {
     companion object {
-        const val NAME = "Objective-C: Stack Blocks"
+        const val NAME = "Objective-C Blocks: Stack Blocks"
         private const val DESCRIPTION = "Analyzes the program for Objective-C stack blocks."
     }
 

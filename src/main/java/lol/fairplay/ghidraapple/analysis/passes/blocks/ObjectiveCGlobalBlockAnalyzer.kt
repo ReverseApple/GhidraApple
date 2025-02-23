@@ -19,7 +19,7 @@ import java.util.LinkedList
 
 class ObjectiveCGlobalBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYTE_ANALYZER) {
     companion object {
-        const val NAME = "Objective-C: Global Blocks"
+        const val NAME = "Objective-C Blocks: Global Blocks"
         private const val DESCRIPTION = "Analyzes the program for Objective-C global blocks."
     }
 
