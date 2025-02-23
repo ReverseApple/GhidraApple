@@ -12,8 +12,7 @@ import ghidra.util.Msg
 import lol.fairplay.ghidraapple.analysis.objectivec.blocks.BlockLayout
 import lol.fairplay.ghidraapple.analysis.objectivec.blocks.BlockLayoutDataType
 import lol.fairplay.ghidraapple.analysis.utilities.address
-import lol.fairplay.ghidraapple.analysis.utilities.getByteOrder
-import lol.fairplay.ghidraapple.analysis.utilities.getBytes
+import lol.fairplay.ghidraapple.analysis.utilities.getOutputBytes
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -60,6 +59,7 @@ fun markStackBlock(
     val decompileResults =
         DecompInterface()
             .let { decompiler ->
+                decompiler.simplificationStyle = "normalize"
                 decompiler.openProgram(program)
                 decompiler
                     .decompileFunction(function, 30, null)
@@ -79,60 +79,7 @@ fun markStackBlock(
 
     val stackBlockByteArray = ByteArray(minimalBlockLayoutSize)
 
-    // While we can (and do) use the address of an instruction to find correlated pcode operations, that
-    //  doesn't always work. So we also filter for operations that output to the stack.
-    val pcodeOpsThatOutputToTheStack =
-        decompileResults.highFunction.pcodeOps
-            .iterator()
-            .asSequence()
-            .filter {
-                it.output?.address?.isStackAddress == true
-            }.toList()
-
     instructionsThatBuildTheStackBlock.forEach { iteratedInstruction ->
-        run check_references@{
-            val (stackReference, otherReferences) =
-                iteratedInstruction.referencesFrom.toList().let {
-                    val stackReference = it.filterIsInstance<StackReference>().firstOrNull()
-                    Pair(stackReference, it.filterNot { it == stackReference })
-                }
-            // If this instruction doesn't reference the stack, skip it. It's not writing to the stack.
-            if (stackReference == null) return@check_references
-            val positiveOffsetByReference = stackReference.stackOffset - baseStackOffset
-            // If the offset isn't within the range for our stack block, skip it.
-            if (
-                positiveOffsetByReference < 0 ||
-                positiveOffsetByReference >= minimalBlockLayoutSize
-            ) {
-                return@check_references
-            }
-            when {
-                // The other references are (likely) what is being put onto the stack frame. We assume they
-                //  are all the length of a long, and we combine them in the order they appear and put them
-                //  onto our simulated stack.
-                otherReferences.isNotEmpty() ->
-                    otherReferences.apply {
-                        ByteBuffer
-                            .allocate(Long.SIZE_BYTES * size)
-                            .order(program.memory.getByteOrder())
-                            .apply { forEach { putLong(it.toAddress.offset) } }
-                            .array()
-                            .copyInto(stackBlockByteArray, positiveOffsetByReference)
-                    }
-                else -> {
-                    val matchingPcodeOps =
-                        pcodeOpsThatOutputToTheStack
-                            .filter { it.output.address.offset == stackReference.stackOffset.toLong() }
-                    matchingPcodeOps
-                        .firstOrNull()
-                        ?.inputs
-                        // If we're here, take the first unique input seems to be the best option.
-                        ?.firstOrNull { it.isUnique }
-                        ?.getBytes(program)
-                        ?.copyInto(stackBlockByteArray, positiveOffsetByReference)
-                }
-            }
-        }
         decompileResults.highFunction.pcodeOps
             .iterator()
             .asSequence()
@@ -143,20 +90,10 @@ fun markStackBlock(
                 val positiveOffset = it.output.address.offset - baseStackOffset
                 // If the offset isn't within the range for our stack block, skip it.
                 if (positiveOffset < 0 || positiveOffset >= minimalBlockLayoutSize) return@pcodeops_loop
-
-                it.inputs
-                    // Filter out superfluous empty inputs.
-                    .filterNot { it.address.offset == 0L }
-                    // Map to the actual raw bytes.
-                    .map { it.getBytes(program) }
-                    // Combine the byte arrays together.
-                    .reduce { cumulativeList, nextList -> cumulativeList + nextList }
-                    // Copy into our simulated stack.
-                    .copyInto(stackBlockByteArray, positiveOffset.toInt())
+                // If we can get the output bytes from the pcode operation, copy them into our stack.
+                it.getOutputBytes(program)?.copyInto(stackBlockByteArray, positiveOffset.toInt())
             }
     }
-
-    // Finally build and markup the stack block.
 
     BlockLayout(
         program,

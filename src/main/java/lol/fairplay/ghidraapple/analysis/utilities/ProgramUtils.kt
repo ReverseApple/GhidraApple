@@ -11,6 +11,8 @@ import ghidra.program.model.listing.Data
 import ghidra.program.model.listing.Function
 import ghidra.program.model.listing.Program
 import ghidra.program.model.mem.Memory
+import ghidra.program.model.pcode.PcodeOp
+import ghidra.program.model.pcode.PcodeOpAST
 import ghidra.program.model.pcode.Varnode
 import ghidra.program.model.symbol.Namespace
 import ghidra.program.model.symbol.RefType
@@ -182,10 +184,19 @@ fun Varnode.getBytes(program: Program): ByteArray =
 
         address.isConstantAddress ->
             ByteBuffer
-                .allocate(size)
+                // We allocate as much space as we need and will truncate later.
+                .allocate(Long.SIZE_BYTES)
                 .order(program.memory.getByteOrder())
                 .putLong(address.offset)
-                .array()
+                .let {
+                    when (it.order()) {
+                        ByteOrder.LITTLE_ENDIAN -> it.array().copyOfRange(0, size)
+                        // We just did [putLong], so the position should be at the end.
+                        ByteOrder.BIG_ENDIAN -> it.array().copyOfRange(it.position() - size, it.position())
+                        // This should never happen, but it's here to make the compiler happy.
+                        else -> throw IllegalStateException("Unsupported byte order: ${it.order()}!")
+                    }
+                }
 
         address.isUniqueAddress ->
             def.inputs
@@ -197,3 +208,22 @@ fun Varnode.getBytes(program: Program): ByteArray =
                 ?.getBytes(program) ?: ByteArray(0)
         else -> throw IllegalStateException("Unexpected Varnode.")
     }
+
+fun PcodeOpAST.getOutputBytes(program: Program): ByteArray? {
+    if (!isAssignment) return null
+    return when (opcode) {
+        PcodeOp.COPY -> inputs[0].getBytes(program).copyOfRange(0, output.size)
+        PcodeOp.SUBPIECE ->
+            inputs[0]
+                .getBytes(program)
+                .let {
+                    val fromIndex =
+                        inputs[1]
+                            .apply { assert(isConstant) }
+                            .address.offset
+                            .toInt()
+                    it.copyOfRange(fromIndex, fromIndex + output.size)
+                }
+        else -> null
+    }
+}
