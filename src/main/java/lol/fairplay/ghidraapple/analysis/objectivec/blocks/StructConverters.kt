@@ -248,6 +248,7 @@ class BlockLayout(
                         )
                     }
             }.let {
+                it.setName("invoke_$invokeAddress", SourceType.ANALYSIS)
                 it.updateFunction(
                     // Keep the same calling convention
                     it.callingConventionName,
