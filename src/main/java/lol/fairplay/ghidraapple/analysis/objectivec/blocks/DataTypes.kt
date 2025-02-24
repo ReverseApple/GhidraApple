@@ -1,8 +1,6 @@
 package lol.fairplay.ghidraapple.analysis.objectivec.blocks
 
 import ghidra.program.model.address.Address
-import ghidra.program.model.data.ArrayDataType
-import ghidra.program.model.data.ByteDataType
 import ghidra.program.model.data.CategoryPath
 import ghidra.program.model.data.CharDataType
 import ghidra.program.model.data.DataType
@@ -104,10 +102,8 @@ class BlockLayoutDataType(
         invokeReturnType,
         parameters,
         // We don't know what the imported variables are, but at least we know how long they are. For now,
-        //  we'll just put in a byte array and allow the user to re-type the struct as necessary.
-        arrayOf(
-            Triple(ArrayDataType(ByteDataType.dataType, extraBytes), "unknown", null),
-        ),
+        //  we'll just put in undefined bytes and allow the user to re-type the struct as necessary.
+        generateSequence(Triple(DEFAULT, "", null)) { it }.take(extraBytes).toList().toTypedArray(),
     )
 
     init {
