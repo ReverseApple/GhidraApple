@@ -66,8 +66,8 @@ class FunctionsForSelectorTable(
     ProgramTableModel {
     override fun createTableColumnDescriptor(): TableColumnDescriptor<Function> {
         val descriptor: TableColumnDescriptor<Function> = TableColumnDescriptor<Function>()
-        descriptor.addColumn("Name", true) { it.name }
-        descriptor.addColumn("Class", true) { it.parentNamespace.name }
+        descriptor.addColumn("Name", true, String::class.java) { it.name }
+        descriptor.addColumn("Class", true, String::class.java) { it.parentNamespace.name }
 
         return descriptor
     }
