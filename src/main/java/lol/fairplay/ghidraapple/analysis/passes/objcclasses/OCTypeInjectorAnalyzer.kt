@@ -33,7 +33,7 @@ class OCTypeInjectorAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.
     lateinit var program: Program
 
     companion object {
-        private const val NAME = "Objective-C Type Injection"
+        const val NAME = "Objective-C Type Injection"
         private const val DESCRIPTION = ""
 
         // This has to run before the data type propagation (but not earlier), otherwise not all alloc calls are found?
@@ -184,7 +184,7 @@ class OCTypeInjectorAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.
     private fun getDataTypeFromSymbol(symbol: Symbol): DataType {
         val className = symbol.name.removePrefix("_OBJC_CLASS_\$_")
         val type = program.dataTypeManager.getDataType("/GA_OBJC/$className")
-        return type
+        return program.dataTypeManager.getPointer(type)
     }
 
     private fun allocFnSymbols(): List<FunctionSymbol> {
