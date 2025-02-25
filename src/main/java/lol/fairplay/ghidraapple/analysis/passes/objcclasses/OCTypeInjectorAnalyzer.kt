@@ -154,7 +154,7 @@ class OCTypeInjectorAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.
                 val allocatedSymbol = objectLookUp[const.offset]
                 if (allocatedSymbol != null) {
                     runCatching {
-                        val ocType = getDataTypeFromSymbol(allocatedSymbol!!)
+                        val ocType = getDataTypeFromSymbol(allocatedSymbol)
                         result.add(AllocInfo(function, allocCall.seqnum.target, generateFunctionSignatureForType(ocType)))
                     }.onFailure { error ->
                         Msg.error(this, "Failed to inject type for ${allocatedSymbol.name} in ${function.name}", error)
