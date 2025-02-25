@@ -1,7 +1,3 @@
-import ghidra.app.plugin.core.analysis.AnalysisBackgroundCommand
-import ghidra.app.plugin.core.analysis.AutoAnalysisManager
-import ghidra.base.project.GhidraProject
-import ghidra.framework.cmd.Command
 import ghidra.program.model.address.Address
 import ghidra.program.model.data.FunctionDefinition
 import ghidra.program.model.data.Pointer
@@ -10,63 +6,40 @@ import ghidra.program.model.listing.Program
 import ghidra.program.model.pcode.DataTypeSymbol
 import ghidra.program.model.pcode.HighFunctionDBUtil
 import ghidra.program.model.symbol.Symbol
-import ghidra.test.AbstractGhidraHeadlessIntegrationTest
-import lol.fairplay.ghidraapple.analysis.passes.objcclasses.OCMethodAnalyzer
-import lol.fairplay.ghidraapple.analysis.passes.objcclasses.OCStructureAnalyzer
-import lol.fairplay.ghidraapple.analysis.passes.objcclasses.OCTypeInjectorAnalyzer
 import lol.fairplay.ghidraapple.analysis.passes.selectortrampoline.SelectorTrampolineAnalyzer
+import lol.fairplay.ghidraapple.core.integrationtests.AbstractiOSAnalysisIntegrationTest
 import org.junit.jupiter.api.Test
 import resources.ResourceManager
-import java.io.File
 import kotlin.test.Ignore
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
-/*
-Type lattice of Mach-O binary "TestApplicationTypeInference":
-
-        ID
-        |
-     ___|______________________
-    |             |            |
-Accommodation    Human       Animal
-    |             |            |
-    |             |       _____|________________
-    |             |      |           |         |
-    |             |     Cat         Dog       Horse
-    |             |      |           |         |
-    |_____________|______|___________|_________|
-                      |
-                      |
-                    Bottom
-
-The binary is an objc release build with Xcode (Clang) for iOS (arm64) without optimization.
+/**
+ * Type lattice of Mach-O binary "TestApplicationTypeInference":
+ * ```
+ *     ID
+ *     |
+ *  ___|______________________
+ *|             |            |
+ *Accommodation Human       Animal
+ *|             |            |
+ *|             |       _____|________________
+ *|             |      |           |         |
+ *|             |     Cat         Dog       Horse
+ *|             |      |           |         |
+ *|_____________|______|___________|_________|
+ *|
+ *|
+ *Bottom
+ * ```
+ * The binary is an objc release build with Xcode (Clang) for iOS (arm64) without optimization.
+ *
+ * TODO: The test is currently more of a unit test, and expensive because it re-runs the auto analyses for each test
+ * It seems like a good canditate to try out the [ProgramBuilder] to only build up the relevant parts of the code
+ * as discussed [here](https://github.com/NationalSecurityAgency/ghidra/discussions/7441#discussioncomment-12045248)
+ *
  */
-
-class ObjcAllocationInitializationTest : AbstractGhidraHeadlessIntegrationTest() {
-    /**
-     * Sets up the program for testing function overrides at allocation and initialization sites.
-     *
-     * @param file the binary file
-     * @return the Ghidra program
-     */
-    private fun setupProgramForBinary(file: File): Program {
-        val ghidraProject = GhidraProject.createProject("/tmp", "${this::class.simpleName}_${file.name}", true)
-        val program = ghidraProject.importProgram(file)
-        val autoAnalyzer = AutoAnalysisManager.getAnalysisManager(program)
-        val options = program.getOptions(Program.ANALYSIS_PROPERTIES)
-
-        options.setBoolean(OCMethodAnalyzer.NAME, true)
-        options.setBoolean(OCStructureAnalyzer.NAME, true)
-        options.setBoolean(OCTypeInjectorAnalyzer.NAME, true)
-
-        autoAnalyzer.reAnalyzeAll(null)
-        val cmd: Command<Program> = AnalysisBackgroundCommand(autoAnalyzer, false)
-        cmd.applyTo(program)
-
-        return program
-    }
-
+class ObjcAllocationInitializationTest : AbstractiOSAnalysisIntegrationTest() {
     /**
      * Returns the function by its name from the symbol table. Asserts that the function name is unique.
      *

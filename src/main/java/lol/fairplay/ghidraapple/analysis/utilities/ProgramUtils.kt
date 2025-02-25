@@ -9,12 +9,17 @@ import ghidra.program.model.address.AddressSetView
 import ghidra.program.model.data.PointerDataType
 import ghidra.program.model.listing.Data
 import ghidra.program.model.listing.Function
+import ghidra.program.model.listing.FunctionManager
 import ghidra.program.model.listing.Program
 import ghidra.program.model.symbol.Namespace
 import ghidra.program.model.symbol.RefType
 import ghidra.program.model.symbol.ReferenceManager
 import ghidra.program.model.symbol.SourceType
 import ghidra.program.model.symbol.Symbol
+import ghidra.program.model.util.LongPropertyMap
+import ghidra.program.model.util.PropertyMap
+import ghidra.program.model.util.PropertyMapManager
+import ghidra.program.model.util.StringPropertyMap
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.derefUntyped
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.get
 
@@ -141,3 +146,28 @@ fun <ROW_TYPE, COLUMN_TYPE> TableColumnDescriptor<ROW_TYPE>.addColumn(
         addHiddenColumn(column)
     }
 }
+
+fun FunctionManager.getFunctionsWithTag(tagName: String): List<Function> {
+    val tag = functionTagManager.getFunctionTag(tagName) ?: return emptyList()
+    return this.getFunctions(true).filter { it.tags.contains(tag) }
+}
+
+fun FunctionManager.getFunctionsWithAnyTag(vararg tagNames: String): List<Function> {
+    val tags = tagNames.mapNotNull { functionTagManager.getFunctionTag(it) }.toSet()
+    if (tags.isEmpty()) return emptyList()
+    return this.getFunctions(true).filter { it.tags.intersect(tags).isNotEmpty() }
+}
+
+fun <T> PropertyMap<T>.toMap(): Map<Address, T> = this.propertyIterator.associateWith { this.get(it) }
+
+fun <T> PropertyMap<T>.addCollection(d: Collection<Pair<Address, T?>>) {
+    d.forEach { (address, value) -> this.add(address, value) }
+}
+
+fun PropertyMapManager.getOrCreateStringPropertyMap(name: String): StringPropertyMap =
+    this.getStringPropertyMap(name) ?: this.createStringPropertyMap(name)
+
+fun PropertyMapManager.getOrCreateLongPropertyMap(name: String): LongPropertyMap =
+    this.getLongPropertyMap(name) ?: this.createLongPropertyMap(name)
+
+fun Function.hasTag(tagName: String): Boolean = this.tags.any { it.name == tagName }
