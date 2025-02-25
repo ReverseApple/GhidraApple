@@ -110,7 +110,7 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
             program.dataTypeManager.addDataType(StructureDataType(structureCategory, it, 0), null)
         }
 
-        protoData.forEach { (name, data) ->
+        protoData.keys.forEach { name ->
             taskMonitor?.incrementProgress()
 
             program.dataTypeManager.addDataType(StructureDataType(structureCategory, "<$name>", 0), null)
