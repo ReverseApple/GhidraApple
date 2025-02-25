@@ -105,6 +105,7 @@ class ARCFixupInstallerAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerTy
                 "_objc_setProperty",
                 "*(x0 + x3) = x2;",
                 "_objc_setProperty",
+                "_objc_setProperty_atomic",
             )
 
         val specs =
