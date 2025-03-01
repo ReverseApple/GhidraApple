@@ -86,7 +86,7 @@ fun markStackBlock(
             .filter { it.seqnum.target == iteratedInstruction.address }
             .forEach pcodeops_loop@{
                 // If the output is not a stack address, skip it.
-                if (!it.output.address.isStackAddress) return@pcodeops_loop
+                if (it.output?.address?.isStackAddress != true) return@pcodeops_loop
                 val positiveOffset = it.output.address.offset - baseStackOffset
                 // If the offset isn't within the range for our stack block, skip it.
                 if (positiveOffset < 0 || positiveOffset >= minimalBlockLayoutSize) return@pcodeops_loop
