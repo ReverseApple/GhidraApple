@@ -48,13 +48,17 @@ fun markStackBlock(
 ) {
     if (BlockLayoutDataType.isAddressBlockLayout(program, instruction.address)) return
     val instructionsThatBuildTheStackBlock =
-        generateSequence(instruction) { program.listing.getInstructionAfter(it.address) }
-            .takeWhile {
-                program.listing.getFunctionContaining(it.address)?.name == function.name &&
-                    // If we hit a jump or call instruction, we're likely done with building the block. It's
-                    //  unlikely that the compiler would put a jump in the middle of block-building code.
-                    it.flowType?.let { !it.isJump && !it.isCall } == true
-            }.toList()
+        generateSequence(instruction) {
+            program.listing.getInstructionAfter(it.address).let {
+                // If we're only branching, without linking, it should be ok to just follow the branch.
+                if (it.mnemonicString == "b") program.listing.getInstructionAt(it.pcode[0].inputs[0].address) else it
+            }
+        }.takeWhile {
+            program.listing.getFunctionContaining(it.address)?.name == function.name &&
+                // If we hit a jump or call instruction, we're likely done with building the block. It's
+                //  unlikely that the compiler would put a jump in the middle of block-building code.
+                it.flowType?.let { !it.isJump && !it.isCall } == true
+        }.toList()
 
     val decompileResults =
         DecompInterface()
