@@ -4,6 +4,7 @@ import docking.ActionContext
 import docking.action.MenuData
 import ghidra.app.context.ProgramLocationActionContext
 import ghidra.app.context.ProgramLocationContextAction
+import ghidra.app.decompiler.DecompilerLocation
 import ghidra.app.plugin.core.codebrowser.CodeViewerActionContext
 import ghidra.app.plugin.core.decompile.DecompilerActionContext
 import ghidra.program.model.data.Pointer
@@ -57,6 +58,17 @@ class MarkAsBlockAction : ProgramLocationContextAction("Mark As Objective-C Bloc
         val typedContext =
             context as? ProgramLocationActionContext ?: return false
         if (BlockLayoutDataType.isLocationBlockLayout(typedContext.location)) return false
+
+        val location = typedContext.location
+
+        when (location) {
+            is DecompilerLocation -> {
+                location.token.lineParent?.let {
+                    // Tokens: [variableName], [space], [equals], [space], ["PTR___NSConcreteStackBlock*"], ...
+                    if (it.getToken(4).toString().startsWith("PTR___NSConcreteStackBlock")) return true
+                }
+            }
+        }
 
         // We first check if this is an instruction and look for the start of the building of a stack block.
         typedContext.program.listing.getInstructionAt(typedContext.address)?.let {
