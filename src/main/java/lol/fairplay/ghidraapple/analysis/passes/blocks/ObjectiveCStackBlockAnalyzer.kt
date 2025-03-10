@@ -12,7 +12,6 @@ import ghidra.program.model.listing.Program
 import ghidra.program.model.symbol.RefType
 import ghidra.program.model.symbol.Reference
 import ghidra.program.model.symbol.SourceType
-import ghidra.program.model.symbol.Symbol
 import ghidra.util.Msg
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.actions.markasblock.markStackBlock
@@ -24,17 +23,16 @@ class ObjectiveCStackBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, Analyze
         private const val DESCRIPTION = "Analyzes the program for Objective-C stack blocks."
     }
 
-    var stackBlockSymbol: Symbol? = null
-
     init {
         priority = AnalysisPriority.LOW_PRIORITY
         setSupportsOneTimeAnalysis()
     }
 
-    override fun canAnalyze(program: Program): Boolean {
-        stackBlockSymbol = program.symbolTable.getSymbols("__NSConcreteStackBlock").firstOrNull()
-        return (stackBlockSymbol != null)
-    }
+    override fun canAnalyze(program: Program): Boolean =
+        program
+            .symbolTable
+            .getSymbols("__NSConcreteStackBlock")
+            .firstOrNull() != null
 
     override fun added(
         program: Program,
@@ -42,7 +40,7 @@ class ObjectiveCStackBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, Analyze
         monitor: TaskMonitor,
         log: MessageLog,
     ): Boolean {
-        stackBlockSymbol?.let {
+        program.symbolTable.getSymbols("__NSConcreteStackBlock").firstOrNull()?.let {
             // We parallelize as some runs of [markStackBlock] may trigger the decompiler.
             ConcurrentQ<Reference, Nothing>(
                 object : QCallback<Reference, Nothing> {

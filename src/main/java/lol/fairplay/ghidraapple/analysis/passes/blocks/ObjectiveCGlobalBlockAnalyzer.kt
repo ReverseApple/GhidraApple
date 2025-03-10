@@ -11,7 +11,6 @@ import ghidra.program.model.address.AddressSetView
 import ghidra.program.model.listing.Program
 import ghidra.program.model.symbol.RefType
 import ghidra.program.model.symbol.Reference
-import ghidra.program.model.symbol.Symbol
 import ghidra.util.Msg
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.actions.markasblock.markGlobalBlock
@@ -23,17 +22,16 @@ class ObjectiveCGlobalBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, Analyz
         private const val DESCRIPTION = "Analyzes the program for Objective-C global blocks."
     }
 
-    var globalBlockSymbol: Symbol? = null
-
     init {
         priority = AnalysisPriority.DATA_TYPE_PROPOGATION
         setSupportsOneTimeAnalysis()
     }
 
-    override fun canAnalyze(program: Program): Boolean {
-        globalBlockSymbol = program.symbolTable.getSymbols("__NSConcreteGlobalBlock").firstOrNull()
-        return (globalBlockSymbol != null)
-    }
+    override fun canAnalyze(program: Program): Boolean =
+        program
+            .symbolTable
+            .getSymbols("__NSConcreteGlobalBlock")
+            .firstOrNull() != null
 
     override fun added(
         program: Program,
@@ -41,7 +39,7 @@ class ObjectiveCGlobalBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, Analyz
         monitor: TaskMonitor,
         log: MessageLog,
     ): Boolean {
-        globalBlockSymbol?.let {
+        program.symbolTable.getSymbols("__NSConcreteGlobalBlock").firstOrNull()?.let {
             ConcurrentQ<Reference, Nothing>(
                 object : QCallback<Reference, Nothing> {
                     override fun process(
