@@ -39,7 +39,9 @@ class MarkAsBlockAction : ProgramLocationContextAction("Mark As Objective-C Bloc
                         )
                     }
                     ?: run {
-                        markGlobalBlock(context.program, context.address)
+                        context.program.withTransaction<Exception>("Mark Global Block at 0x${context.address}") {
+                            ApplyNSConcreteGlobalBlock(context.address).applyTo(context.program)
+                        }
                     }
             }
 

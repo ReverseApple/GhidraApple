@@ -15,32 +15,45 @@ import lol.fairplay.ghidraapple.analysis.utilities.address
 import lol.fairplay.ghidraapple.analysis.utilities.getOutputBytes
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import ghidra.framework.cmd.BackgroundCommand
+import ghidra.framework.cmd.Command
 
-fun markGlobalBlock(
-    program: Program,
-    address: Address,
-) {
-    if (BlockLayoutDataType.isAddressBlockLayout(program, address)) return
-    BlockLayout(program, address)
-        .apply {
+
+class ApplyNSConcreteGlobalBlock(val address: Address): Command<Program> {
+    private var errorMsg: String? = null
+    override fun applyTo(program: Program): Boolean {
+        if (BlockLayoutDataType.isAddressBlockLayout(program, address)) return false
+        val blockLayout = BlockLayout(program, address)
             // We use these to propagate types and such. If we don't have them, something probably went wrong.
-            if (flagsBitfield == 0 || descriptorPointer == 0L) {
-                throw IllegalStateException("Global block at $address is missing flags and/or descriptor!")
+            if (blockLayout.flagsBitfield == 0 || blockLayout.descriptorPointer == 0L) {
+                errorMsg = "Global block at $address is missing flags and/or descriptor!"
+                return false
             }
-            Msg.info(this, "Marking global block at 0x$address.")
-            program.withTransaction<Exception>("Mark Global Block at 0x$address") {
-                DataUtilities.createData(
-                    program,
-                    address,
-                    toDataType(),
-                    -1,
-                    DataUtilities.ClearDataMode.CLEAR_ALL_CONFLICT_DATA,
-                )
-                markupAdditionalTypes()
-            }
-        }
+            DataUtilities.createData(
+                program,
+                address,
+                blockLayout.toDataType(),
+                -1,
+                DataUtilities.ClearDataMode.CLEAR_ALL_CONFLICT_DATA,
+            )
+            blockLayout.markupAdditionalTypes()
+
+        return true
+    }
+
+    override fun getStatusMsg(): String? {
+        return errorMsg
+    }
+
+    override fun getName(): String {
+        return "Mark Global Block at 0x$address"
+    }
 }
 
+/**
+* TODO: Turn into [BackgroundCommand]
+ *
+ */
 fun markStackBlock(
     program: Program,
     function: Function,
