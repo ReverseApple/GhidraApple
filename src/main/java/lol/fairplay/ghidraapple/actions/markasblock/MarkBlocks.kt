@@ -1,6 +1,8 @@
 package lol.fairplay.ghidraapple.actions.markasblock
 
 import ghidra.app.decompiler.DecompInterface
+import ghidra.framework.cmd.BackgroundCommand
+import ghidra.framework.cmd.Command
 import ghidra.program.model.address.Address
 import ghidra.program.model.data.DataUtilities
 import ghidra.program.model.listing.Function
@@ -15,28 +17,26 @@ import lol.fairplay.ghidraapple.analysis.utilities.address
 import lol.fairplay.ghidraapple.analysis.utilities.getOutputBytes
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import ghidra.framework.cmd.BackgroundCommand
-import ghidra.framework.cmd.Command
 
-
-class ApplyNSConcreteGlobalBlock(val address: Address): Command<Program> {
+class ApplyNSConcreteGlobalBlock(val address: Address) : Command<Program> {
     private var errorMsg: String? = null
+
     override fun applyTo(program: Program): Boolean {
         if (BlockLayoutDataType.isAddressBlockLayout(program, address)) return false
         val blockLayout = BlockLayout(program, address)
-            // We use these to propagate types and such. If we don't have them, something probably went wrong.
-            if (blockLayout.flagsBitfield == 0 || blockLayout.descriptorPointer == 0L) {
-                errorMsg = "Global block at $address is missing flags and/or descriptor!"
-                return false
-            }
-            DataUtilities.createData(
-                program,
-                address,
-                blockLayout.toDataType(),
-                -1,
-                DataUtilities.ClearDataMode.CLEAR_ALL_CONFLICT_DATA,
-            )
-            blockLayout.markupAdditionalTypes()
+        // We use these to propagate types and such. If we don't have them, something probably went wrong.
+        if (blockLayout.flagsBitfield == 0 || blockLayout.descriptorPointer == 0L) {
+            errorMsg = "Global block at $address is missing flags and/or descriptor!"
+            return false
+        }
+        DataUtilities.createData(
+            program,
+            address,
+            blockLayout.toDataType(),
+            -1,
+            DataUtilities.ClearDataMode.CLEAR_ALL_CONFLICT_DATA,
+        )
+        blockLayout.markupAdditionalTypes()
 
         return true
     }
