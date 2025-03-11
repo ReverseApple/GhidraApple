@@ -11,6 +11,7 @@ import ghidra.program.model.listing.Program
 import ghidra.program.model.symbol.SourceType
 import ghidra.program.model.symbol.StackReference
 import ghidra.util.Msg
+import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.analysis.objectivec.blocks.BlockLayout
 import lol.fairplay.ghidraapple.analysis.objectivec.blocks.BlockLayoutDataType
 import lol.fairplay.ghidraapple.analysis.utilities.address
@@ -51,78 +52,85 @@ class ApplyNSConcreteGlobalBlock(val address: Address) : Command<Program> {
 }
 
 /**
-* TODO: Turn into [BackgroundCommand]
+ *
+ * This is a [BackgroundCommand] because it uses the decompiler internally,
+ * and that might take longer than we want to block the UI thread.
  *
  */
-fun markStackBlock(
-    program: Program,
-    function: Function,
-    instruction: Instruction,
-) {
-    if (BlockLayoutDataType.isAddressBlockLayout(program, instruction.address)) return
-    val instructionsThatBuildTheStackBlock =
-        generateSequence(instruction) {
-            program.listing.getInstructionAfter(it.address).let {
-                // If we're only branching, without linking, it should be ok to just follow the branch.
-                if (it.mnemonicString == "b") program.listing.getInstructionAt(it.pcode[0].inputs[0].address) else it
-            }
-        }.takeWhile {
-            program.listing.getFunctionContaining(it.address)?.name == function.name &&
-                // If we hit a jump or call instruction, we're likely done with building the block. It's
-                //  unlikely that the compiler would put a jump in the middle of block-building code.
-                it.flowType?.let { !it.isJump && !it.isCall } == true
-        }.toList()
+class ApplyNSConcreteStackBlock(val function: Function, val instruction: Instruction) : BackgroundCommand<Program>() {
+    constructor(function: Function, address: Address) : this(function, function.program.listing.getInstructionAt(address))
 
-    val decompileResults =
-        DecompInterface()
-            .let { decompiler ->
-                decompiler.simplificationStyle = "normalize"
-                decompiler.openProgram(program)
-                decompiler
-                    .decompileFunction(function, 30, null)
-                    .also { decompiler.dispose() }
-            }
+    constructor(program: Program, address: Address) : this(program.listing.getFunctionContaining(address), address)
 
-    // This is the offset into the function's stack frame where the actual program will write the
-    //  stack block. We'll use it we'll use to type that part of the function's stack frame.
-    val baseStackOffset =
-        instruction.referencesFrom
-            .filterIsInstance<StackReference>()
-            .first()
-            .stackOffset
+    override fun applyTo(
+        program: Program,
+        monitor: TaskMonitor,
+    ): Boolean {
+        if (BlockLayoutDataType.isAddressBlockLayout(program, instruction.address)) return false
+        // TODO: Too many nested lambdas that make it hard to follow what `it` is referring to at any given time.
+        val instructionsThatBuildTheStackBlock =
+            generateSequence(instruction) {
+                program.listing.getInstructionAfter(it.address).let {
+                    // If we're only branching, without linking, it should be ok to just follow the branch.
+                    if (it.mnemonicString == "b") program.listing.getInstructionAt(it.pcode[0].inputs[0].address) else it
+                }
+            }.takeWhile {
+                program.listing.getFunctionContaining(it.address)?.name == function.name &&
+                    // If we hit a jump or call instruction, we're likely done with building the block. It's
+                    //  unlikely that the compiler would put a jump in the middle of block-building code.
+                    it.flowType?.let { !it.isJump && !it.isCall } == true
+            }.toList()
 
-    val minimalBlockLayoutSize =
-        BlockLayoutDataType.minimalBlockType(program.dataTypeManager).length
+        // TODO: This seems possible to write more elegantly
+        val decompileResults =
+            DecompInterface()
+                .let { decompiler ->
+                    decompiler.simplificationStyle = "normalize"
+                    decompiler.openProgram(program)
+                    decompiler
+                        .decompileFunction(function, 30, null)
+                        .also { decompiler.dispose() }
+                }
 
-    val stackBlockByteArray = ByteArray(minimalBlockLayoutSize)
+        // This is the offset into the function's stack frame where the actual program will write the
+        //  stack block. We'll use it to type that part of the function's stack frame.
+        val baseStackOffset =
+            instruction.referencesFrom
+                .filterIsInstance<StackReference>()
+                .first()
+                .stackOffset
 
-    instructionsThatBuildTheStackBlock.forEach { iteratedInstruction ->
-        decompileResults.highFunction.pcodeOps
-            .iterator()
-            .asSequence()
-            .filter { it.seqnum.target == iteratedInstruction.address }
-            .forEach pcodeops_loop@{
-                // If the output is not a stack address, skip it.
-                if (it.output?.address?.isStackAddress != true) return@pcodeops_loop
-                val positiveOffset = it.output.address.offset - baseStackOffset
-                // If the offset isn't within the range for our stack block, skip it.
-                if (positiveOffset < 0 || positiveOffset >= minimalBlockLayoutSize) return@pcodeops_loop
-                // If we can get the output bytes from the pcode operation, copy them into our stack.
-                it.getOutputBytes(program)?.copyInto(stackBlockByteArray, positiveOffset.toInt())
-            }
-    }
+        val minimalBlockLayoutSize =
+            BlockLayoutDataType.minimalBlockType(program.dataTypeManager).length
 
-    BlockLayout(
-        program,
-        ByteBuffer.wrap(stackBlockByteArray).order(ByteOrder.LITTLE_ENDIAN),
-        instruction.address.toString(),
-    ).apply {
-        // We use these to propagate types and such. If we don't have them, something probably went wrong.
-        if (flagsBitfield == 0 || descriptorPointer == 0L) {
-            throw IllegalStateException("Stack block at ${instruction.address} is missing flags and/or descriptor!")
+        val stackBlockByteArray = ByteArray(minimalBlockLayoutSize)
+
+        instructionsThatBuildTheStackBlock.forEach { iteratedInstruction ->
+            decompileResults.highFunction.pcodeOps
+                .iterator()
+                .asSequence()
+                .filter { it.seqnum.target == iteratedInstruction.address }
+                .forEach pcodeops_loop@{
+                    // If the output is not a stack address, skip it.
+                    if (it.output?.address?.isStackAddress != true) return@pcodeops_loop
+                    val positiveOffset = it.output.address.offset - baseStackOffset
+                    // If the offset isn't within the range for our stack block, skip it.
+                    if (positiveOffset < 0 || positiveOffset >= minimalBlockLayoutSize) return@pcodeops_loop
+                    // If we can get the output bytes from the pcode operation, copy them into our stack.
+                    it.getOutputBytes(program)?.copyInto(stackBlockByteArray, positiveOffset.toInt())
+                }
         }
-        Msg.info(this, "Marking stack block at 0x${instruction.address}")
-        program.withTransaction<Exception>("Mark Stack Block at 0x${instruction.address}") {
+
+        BlockLayout(
+            program,
+            ByteBuffer.wrap(stackBlockByteArray).order(ByteOrder.LITTLE_ENDIAN),
+            instruction.address.toString(),
+        ).apply {
+            // We use these to propagate types and such. If we don't have them, something probably went wrong.
+            if (flagsBitfield == 0 || descriptorPointer == 0L) {
+                throw IllegalStateException("Stack block at ${instruction.address} is missing flags and/or descriptor!")
+            }
+            Msg.info(this, "Marking stack block at 0x${instruction.address}")
             function.stackFrame.createVariable(
                 "block_${program.address(invokePointer)}",
                 baseStackOffset,
@@ -131,6 +139,7 @@ fun markStackBlock(
             )
             markupAdditionalTypes()
         }
+        // TODO: Maybe perform a second pass to get better typing for the imported variables.
+        return true
     }
-    // TODO: Maybe perform a second pass to get better typing for the imported variables.
 }

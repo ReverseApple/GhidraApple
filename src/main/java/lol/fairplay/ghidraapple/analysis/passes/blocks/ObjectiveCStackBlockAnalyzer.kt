@@ -14,7 +14,7 @@ import ghidra.program.model.symbol.Reference
 import ghidra.program.model.symbol.SourceType
 import ghidra.util.Msg
 import ghidra.util.task.TaskMonitor
-import lol.fairplay.ghidraapple.actions.markasblock.markStackBlock
+import lol.fairplay.ghidraapple.actions.markasblock.ApplyNSConcreteStackBlock
 import java.util.LinkedList
 
 class ObjectiveCStackBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.INSTRUCTION_ANALYZER) {
@@ -41,6 +41,11 @@ class ObjectiveCStackBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, Analyze
         log: MessageLog,
     ): Boolean {
         program.symbolTable.getSymbols("__NSConcreteStackBlock").firstOrNull()?.let {
+            // TODO: The current use of the queue makes the logic hard to follow.
+            //  It would be better to first collect all the references and then process them.
+            //  This also allows easier debugging if e.g. a reference is missing
+            //  And it makes it possible to determine the needed degree of parallelization based on the amount of references.
+
             // We parallelize as some runs of [markStackBlock] may trigger the decompiler.
             ConcurrentQ<Reference, Nothing>(
                 object : QCallback<Reference, Nothing> {
@@ -49,11 +54,10 @@ class ObjectiveCStackBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, Analyze
                         monitor: TaskMonitor?,
                     ): Nothing? {
                         if (reference.referenceType == RefType.DATA && reference.source == SourceType.ANALYSIS) {
-                            markStackBlock(
-                                program,
+                            ApplyNSConcreteStackBlock(
                                 program.listing.getFunctionContaining(reference.fromAddress),
                                 program.listing.getInstructionAt(reference.fromAddress),
-                            )
+                            ).applyTo(program)
                         }
                         return null
                     }

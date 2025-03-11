@@ -27,16 +27,14 @@ class MarkAsBlockAction : ProgramLocationContextAction("Mark As Objective-C Bloc
 
     override fun actionPerformed(context: ProgramLocationActionContext) {
         when (context) {
+            // TODO: This seems convoluted:
+            //  Make it clear how it is distinguished whether a stack or global block should be marked.
+            //  Then either one or the other command should be used
             is CodeViewerActionContext -> {
                 context.program.listing
                     .getInstructionAt(context.address)
                     ?.let {
-                        markStackBlock(
-                            context.program,
-                            context.program.listing
-                                .getFunctionContaining(context.address),
-                            it,
-                        )
+                        ApplyNSConcreteStackBlock(context.program, context.address).applyTo(context.program)
                     }
                     ?: run {
                         context.program.withTransaction<Exception>("Mark Global Block at 0x${context.address}") {
@@ -46,12 +44,7 @@ class MarkAsBlockAction : ProgramLocationContextAction("Mark As Objective-C Bloc
             }
 
             is DecompilerActionContext -> {
-                markStackBlock(
-                    context.program,
-                    context.function,
-                    context.program.listing
-                        .getInstructionAt(context.address),
-                )
+                ApplyNSConcreteStackBlock(context.program, context.address).applyTo(context.program)
             }
         }
     }
