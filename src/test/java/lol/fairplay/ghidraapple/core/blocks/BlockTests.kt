@@ -803,6 +803,11 @@ class BlockTests : AbstractGhidraHeadedIntegrationTest() {
                 bytes(0x45, 0xa6, 0x02, 0x94),
             ).flatMap { b -> b.toList() }.toByteArray()
 
+        builder.setBytes(
+            "10010f390",
+            bytes(0x00, 0x00, 0x00, 0x00, 0xC2, 0x00, 0x00, 0x00),
+        )
+
         val callerFunction = builder.createFunction("10004cd70", functionBytes)
 
         val invokeFunctionBytes =
