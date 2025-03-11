@@ -44,7 +44,9 @@ class MarkAsBlockAction : ProgramLocationContextAction("Mark As Objective-C Bloc
             }
 
             is DecompilerActionContext -> {
-                ApplyNSConcreteStackBlock(context.program, context.address).applyTo(context.program)
+                context.program.withTransaction<Exception>("Mark Global Block at 0x${context.address}") {
+                    ApplyNSConcreteStackBlock(context.program, context.address).applyTo(context.program)
+                }
             }
         }
     }
