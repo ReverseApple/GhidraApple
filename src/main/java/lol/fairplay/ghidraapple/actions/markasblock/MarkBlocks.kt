@@ -71,15 +71,15 @@ class ApplyNSConcreteStackBlock(
         // TODO: Too many nested lambdas that make it hard to follow what `it` is referring to at any given time.
         val instructionsThatBuildTheStackBlock =
             // Start with the first instruction.
-            generateSequence(instruction) {
-                program.listing.getInstructionAfter(it.address).let { nextInstruction ->
+            generateSequence(instruction) { currentInstruction ->
+                program.listing.getInstructionAfter(currentInstruction.address).let { nextInstruction ->
                     if (nextInstruction.mnemonicString == "b") {
                         // If the next instruction is a branch instruction, skip it and instead append the
                         //  instruction that it is branching to.
-                        program.listing.getInstructionAt(it.pcode[0].inputs[0].address)
+                        program.listing.getInstructionAt(nextInstruction.pcode[0].inputs[0].address)
                     } else {
-                        // Otherwise just append the instruction as-is.
-                        it
+                        // Otherwise just append the next instruction as-is.
+                        nextInstruction
                     }
                 }
             }.takeWhile { instructionToTake ->
