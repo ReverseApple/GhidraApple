@@ -11,6 +11,7 @@ import ghidra.program.model.data.ParameterDefinitionImpl
 import ghidra.program.model.data.PointerDataType
 import ghidra.program.model.data.StringDataType
 import ghidra.program.model.data.StructureDataType
+import ghidra.program.model.data.Undefined
 import ghidra.program.model.data.VoidDataType
 import ghidra.program.model.listing.Function.FunctionUpdateType
 import ghidra.program.model.listing.ParameterImpl
@@ -148,19 +149,22 @@ class BlockLayout(
 
     /**
      * Generates data types from the encoded signature.
+     * TODO: Why a pair of data type and array of parameter definitions instead of a [ghidra.program.model.data.FunctionDefinition] ?
      */
     fun generateDataTypesFromEncodedSignature(): Pair<DataType, Array<ParameterDefinitionImpl>> {
         encodedSignature?.let {
             val typeResolver = TypeResolver(program)
             val returnType =
-                typeResolver.buildParsed(it.returnType.first) ?: {
-                    // We don't fail here because the return value is not memory-critical.
-                    Msg.debug(
-                        this,
-                        "Failed to resolve return type for block with descriptor address $descriptor1Address.",
-                    )
-                    VoidDataType.dataType
-                }()
+                typeResolver.buildParsed(it.returnType.first)
+                    ?: // TODO: Would it be better to use a default undefined data type here if we have failed to resolve the return type?
+                    run {
+                        // We don't fail here because the return value is not memory-critical.
+                        Msg.debug(
+                            this,
+                            "Failed to resolve return type for block with descriptor address $descriptor1Address.",
+                        )
+                        Undefined.getUndefinedDataType(8)
+                    }
             val parameters =
                 it.parameters
                     .mapIndexed { index, (typeNode) ->
@@ -174,7 +178,7 @@ class BlockLayout(
                         return@mapIndexed ParameterDefinitionImpl("parameter_$oneBasedIndex", parameterType, null)
                     }.toTypedArray()
             return Pair(returnType, parameters)
-        } ?: return Pair(VoidDataType.dataType, emptyArray())
+        } ?: return Pair(Undefined.getUndefinedDataType(8), emptyArray())
     }
 
     /**
@@ -296,6 +300,8 @@ class BlockLayout(
             }
         val minimalBlockSize = BlockLayoutDataType.minimalBlockType(program.dataTypeManager).length
         val actualBlockSize = descriptor1.blockSize
+        // TODO: This is the only use of the constructor with extrabytes, might be more sensible to change the
+        //  constructor to take the actual block size as a parameter and handle the calculation internally.
         return BlockLayoutDataType(
             program.dataTypeManager,
             dataTypeSuffix,
