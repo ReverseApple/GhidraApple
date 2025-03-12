@@ -27,15 +27,18 @@ class MarkAsBlockAction : ProgramLocationContextAction("Mark As Objective-C Bloc
 
     override fun actionPerformed(context: ProgramLocationActionContext) {
         when (context) {
-            // TODO: This seems convoluted:
-            //  Make it clear how it is distinguished whether a stack or global block should be marked.
-            //  Then either one or the other command should be used
+            // If this is [CodeViewerActionContext], then it came from the disassembly Listing. It could be
+            //  either a stack block or a global block.
             is CodeViewerActionContext -> {
                 context.program.listing
+                    // If there is an instruction at the address, we assume this is a stack block.
                     .getInstructionAt(context.address)
                     ?.let {
-                        ApplyNSConcreteStackBlock(context.program, context.address).applyTo(context.program)
+                        context.program.withTransaction<Exception>("Mark Stack Block at 0x${context.address}") {
+                            ApplyNSConcreteStackBlock(context.program, context.address).applyTo(context.program)
+                        }
                     }
+                    // If there was no instruction, we assume this is a global block.
                     ?: run {
                         context.program.withTransaction<Exception>("Mark Global Block at 0x${context.address}") {
                             ApplyNSConcreteGlobalBlock(context.address).applyTo(context.program)
@@ -43,6 +46,8 @@ class MarkAsBlockAction : ProgramLocationContextAction("Mark As Objective-C Bloc
                     }
             }
 
+            // If this is [DecompilerActionContext], it could only have come from the Decompile pane, so we
+            //  assume it is a stack block (being built inside the function).
             is DecompilerActionContext -> {
                 context.program.withTransaction<Exception>("Mark Global Block at 0x${context.address}") {
                     ApplyNSConcreteStackBlock(context.program, context.address).applyTo(context.program)
@@ -58,6 +63,7 @@ class MarkAsBlockAction : ProgramLocationContextAction("Mark As Objective-C Bloc
 
         val location = typedContext.location
 
+        // This is a quick-and-dirty check for cases the latter tests wouldn't catch.
         when (location) {
             is DecompilerLocation -> {
                 location.token.lineParent?.let {
@@ -67,7 +73,7 @@ class MarkAsBlockAction : ProgramLocationContextAction("Mark As Objective-C Bloc
             }
         }
 
-        // We first check if this is an instruction and look for the start of the building of a stack block.
+        // We check if this is an instruction and look for the start of the building of a stack block.
         typedContext.program.listing.getInstructionAt(typedContext.address)?.let {
             typedContext.program.symbolTable
                 .getSymbols(
@@ -76,7 +82,7 @@ class MarkAsBlockAction : ProgramLocationContextAction("Mark As Objective-C Bloc
                         ?.toAddress
                         ?: return false,
                 ).firstOrNull { it.isPrimary }
-                ?.apply { if (name != "__NSConcreteStackBlock") return false }
+                ?.apply { if (name != "__NSConcreteStackBlock" && name != "__NSStackBlock__") return false }
                 ?.also { setMenuData("Stack") }
                 ?: return false
             return true
@@ -93,7 +99,7 @@ class MarkAsBlockAction : ProgramLocationContextAction("Mark As Objective-C Bloc
                             ByteBuffer.wrap(dataAtLocation.bytes).order(ByteOrder.LITTLE_ENDIAN).long,
                         ),
                     ).firstOrNull { it.isPrimary }
-                    ?.apply { if (name != "__NSConcreteGlobalBlock") return false }
+                    ?.apply { if (name != "__NSConcreteGlobalBlock" && name != "__NSGlobalBlock__") return false }
                     ?.also { setMenuData("Global") }
                     ?: return false
                 return true

@@ -40,53 +40,48 @@ class ObjectiveCStackBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, Analyze
         monitor: TaskMonitor,
         log: MessageLog,
     ): Boolean {
-        program.symbolTable.getSymbols("__NSConcreteStackBlock").firstOrNull()?.let {
-            // TODO: The current use of the queue makes the logic hard to follow.
-            //  It would be better to first collect all the references and then process them.
-            //  This also allows easier debugging if e.g. a reference is missing
-            //  And it makes it possible to determine the needed degree of parallelization based on the amount of references.
-
-            // We parallelize as some runs of [markStackBlock] may trigger the decompiler.
-            ConcurrentQ<Reference, Nothing>(
-                object : QCallback<Reference, Nothing> {
-                    override fun process(
-                        reference: Reference,
-                        monitor: TaskMonitor?,
-                    ): Nothing? {
-                        if (reference.referenceType == RefType.DATA && reference.source == SourceType.ANALYSIS) {
-                            ApplyNSConcreteStackBlock(
-                                program.listing.getFunctionContaining(reference.fromAddress),
-                                program.listing.getInstructionAt(reference.fromAddress),
-                            ).applyTo(program)
-                        }
-                        return null
+        val stackBlockSymbol = program.symbolTable.getSymbols("__NSConcreteStackBlock").first()
+        val stackBlockAliasSymbol = program.symbolTable.getSymbols("__NSStackBlock__").first()
+        val references =
+            program.referenceManager
+                .let {
+                    it.getReferencesTo(stackBlockSymbol.address) + it.getReferencesTo(stackBlockAliasSymbol.address)
+                }.filter { set.contains(it.fromAddress) }
+        ConcurrentQ<Reference, Nothing>(
+            object : QCallback<Reference, Nothing> {
+                override fun process(
+                    reference: Reference,
+                    monitor: TaskMonitor?,
+                ): Nothing? {
+                    if (reference.referenceType == RefType.DATA && reference.source == SourceType.ANALYSIS) {
+                        ApplyNSConcreteStackBlock(
+                            program.listing.getFunctionContaining(reference.fromAddress),
+                            program.listing.getInstructionAt(reference.fromAddress),
+                        ).applyTo(program)
                     }
-                },
-                // [ConcurrentQ] doesn't seem to support passing in a filled [LinkedList] as a constructor
-                //  parameter, so we instead pass an empty list. The references will be added below.
-                LinkedList(),
-                GThreadPool.getPrivateThreadPool("Stack Block Parser Thread Pool"),
-                null,
-                true,
-                0,
-                false,
-            ).apply {
-                add(
-                    program.referenceManager.getReferencesTo(it.address).filter {
-                        set.contains(it.fromAddress)
-                    },
-                )
-                for (result in waitForResults()) {
-                    result.error?.let {
-                        Msg.warn(
-                            this,
-                            "Parsing failed for stack block with address ${result.item.fromAddress}.",
-                        )
-                        it.printStackTrace()
-                    }
+                    return null
                 }
-                dispose()
+            },
+            // [ConcurrentQ] doesn't seem to support passing in a filled [LinkedList] as a constructor
+            //  parameter, so we instead pass an empty list. The references will be added below.
+            LinkedList(),
+            GThreadPool.getPrivateThreadPool("Stack Block Parser Thread Pool"),
+            null,
+            true,
+            0,
+            false,
+        ).apply {
+            add(references)
+            for (result in waitForResults()) {
+                result.error?.let {
+                    Msg.warn(
+                        this,
+                        "Parsing failed for stack block with address ${result.item.fromAddress}.",
+                    )
+                    it.printStackTrace()
+                }
             }
+            dispose()
         }
         return true
     }

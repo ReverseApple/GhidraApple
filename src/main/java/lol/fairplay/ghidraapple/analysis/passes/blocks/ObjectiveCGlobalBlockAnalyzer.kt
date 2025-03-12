@@ -24,8 +24,10 @@ class ObjectiveCGlobalBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, Analyz
     override fun canAnalyze(program: Program): Boolean =
         program
             .symbolTable
-            .getSymbols("__NSConcreteGlobalBlock")
-            .firstOrNull() != null
+            .let {
+                it.getSymbols("__NSConcreteGlobalBlock").firstOrNull() != null ||
+                    it.getSymbols("__NSGlobalBlock__").firstOrNull() != null
+            }
 
     /**
      * We find all locations in the [AddressSetView] that reference the [globalBlockSymbol]
@@ -38,9 +40,12 @@ class ObjectiveCGlobalBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, Analyz
         log: MessageLog,
     ): Boolean {
         val globalBlockSymbol = program.symbolTable.getSymbols("__NSConcreteGlobalBlock").first()
-        program.referenceManager.getReferencesTo(globalBlockSymbol.address)
+        val globalBlockAliasSymbol = program.symbolTable.getSymbols("__NSGlobalBlock__").first()
+        program.referenceManager
+            .let { it.getReferencesTo(globalBlockSymbol.address) + it.getReferencesTo(globalBlockAliasSymbol.address) }
             .filter { set.contains(it.fromAddress) }
             .filter { it.referenceType == RefType.DATA }
+            .filter { program.memory.getBlock(it.fromAddress)?.name == "__const" }
             .forEach {
                 ApplyNSConcreteGlobalBlock(it.fromAddress).applyTo(program)
             }
