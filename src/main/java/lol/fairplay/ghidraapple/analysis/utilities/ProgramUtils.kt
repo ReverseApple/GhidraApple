@@ -16,6 +16,9 @@ import ghidra.program.model.pcode.PcodeOpAST
 import ghidra.program.model.pcode.Varnode
 import ghidra.program.model.symbol.Namespace
 import ghidra.program.model.symbol.RefType
+import ghidra.program.model.symbol.Reference
+import ghidra.program.model.symbol.ReferenceIterator
+import ghidra.program.model.symbol.ReferenceIteratorAdapter
 import ghidra.program.model.symbol.ReferenceManager
 import ghidra.program.model.symbol.SourceType
 import ghidra.program.model.symbol.Symbol
@@ -230,3 +233,11 @@ fun PcodeOpAST.getOutputBytes(program: Program): ByteArray? {
         else -> null
     }
 }
+
+/**
+ * Gets an iterator of references in the program to the symbol with the given name.
+ */
+fun Program.getReferencesToSymbol(symbolName: String): ReferenceIterator =
+    symbolTable.getSymbols(symbolName).firstOrNull()?.let {
+        referenceManager.getReferencesTo(it.address)
+    } ?: ReferenceIteratorAdapter(emptyList<Reference>().iterator())

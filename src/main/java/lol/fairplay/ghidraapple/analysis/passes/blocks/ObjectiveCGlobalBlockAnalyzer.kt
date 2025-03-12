@@ -9,6 +9,7 @@ import ghidra.program.model.listing.Program
 import ghidra.program.model.symbol.RefType
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.actions.markasblock.ApplyNSConcreteGlobalBlock
+import lol.fairplay.ghidraapple.analysis.utilities.getReferencesToSymbol
 
 class ObjectiveCGlobalBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYTE_ANALYZER) {
     companion object {
@@ -39,10 +40,8 @@ class ObjectiveCGlobalBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, Analyz
         monitor: TaskMonitor,
         log: MessageLog,
     ): Boolean {
-        val globalBlockSymbol = program.symbolTable.getSymbols("__NSConcreteGlobalBlock").first()
-        val globalBlockAliasSymbol = program.symbolTable.getSymbols("__NSGlobalBlock__").first()
-        program.referenceManager
-            .let { it.getReferencesTo(globalBlockSymbol.address) + it.getReferencesTo(globalBlockAliasSymbol.address) }
+        program
+            .let { it.getReferencesToSymbol("__NSConcreteGlobalBlock") + it.getReferencesToSymbol("__NSGlobalBlock__") }
             .filter { set.contains(it.fromAddress) }
             .filter { it.referenceType == RefType.DATA }
             .filter { program.memory.getBlock(it.fromAddress)?.name == "__const" }

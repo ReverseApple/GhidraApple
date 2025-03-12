@@ -10,6 +10,7 @@ import ghidra.program.model.symbol.RefType
 import ghidra.program.model.symbol.SourceType
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.actions.markasblock.ApplyNSConcreteStackBlock
+import lol.fairplay.ghidraapple.analysis.utilities.getReferencesToSymbol
 
 class ObjectiveCStackBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.INSTRUCTION_ANALYZER) {
     companion object {
@@ -25,8 +26,10 @@ class ObjectiveCStackBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, Analyze
     override fun canAnalyze(program: Program): Boolean =
         program
             .symbolTable
-            .getSymbols("__NSConcreteStackBlock")
-            .firstOrNull() != null
+            .let {
+                it.getSymbols("__NSConcreteStackBlock").firstOrNull() != null ||
+                    it.getSymbols("__NSStackBlock__").firstOrNull() != null
+            }
 
     override fun added(
         program: Program,
@@ -34,15 +37,15 @@ class ObjectiveCStackBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, Analyze
         monitor: TaskMonitor,
         log: MessageLog,
     ): Boolean {
-        val stackBlockSymbol = program.symbolTable.getSymbols("__NSConcreteStackBlock").first()
-        val stackBlockAliasSymbol = program.symbolTable.getSymbols("__NSStackBlock__").first()
         val references =
-            program.referenceManager
+            program
                 .let {
-                    it.getReferencesTo(stackBlockSymbol.address) + it.getReferencesTo(stackBlockAliasSymbol.address)
+                    it.getReferencesToSymbol("__NSConcreteStackBlock") + it.getReferencesToSymbol("__NSStackBlock__")
                 }.filter { set.contains(it.fromAddress) }
 
-        references.stream().parallel()
+        references
+            .stream()
+            .parallel()
             .filter { reference -> reference.referenceType == RefType.DATA && reference.source == SourceType.ANALYSIS }
             .forEach { reference ->
                 ApplyNSConcreteStackBlock(
