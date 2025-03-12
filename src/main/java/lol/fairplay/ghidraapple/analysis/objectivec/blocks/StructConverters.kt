@@ -1,14 +1,15 @@
 package lol.fairplay.ghidraapple.analysis.objectivec.blocks
 
 import ghidra.app.cmd.disassemble.DisassembleCommand
+import ghidra.app.cmd.function.CreateFunctionCmd
 import ghidra.app.util.bin.StructConverter
 import ghidra.program.model.address.Address
-import ghidra.program.model.address.AddressSet
 import ghidra.program.model.data.DataType
 import ghidra.program.model.data.DataUtilities
 import ghidra.program.model.data.FunctionDefinitionDataType
 import ghidra.program.model.data.ParameterDefinitionImpl
 import ghidra.program.model.data.PointerDataType
+import ghidra.program.model.data.StringDataType
 import ghidra.program.model.data.StructureDataType
 import ghidra.program.model.data.VoidDataType
 import ghidra.program.model.listing.Function.FunctionUpdateType
@@ -240,12 +241,10 @@ class BlockLayout(
                         // Disassemble, starting from the invoke address.
                         DisassembleCommand(invokeAddress, null, true).applyTo(program)
                         // Create a new function at the address.
-                        program.listing.createFunction(
-                            "FUN_$invokeAddress",
-                            invokeAddress,
-                            AddressSet(invokeAddress),
-                            SourceType.ANALYSIS,
-                        )
+                        CreateFunctionCmd(null, invokeAddress, null, SourceType.ANALYSIS, false, false)
+                            .applyTo(program)
+                        // Return the newly-created function.
+                        program.listing.getFunctionAt(invokeAddress)
                     }
             }.let {
                 it.setName("invoke_$invokeAddress", SourceType.ANALYSIS)
@@ -346,16 +345,31 @@ class BlockDescriptor3(
     val signaturePointer = buffer.getLong()
     val layout = buffer.getLong()
 
-    val encodedSignature get() =
+    val encodedSignature: EncodedSignature get() =
         {
-            signaturePointer.let {
-                val signatureString =
-                    program.listing
-                        .getDataAt(program.address(it))
-                        .bytes
-                        .decodeToString()
-                parseSignature(signatureString, EncodedSignatureType.BLOCK_SIGNATURE)
-            }
+            val signatureString =
+                program.listing
+                    .getDataAt(program.address(signaturePointer))
+                    .let {
+                        if (it.dataType != StringDataType.dataType) {
+                            // If this isn't a string data type, we need to make it one.
+                            program.withTransaction<Exception>("Mark Block Signature as String") {
+                                DataUtilities.createData(
+                                    program,
+                                    it.address,
+                                    StringDataType.dataType,
+                                    -1,
+                                    DataUtilities.ClearDataMode.CLEAR_ALL_CONFLICT_DATA,
+                                )
+                            }
+                            it
+                        } else {
+                            // Otherwise, just keep it as-is.
+                            it
+                        }
+                    }.bytes
+                    .decodeToString()
+            parseSignature(signatureString, EncodedSignatureType.BLOCK_SIGNATURE)
         }()
 
     override fun toDataType() = BlockDescriptor3DataType(program.dataTypeManager)
