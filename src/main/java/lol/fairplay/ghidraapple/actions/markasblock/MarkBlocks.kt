@@ -19,7 +19,9 @@ import lol.fairplay.ghidraapple.analysis.utilities.getOutputBytes
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-class ApplyNSConcreteGlobalBlock(val address: Address) : Command<Program> {
+class ApplyNSConcreteGlobalBlock(
+    val address: Address,
+) : Command<Program> {
     private var errorMsg: String? = null
 
     override fun applyTo(program: Program): Boolean {
@@ -42,13 +44,9 @@ class ApplyNSConcreteGlobalBlock(val address: Address) : Command<Program> {
         return true
     }
 
-    override fun getStatusMsg(): String? {
-        return errorMsg
-    }
+    override fun getStatusMsg(): String? = errorMsg
 
-    override fun getName(): String {
-        return "Mark Global Block at 0x$address"
-    }
+    override fun getName(): String = "Mark Global Block at 0x$address"
 }
 
 /**
@@ -57,7 +55,10 @@ class ApplyNSConcreteGlobalBlock(val address: Address) : Command<Program> {
  * and that might take longer than we want to block the UI thread.
  *
  */
-class ApplyNSConcreteStackBlock(val function: Function, val instruction: Instruction) : BackgroundCommand<Program>() {
+class ApplyNSConcreteStackBlock(
+    val function: Function,
+    val instruction: Instruction,
+) : BackgroundCommand<Program>() {
     constructor(function: Function, address: Address) : this(function, function.program.listing.getInstructionAt(address))
 
     constructor(program: Program, address: Address) : this(program.listing.getFunctionContaining(address), address)
@@ -69,16 +70,24 @@ class ApplyNSConcreteStackBlock(val function: Function, val instruction: Instruc
         if (BlockLayoutDataType.isAddressBlockLayout(program, instruction.address)) return false
         // TODO: Too many nested lambdas that make it hard to follow what `it` is referring to at any given time.
         val instructionsThatBuildTheStackBlock =
+            // Start with the first instruction.
             generateSequence(instruction) {
-                program.listing.getInstructionAfter(it.address).let {
-                    // If we're only branching, without linking, it should be ok to just follow the branch.
-                    if (it.mnemonicString == "b") program.listing.getInstructionAt(it.pcode[0].inputs[0].address) else it
+                program.listing.getInstructionAfter(it.address).let { nextInstruction ->
+                    if (nextInstruction.mnemonicString == "b") {
+                        // If the next instruction is a branch instruction, skip it and instead append the
+                        //  instruction that it is branching to.
+                        program.listing.getInstructionAt(it.pcode[0].inputs[0].address)
+                    } else {
+                        // Otherwise just append the instruction as-is.
+                        it
+                    }
                 }
-            }.takeWhile {
-                program.listing.getFunctionContaining(it.address)?.name == function.name &&
+            }.takeWhile { instructionToTake ->
+                // Continue taking instructions as long as we are in the same function.
+                program.listing.getFunctionContaining(instructionToTake.address)?.name == function.name &&
                     // If we hit a jump or call instruction, we're likely done with building the block. It's
                     //  unlikely that the compiler would put a jump in the middle of block-building code.
-                    it.flowType?.let { !it.isJump && !it.isCall } == true
+                    instructionToTake.flowType?.let { !it.isJump && !it.isCall } == true
             }.toList()
 
         // TODO: This seems possible to write more elegantly
