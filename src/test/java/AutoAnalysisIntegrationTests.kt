@@ -7,7 +7,7 @@ import ghidra.program.model.listing.Program
 import ghidra.program.model.symbol.StackReference
 import ghidra.test.AbstractGhidraHeadlessIntegrationTest
 import ghidra.util.task.TaskMonitor
-import lol.fairplay.ghidraapple.analysis.objectivec.blocks.BlockLayoutDataType
+import lol.fairplay.ghidraapple.analysis.objectivec.blocks.isBlockLayoutType
 import lol.fairplay.ghidraapple.analysis.passes.blocks.ObjectiveCGlobalBlockAnalyzer
 import lol.fairplay.ghidraapple.analysis.passes.blocks.ObjectiveCStackBlockAnalyzer
 import lol.fairplay.ghidraapple.analysis.passes.objcclasses.OCMethodAnalyzer
@@ -103,7 +103,7 @@ class AutoAnalysisIntegrationTests : AbstractGhidraHeadlessIntegrationTest() {
         program.symbolTable.getSymbols("__NSConcreteGlobalBlock").firstOrNull()?.let {
             program.referenceManager.getReferencesTo(it.address).forEach {
                 val dataType = program.listing.getDataAt(it.fromAddress).dataType
-                assert(BlockLayoutDataType.isDataTypeBlockLayoutType(dataType)) {
+                assert(dataType.isBlockLayoutType) {
                     "Global block at 0x${it.fromAddress} is not typed as a global block. " +
                         "It has the type ${dataType.name}."
                 }
@@ -126,7 +126,7 @@ class AutoAnalysisIntegrationTests : AbstractGhidraHeadlessIntegrationTest() {
                     function.stackFrame.stackVariables
                         .firstOrNull { it.stackOffset == referencedStackOffset } ?: return@forEach
                 val dataType = matchingStackVariable.dataType
-                assert(BlockLayoutDataType.isDataTypeBlockLayoutType(dataType)) {
+                assert(dataType.isBlockLayoutType) {
                     "Instruction at 0x${reference.fromAddress} does not reference a stack block. " +
                         "It references a ${dataType.name}."
                 }

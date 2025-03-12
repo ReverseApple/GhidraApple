@@ -5,6 +5,7 @@ import ghidra.app.cmd.function.CreateFunctionCmd
 import ghidra.app.util.bin.StructConverter
 import ghidra.program.model.address.Address
 import ghidra.program.model.data.DataType
+import ghidra.program.model.data.DataType.DEFAULT
 import ghidra.program.model.data.DataUtilities
 import ghidra.program.model.data.FunctionDefinitionDataType
 import ghidra.program.model.data.ParameterDefinitionImpl
@@ -27,8 +28,6 @@ import lol.fairplay.ghidraapple.core.objc.encodings.parseSignature
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-
-// TODO: Handle stack blocks, verify flags, etc.
 
 // Class property initializations are **guaranteed** by spec to be invoked in the order they appear in the class body.
 // https://github.com/Kotlin/kotlin-spec/blob/release/docs/src/md/kotlin.core/declarations.md?plain=1#L881
@@ -76,7 +75,10 @@ class BlockLayout(
 
     // A block has a descriptor, starting with, at the very least, a `Block_descriptor_1` struct. This is
     //  then followed by (optionally) a `Block_descriptor_2` struct and/or a `Block_descriptor_3` struct,
-    //  with whatever structs are included being laid out in memory in ascending numerical order.
+    //  with the included structs being laid out in memory in ascending numerical order.
+
+    // All values relating to descriptors beyond the first struct are defined as getters, as they should
+    //  not be calculated during initialization. They will be used later when marking up the structs.
 
     private val descriptorHasCopyDispose get() = BlockFlag.BLOCK_HAS_COPY_DISPOSE in flags
     private val descriptorHasSignature get() = BlockFlag.BLOCK_HAS_SIGNATURE in flags
@@ -149,20 +151,19 @@ class BlockLayout(
 
     /**
      * Generates data types from the encoded signature.
-     * TODO: Why a pair of data type and array of parameter definitions instead of a [ghidra.program.model.data.FunctionDefinition] ?
      */
     fun generateDataTypesFromEncodedSignature(): Pair<DataType, Array<ParameterDefinitionImpl>> {
         encodedSignature?.let {
             val typeResolver = TypeResolver(program)
             val returnType =
                 typeResolver.buildParsed(it.returnType.first)
-                    ?: // TODO: Would it be better to use a default undefined data type here if we have failed to resolve the return type?
-                    run {
+                    ?: run {
                         // We don't fail here because the return value is not memory-critical.
                         Msg.debug(
                             this,
                             "Failed to resolve return type for block with descriptor address $descriptor1Address.",
                         )
+                        // TODO: Is it ok to fallback to an eight-byte value for unknown return types?
                         Undefined.getUndefinedDataType(8)
                     }
             val parameters =
@@ -280,7 +281,7 @@ class BlockLayout(
     constructor(program: Program, address: Address) : this(
         program,
         {
-            val minimalBlockType = BlockLayoutDataType.minimalBlockType(program.dataTypeManager)
+            val minimalBlockType = BlockLayoutDataType(program.dataTypeManager)
             val blockBytes = ByteArray(minimalBlockType.length)
             val bytesRead = program.memory.getBytes(address, blockBytes)
             if (bytesRead != blockBytes.size) {
@@ -298,17 +299,18 @@ class BlockLayout(
             } else {
                 Pair(VoidDataType.dataType, emptyArray())
             }
-        val minimalBlockSize = BlockLayoutDataType.minimalBlockType(program.dataTypeManager).length
+        val minimalBlockSize = BlockLayoutDataType(program.dataTypeManager).length
         val actualBlockSize = descriptor1.blockSize
-        // TODO: This is the only use of the constructor with extrabytes, might be more sensible to change the
-        //  constructor to take the actual block size as a parameter and handle the calculation internally.
+        val extraBytes = (actualBlockSize - minimalBlockSize).toInt()
         return BlockLayoutDataType(
             program.dataTypeManager,
             dataTypeSuffix,
             program.address(invokePointer).toString(),
             blockReturnType,
             blockParameters,
-            extraBytes = (actualBlockSize - minimalBlockSize).toInt(),
+            // We don't know what the imported variables are, but at least we know how long they are. For now,
+            //  we'll just put in undefined bytes and allow the user to re-type the struct as necessary.
+            generateSequence(Triple(DEFAULT, "", null)) { it }.take(extraBytes).toList().toTypedArray(),
         )
     }
 }

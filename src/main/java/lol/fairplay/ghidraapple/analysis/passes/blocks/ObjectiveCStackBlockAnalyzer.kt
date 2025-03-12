@@ -9,7 +9,7 @@ import ghidra.program.model.listing.Program
 import ghidra.program.model.symbol.RefType
 import ghidra.program.model.symbol.SourceType
 import ghidra.util.task.TaskMonitor
-import lol.fairplay.ghidraapple.actions.markasblock.ApplyNSConcreteStackBlock
+import lol.fairplay.ghidraapple.actions.markasblock.MarkNSConcreteStackBlock
 import lol.fairplay.ghidraapple.analysis.utilities.getReferencesToSymbol
 
 class ObjectiveCStackBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.INSTRUCTION_ANALYZER) {
@@ -37,18 +37,15 @@ class ObjectiveCStackBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, Analyze
         monitor: TaskMonitor,
         log: MessageLog,
     ): Boolean {
-        val references =
-            program
-                .let {
-                    it.getReferencesToSymbol("__NSConcreteStackBlock") + it.getReferencesToSymbol("__NSStackBlock__")
-                }.filter { set.contains(it.fromAddress) }
-
-        references
+        program
+            .let {
+                it.getReferencesToSymbol("__NSConcreteStackBlock") + it.getReferencesToSymbol("__NSStackBlock__")
+            }.filter { set.contains(it.fromAddress) }
+            .filter { reference -> reference.referenceType == RefType.DATA && reference.source == SourceType.ANALYSIS }
             .stream()
             .parallel()
-            .filter { reference -> reference.referenceType == RefType.DATA && reference.source == SourceType.ANALYSIS }
             .forEach { reference ->
-                ApplyNSConcreteStackBlock(
+                MarkNSConcreteStackBlock(
                     program.listing.getFunctionContaining(reference.fromAddress),
                     program.listing.getInstructionAt(reference.fromAddress),
                 ).applyTo(program)

@@ -8,7 +8,7 @@ import ghidra.program.model.address.AddressSetView
 import ghidra.program.model.listing.Program
 import ghidra.program.model.symbol.RefType
 import ghidra.util.task.TaskMonitor
-import lol.fairplay.ghidraapple.actions.markasblock.ApplyNSConcreteGlobalBlock
+import lol.fairplay.ghidraapple.actions.markasblock.MarkNSConcreteGlobalBlock
 import lol.fairplay.ghidraapple.analysis.utilities.getReferencesToSymbol
 
 class ObjectiveCGlobalBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYTE_ANALYZER) {
@@ -30,10 +30,6 @@ class ObjectiveCGlobalBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, Analyz
                     it.getSymbols("__NSGlobalBlock__").firstOrNull() != null
             }
 
-    /**
-     * We find all locations in the [AddressSetView] that reference the [globalBlockSymbol]
-     * and call [markGlobalBlock] on them.
-     */
     override fun added(
         program: Program,
         set: AddressSetView,
@@ -46,7 +42,7 @@ class ObjectiveCGlobalBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, Analyz
             .filter { it.referenceType == RefType.DATA }
             .filter { program.memory.getBlock(it.fromAddress)?.name == "__const" }
             .forEach {
-                ApplyNSConcreteGlobalBlock(it.fromAddress).applyTo(program)
+                MarkNSConcreteGlobalBlock(it.fromAddress).applyTo(program)
             }
         return true
     }

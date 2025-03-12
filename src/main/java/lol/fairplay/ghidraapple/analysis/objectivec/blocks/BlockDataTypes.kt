@@ -1,6 +1,5 @@
 package lol.fairplay.ghidraapple.analysis.objectivec.blocks
 
-import ghidra.program.model.address.Address
 import ghidra.program.model.data.CategoryPath
 import ghidra.program.model.data.CharDataType
 import ghidra.program.model.data.DataType
@@ -12,11 +11,8 @@ import ghidra.program.model.data.PointerDataType
 import ghidra.program.model.data.StructureDataType
 import ghidra.program.model.data.UnsignedLongLongDataType
 import ghidra.program.model.data.VoidDataType
-import ghidra.program.model.listing.Program
-import ghidra.program.model.symbol.StackReference
-import ghidra.program.util.ProgramLocation
 
-private const val BLOCK_CATEGORY_PATH_STRING = "/GA_BLOCK"
+const val BLOCK_CATEGORY_PATH_STRING = "/GA_BLOCK"
 
 /**
  * A data type representing a block.
@@ -26,86 +22,21 @@ private const val BLOCK_CATEGORY_PATH_STRING = "/GA_BLOCK"
  * @param invokeFunctionTypeSuffix A suffix for the function type used for the "invoke" component.
  * @param invokeReturnType The return type to use for the "invoke" function type.
  * @param parameters The parameters to use for the "invoke" function type.
- * @param importedVariables The captured variables from outside the scope of the block.
+ * @param capturedVariables The captured variables from outside the scope of the block.
  */
 class BlockLayoutDataType(
-    dataTypeManager: DataTypeManager?,
-    rootDataTypeSuffix: String?,
-    invokeFunctionTypeSuffix: String?,
-    invokeReturnType: DataType,
-    parameters: Array<ParameterDefinitionImpl>,
-    importedVariables: Array<Triple<DataType, String, String?>>,
+    dataTypeManager: DataTypeManager? = null,
+    rootDataTypeSuffix: String? = null,
+    invokeFunctionTypeSuffix: String? = null,
+    invokeReturnType: DataType = VoidDataType.dataType,
+    parameters: Array<ParameterDefinitionImpl> = emptyArray(),
+    capturedVariables: Array<Triple<DataType, String, String?>> = emptyArray(),
 ) : StructureDataType(
         CategoryPath(BLOCK_CATEGORY_PATH_STRING),
         "Block_layout${rootDataTypeSuffix?.let { "_$it" } ?: ""}",
         0,
         dataTypeManager,
     ) {
-    companion object {
-        fun minimalBlockType(dataTypeManager: DataTypeManager? = null) =
-            BlockLayoutDataType(
-                dataTypeManager,
-                null,
-                null,
-                VoidDataType.dataType,
-                emptyArray(),
-                emptyArray(),
-            )
-
-        fun isAddressBlockLayout(
-            program: Program,
-            address: Address,
-        ) = program.listing
-            .getDataAt(address)
-            ?.let { isDataTypeBlockLayoutType(it.dataType) } == true ||
-            program.listing
-                .getFunctionContaining(address)
-                ?.stackFrame
-                ?.stackVariables
-                ?.firstOrNull {
-                    it.stackOffset ==
-                        program.listing
-                            .getInstructionAt(address)
-                            .referencesFrom
-                            .firstOrNull { it is StackReference }
-                            ?.let { (it as StackReference).stackOffset }
-                }?.let { isDataTypeBlockLayoutType(it.dataType) } == true
-
-        fun isLocationBlockLayout(location: ProgramLocation) = isAddressBlockLayout(location.program, location.address)
-
-        fun isDataTypeBlockLayoutType(dataType: DataType) =
-            dataType is BlockLayoutDataType ||
-                // Most times the class reference is lost. In those cases, we fall back to the name and category path.
-                (
-                    dataType.name.startsWith(minimalBlockType().name) &&
-                        dataType.categoryPath.toString() == BLOCK_CATEGORY_PATH_STRING
-                )
-    }
-
-    /**
-     * A data type representing a block with a given amount of bytes of imported variables.
-     *
-     * @param extraBytes The length of the imported variables, in bytes.
-     * @see [lol.fairplay.ghidraapple.analysis.objectivec.blocks.BlockLayoutDataType]
-     */
-    constructor(
-        dataTypeManager: DataTypeManager,
-        mainTypeSuffix: String?,
-        invokeFunctionTypeSuffix: String?,
-        invokeReturnType: DataType,
-        parameters: Array<ParameterDefinitionImpl>,
-        extraBytes: Int,
-    ) : this(
-        dataTypeManager,
-        mainTypeSuffix,
-        invokeFunctionTypeSuffix,
-        invokeReturnType,
-        parameters,
-        // We don't know what the imported variables are, but at least we know how long they are. For now,
-        //  we'll just put in undefined bytes and allow the user to re-type the struct as necessary.
-        generateSequence(Triple(DEFAULT, "", null)) { it }.take(extraBytes).toList().toTypedArray(),
-    )
-
     init {
         add(PointerDataType(VoidDataType.dataType, dataTypeManager), "isa", null)
         add(IntegerDataType.dataType, "flags", null)
@@ -133,7 +64,7 @@ class BlockLayoutDataType(
             }
         add(PointerDataType(invokeFunctionType, dataTypeManager), "invoke", null)
         add(PointerDataType(BlockDescriptor1DataType(dataTypeManager), dataTypeManager), "descriptor", null)
-        importedVariables.forEach { (type, name, comment) -> add(type, name, comment) }
+        capturedVariables.forEach { (type, name, comment) -> add(type, name, comment) }
     }
 }
 

@@ -241,3 +241,8 @@ fun Program.getReferencesToSymbol(symbolName: String): ReferenceIterator =
     symbolTable.getSymbols(symbolName).firstOrNull()?.let {
         referenceManager.getReferencesTo(it.address)
     } ?: ReferenceIteratorAdapter(emptyList<Reference>().iterator())
+
+/**
+ * Gets the label at the given address in the program, if one exists.
+ */
+fun Program.getLabelAtAddress(address: Address): String? = listing.getCodeUnitAt(address)?.label
