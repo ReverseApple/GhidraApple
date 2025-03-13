@@ -5,13 +5,13 @@ import ghidra.app.services.AnalysisPriority
 import ghidra.app.services.AnalyzerType
 import ghidra.app.util.importer.MessageLog
 import ghidra.program.model.address.AddressSetView
-import ghidra.program.model.data.CategoryPath
 import ghidra.program.model.data.Structure
 import ghidra.program.model.data.StructureDataType
 import ghidra.program.model.listing.Data
 import ghidra.program.model.listing.Program
 import ghidra.util.Msg
 import ghidra.util.task.TaskMonitor
+import lol.fairplay.ghidraapple.analysis.objectivec.GhidraTypeBuilder.Companion.OBJC_CLASS_CATEGORY
 import lol.fairplay.ghidraapple.analysis.objectivec.TypeResolver
 import lol.fairplay.ghidraapple.analysis.objectivec.modelling.StructureParsing
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.deref
@@ -27,8 +27,6 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
     }
 
     lateinit var program: Program
-
-    val structureCategory = CategoryPath("/GA_OBJC")
 
     init {
         priority = PRIORITY
@@ -107,18 +105,18 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
 
         externalClasses.forEach {
             Msg.debug(this, "Creating nullary: $it")
-            program.dataTypeManager.addDataType(StructureDataType(structureCategory, it, 0), null)
+            program.dataTypeManager.addDataType(StructureDataType(OBJC_CLASS_CATEGORY, it, 0), null)
         }
 
         protoData.keys.forEach { name ->
             taskMonitor?.incrementProgress()
 
-            program.dataTypeManager.addDataType(StructureDataType(structureCategory, "<$name>", 0), null)
+            program.dataTypeManager.addDataType(StructureDataType(OBJC_CLASS_CATEGORY, "<$name>", 0), null)
         }
 
         // Create class types with fields.
         klassData.forEach { (name, data) ->
-            val dataType = program.dataTypeManager.addDataType(StructureDataType(structureCategory, name, 0), null)
+            val dataType = program.dataTypeManager.addDataType(StructureDataType(OBJC_CLASS_CATEGORY, name, 0), null)
 
             taskMonitor?.incrementProgress()
 

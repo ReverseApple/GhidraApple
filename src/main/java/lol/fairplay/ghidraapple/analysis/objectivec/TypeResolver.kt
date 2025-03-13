@@ -1,10 +1,10 @@
 package lol.fairplay.ghidraapple.analysis.objectivec
 
-import ghidra.program.model.data.CategoryPath
 import ghidra.program.model.data.DataType
 import ghidra.program.model.data.PointerDataType
 import ghidra.program.model.listing.Program
 import ghidra.util.Msg
+import lol.fairplay.ghidraapple.analysis.objectivec.GhidraTypeBuilder.Companion.OBJC_CLASS_CATEGORY
 import lol.fairplay.ghidraapple.core.objc.encodings.EncodingLexer
 import lol.fairplay.ghidraapple.core.objc.encodings.TypeEncodingParser
 import lol.fairplay.ghidraapple.core.objc.encodings.TypeNode
@@ -31,7 +31,6 @@ class TypeResolver(val program: Program) {
     }
 
     fun tryResolveDefinedStruct(name: String): DataType? {
-        val category = CategoryPath("/GA_OBJC")
-        return program.dataTypeManager.getDataType(category, name)
+        return program.dataTypeManager.getDataType(OBJC_CLASS_CATEGORY, name)
     }
 }

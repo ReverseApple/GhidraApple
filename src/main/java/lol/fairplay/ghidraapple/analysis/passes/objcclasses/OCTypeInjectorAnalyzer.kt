@@ -24,6 +24,7 @@ import ghidra.program.model.symbol.SourceType
 import ghidra.program.model.symbol.Symbol
 import ghidra.util.Msg
 import ghidra.util.task.TaskMonitor
+import lol.fairplay.ghidraapple.analysis.objectivec.GhidraTypeBuilder.Companion.OBJC_CLASS_CATEGORY
 import lol.fairplay.ghidraapple.analysis.utilities.getConstantFromVarNode
 import kotlin.jvm.optionals.getOrNull
 
@@ -183,7 +184,7 @@ class OCTypeInjectorAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.
      */
     private fun getDataTypeFromSymbol(symbol: Symbol): DataType {
         val className = symbol.name.removePrefix("_OBJC_CLASS_\$_")
-        val type = program.dataTypeManager.getDataType("/GA_OBJC/$className")
+        val type = program.dataTypeManager.getDataType(OBJC_CLASS_CATEGORY, className)
         return program.dataTypeManager.getPointer(type)
     }
 
