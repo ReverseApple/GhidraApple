@@ -39,6 +39,10 @@ fun getRandomHexString(length: Int): String {
  * Converts a ``TypeNode`` tree into a Ghidra ``DataType``
  */
 class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
+    companion object {
+        val OBJC_CLASS_CATEGORY = CategoryPath("/GA_OBJC")
+    }
+
     private lateinit var result: DataType
 
     fun getResult(): DataType {
@@ -56,18 +60,15 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
     }
 
     fun getGAType(name: String): DataType? {
-        val category = CategoryPath("/GA_OBJC")
-        return program.dataTypeManager.getDataType(category, name)
+        return program.dataTypeManager.getDataType(OBJC_CLASS_CATEGORY, name)
     }
 
     fun createUnionDT(name: String): DataType {
-        val category = CategoryPath("/GA_OBJC")
-        return program.dataTypeManager.addDataType(UnionDataType(category, name), null)
+        return program.dataTypeManager.addDataType(UnionDataType(OBJC_CLASS_CATEGORY, name), null)
     }
 
     fun createStructureDT(name: String): DataType {
-        val category = CategoryPath("/GA_OBJC")
-        return program.dataTypeManager.addDataType(StructureDataType(category, name, 0), null)
+        return program.dataTypeManager.addDataType(StructureDataType(OBJC_CLASS_CATEGORY, name, 0), null)
     }
 
     override fun visitStruct(struct: TypeNode.Struct) {
