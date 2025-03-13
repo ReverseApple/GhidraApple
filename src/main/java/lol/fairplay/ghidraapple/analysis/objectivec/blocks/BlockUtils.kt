@@ -23,8 +23,8 @@ fun Program.isAddressBlockLayout(address: Address) =
                         .getInstructionAt(address)
                         .referencesFrom
                         .filterIsInstance<StackReference>()
-                        .first()
-                        .stackOffset
+                        .firstOrNull()
+                        ?.stackOffset
             }?.dataType
             ?.isBlockLayoutType == true
 
