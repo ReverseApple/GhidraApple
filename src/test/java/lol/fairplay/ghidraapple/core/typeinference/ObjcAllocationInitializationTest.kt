@@ -2,15 +2,20 @@ import ghidra.app.plugin.core.analysis.AnalysisBackgroundCommand
 import ghidra.app.plugin.core.analysis.AutoAnalysisManager
 import ghidra.base.project.GhidraProject
 import ghidra.framework.cmd.Command
+import ghidra.program.database.ProgramBuilder
 import ghidra.program.model.address.Address
+import ghidra.program.model.data.DataType
 import ghidra.program.model.data.FunctionDefinition
 import ghidra.program.model.data.Pointer
+import ghidra.program.model.data.StructureDataType
 import ghidra.program.model.listing.Function
 import ghidra.program.model.listing.Program
 import ghidra.program.model.pcode.DataTypeSymbol
 import ghidra.program.model.pcode.HighFunctionDBUtil
 import ghidra.program.model.symbol.Symbol
-import ghidra.test.AbstractGhidraHeadlessIntegrationTest
+import ghidra.test.AbstractGhidraHeadedIntegrationTest
+import lol.fairplay.ghidraapple.analysis.objectivec.GhidraTypeBuilder.Companion.OBJC_CLASS_CATEGORY
+import lol.fairplay.ghidraapple.analysis.passes.objcclasses.ApplyAllocTypeOverrideCommand
 import lol.fairplay.ghidraapple.analysis.passes.objcclasses.OCMethodAnalyzer
 import lol.fairplay.ghidraapple.analysis.passes.objcclasses.OCStructureAnalyzer
 import lol.fairplay.ghidraapple.analysis.passes.objcclasses.OCTypeInjectorAnalyzer
@@ -43,7 +48,7 @@ Accommodation    Human       Animal
 The binary is an objc release build with Xcode (Clang) for iOS (arm64) without optimization.
  */
 
-class ObjcAllocationInitializationTest : AbstractGhidraHeadlessIntegrationTest() {
+class ObjcAllocationInitializationTest : AbstractGhidraHeadedIntegrationTest() {
     /**
      * Sets up the program for testing function overrides at allocation and initialization sites.
      *
@@ -98,7 +103,7 @@ class ObjcAllocationInitializationTest : AbstractGhidraHeadlessIntegrationTest()
         callSite: Address,
     ): FunctionDefinition {
         // get the primary symbol at the call site address
-        val primarySymbol: Symbol? = program.symbolTable.getSymbols(callSite).single { it.isPrimary }
+        val primarySymbol: Symbol? = program.symbolTable.getSymbols(callSite).singleOrNull { it.isPrimary }
         // if a primary symbol is not found, there was no signature override
         assertNotNull(primarySymbol, "Expected primary symbol was not found")
 
@@ -234,5 +239,93 @@ class ObjcAllocationInitializationTest : AbstractGhidraHeadlessIntegrationTest()
             )
         }
         testFunctionNamesAndExpectedReturnTypes.forEach { assertUniqueFunctionCallSiteReturnType(program, init.address, it.key, it.value) }
+    }
+
+    private fun buildAllocHumanProgram(): ProgramBuilder {
+        val builder = ProgramBuilder("allocHumanTest", ProgramBuilder._AARCH64)
+        builder.setBytes(
+            "0x100008c34",
+            listOf(
+                "ff 83 00 d1",
+                "fd 7b 01 a9",
+                "fd 43 00 91",
+                "48 00 00 b0",
+                "00 bd 42 f9",
+                "2b 02 00 94",
+                "e8 03 00 aa",
+                "e0 23 00 91",
+                "e8 07 00 f9",
+                "01 00 80 d2",
+                "2f 02 00 94",
+                "fd 7b 41 a9",
+                "ff 83 00 91",
+                "c0 03 5f d6",
+            ).joinToString(" "),
+            // Don't disassemble because this would trigger instruction analyzers already
+            false,
+        )
+        builder.createEmptyFunction(
+            "_objc_alloc",
+            "0x1000094f4",
+            1,
+            DataType.DEFAULT,
+            // This is intentionally created without a parameter, because the analyzer should handle
+            // cases where the alloc function is not properly typed yet
+        )
+        builder.createEmptyFunction("_testAllocationSiteHuman", "0x100008c34", 0x100008c6c - 0x100008c34, DataType.DEFAULT)
+        builder.createEmptyFunction("_objc_storeStrong", "0x100009518", 1, DataType.DEFAULT)
+        builder.createLabel("0x100011778", "_OBJC_CLASS_\$_Human")
+        builder.setBytes("0x100011578", "78 17 01 00 01 00 00 00")
+
+        /** TODO: The category is currently a hardcoded string
+         * Once we have the central "Service" or "Pivot" class for Objective-C data it should be used to add the class
+         * The [OCTypeInjectorAnalyzer] relies on the class being present in the program's data type manager
+         */
+        builder.addDataType(
+            StructureDataType(OBJC_CLASS_CATEGORY, "Human", 8),
+        )
+        return builder
+    }
+
+    /**
+     * Tests the [OCTypeInjectorAnalyzer] on a minimal program, with manual set up of the pre-requisite info
+     *
+     * Hard to say if this is a "unit" or an "integration" test, but it's a good minimal test for the analyzer
+     */
+    @Test
+    fun testTypeInjectionAnalyzer() {
+        val builder = buildAllocHumanProgram()
+        val program = builder.program
+        program.withTransaction<Exception>("first analysis") {
+            val autoAnalyzer = AutoAnalysisManager.getAnalysisManager(program)
+            val options = program.getOptions(Program.ANALYSIS_PROPERTIES)
+            options.setBoolean(OCTypeInjectorAnalyzer.NAME, true)
+            autoAnalyzer.reAnalyzeAll(null)
+            val cmd: Command<Program> = AnalysisBackgroundCommand(autoAnalyzer, false)
+            cmd.applyTo(program)
+        }
+
+//        env.launchDefaultTool(program)
+        val signature: FunctionDefinition = getSignatureOverrideAtCallSite(program, builder.addr(0x100008c48))
+        val returnType = signature.returnType as Pointer
+        assertEquals("Human *", returnType.name)
+    }
+
+    /**
+     * Tests the [ApplyAllocTypeOverrideCommand] on a minimal program, with manual set up of the pre-requisite info
+     */
+    @Test
+    fun testTypeInjectionMinimalUnit() {
+        val builder = buildAllocHumanProgram()
+        val program = builder.program
+
+        val dt = program.dataTypeManager.getPointer(program.dataTypeManager.getDataType(OBJC_CLASS_CATEGORY, "Human"))
+        program.withTransaction<Exception>("Apply override") {
+            ApplyAllocTypeOverrideCommand(builder.addr("100008c48"), dt).applyTo(program)
+        }
+//            this.launchDefaultTool(program)
+        val signature: FunctionDefinition = getSignatureOverrideAtCallSite(program, builder.addr(0x100008c48))
+        val returnType = signature.returnType as Pointer
+        assertEquals("Human *", returnType.name)
     }
 }
