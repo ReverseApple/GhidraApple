@@ -4,7 +4,6 @@ import ghidra.program.database.ProgramBuilder
 import ghidra.program.model.address.Address
 import ghidra.program.model.data.Pointer
 import ghidra.program.model.data.Structure
-import ghidra.program.model.data.TerminatedStringDataType
 import ghidra.program.model.symbol.RefType
 import ghidra.program.model.symbol.SourceType
 import ghidra.test.AbstractGhidraHeadedIntegrationTest
@@ -107,9 +106,6 @@ class BlockTests : AbstractGhidraHeadedIntegrationTest() {
         // Add signature string "v32@?0@\"NSError\"8@\"NSArray\"16@\"NSURL\"24" as bytes
 
         builder.setNullTerminatedString("10012d4aa", """v32@?0@"NSError"8@"NSArray"16@"NSURL"24""", applyStringType = true)
-
-        // TODO: Currently we rely on this string already being created, this seems like an unnecessary assumption
-        builder.applyStringDataType("10012d4aa", TerminatedStringDataType.dataType, 1)
 
         val invokeFunction =
             builder.createFunction(
