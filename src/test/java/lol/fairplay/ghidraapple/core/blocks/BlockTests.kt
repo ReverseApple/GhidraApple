@@ -502,6 +502,7 @@ class BlockTests : AbstractGhidraHeadedIntegrationTest() {
         // This seems like a potentially unnecessary assumption,
         // and we could consider finding this part of the responsibility of the command
         builder.createStackReference("100006810", RefType.WRITE, -0x48, SourceType.ANALYSIS, 1)
+        builder.createMemoryReference("100006810", "1001945c8", RefType.WRITE, SourceType.ANALYSIS)
         // FINISHED SET UP
 
         // RUN COMMAND
