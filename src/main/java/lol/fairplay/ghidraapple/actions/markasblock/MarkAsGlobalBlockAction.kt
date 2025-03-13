@@ -4,7 +4,6 @@ import docking.ActionContext
 import docking.action.DockingAction
 import docking.action.MenuData
 import ghidra.app.context.ListingActionContext
-import ghidra.program.model.data.Pointer
 import lol.fairplay.ghidraapple.GhidraApplePluginPackage
 import lol.fairplay.ghidraapple.analysis.objectivec.blocks.isBlockLayoutType
 import lol.fairplay.ghidraapple.analysis.utilities.address
@@ -29,14 +28,15 @@ class MarkAsGlobalBlockAction(
         // If this is already a block layout, don't allow it to be marked again.
         if (dataAtLocation.dataType.isBlockLayoutType) return false
 
-        // Global blocks start with a pointer. If this isn't a pointer, it's not a global block.
-        if (dataAtLocation.dataType !is Pointer) return false
+        val pointerBytes = ByteArray(typedContext.program.defaultPointerSize)
+        val bytesRead = typedContext.program.memory.getBytes(typedContext.address, pointerBytes)
+        if (bytesRead != pointerBytes.size) return false
 
         // If the pointer isn't to the global block symbol, it's not a global block.
         typedContext.program.symbolTable
             .getSymbols(
                 typedContext.program.address(
-                    ByteBuffer.wrap(dataAtLocation.bytes).order(ByteOrder.LITTLE_ENDIAN).long,
+                    ByteBuffer.wrap(pointerBytes).order(ByteOrder.LITTLE_ENDIAN).long,
                 ),
             ).firstOrNull { it.isPrimary }
             ?.apply { if (name != "__NSConcreteGlobalBlock" && name != "__NSGlobalBlock__") return false }
