@@ -119,7 +119,7 @@ class MarkNSConcreteStackBlock(
                 .first()
                 .stackOffset
 
-        // Initially mark the stack address as a minimal block. If the decompilation and parsing
+        // Initially mark the stack address as a minimal block. If the decompilation and/or parsing
         //  fails, at least we will have something to show the user.
         function.stackFrame.createVariable(
             "block_minimal_${instruction.address}",
