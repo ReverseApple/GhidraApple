@@ -1,0 +1,37 @@
+name: Release
+on:
+  release:
+    types: [published]
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clone Repository
+        uses: actions/checkout@v4
+
+      - name: Install Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Install Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Install Ghidra ${{ matrix.ghidra }}
+        uses: antoniovazquezblanco/setup-ghidra@v2.0.4
+        with:
+          auth_token: ${{ secrets.GITHUB_TOKEN }}
+          version: "latest"
+
+      - name: Build plugin via gradle
+        run: gradle buildExtension
+
+      - name: Upload release ZIP
+        env:
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+        run: gh release upload ${{github.event.release.tag_name}} dist/*.zip
