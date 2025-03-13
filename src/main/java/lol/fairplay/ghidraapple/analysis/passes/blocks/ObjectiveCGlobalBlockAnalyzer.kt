@@ -9,6 +9,7 @@ import ghidra.program.model.listing.Program
 import ghidra.program.model.symbol.RefType
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.actions.markasblock.MarkNSConcreteGlobalBlock
+import lol.fairplay.ghidraapple.analysis.objectivec.blocks.FindGlobalBlockPointers
 import lol.fairplay.ghidraapple.analysis.utilities.getReferencesToSymbol
 
 class ObjectiveCGlobalBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYTE_ANALYZER) {
@@ -41,8 +42,16 @@ class ObjectiveCGlobalBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, Analyz
             .filter { set.contains(it.fromAddress) }
             .filter { it.referenceType == RefType.DATA }
             .filter { program.memory.getBlock(it.fromAddress)?.name == "__const" }
-            .forEach {
-                MarkNSConcreteGlobalBlock(it.fromAddress).applyTo(program)
+            .map { it.fromAddress }
+            .toSet()
+            .let { referenceAddresses ->
+                // TODO: This might be expensive in some binaries. Should we hide it behind an option?
+                FindGlobalBlockPointers().let {
+                    it.applyTo(program)
+                    referenceAddresses + it.addresses
+                }
+            }.forEach {
+                MarkNSConcreteGlobalBlock(it).applyTo(program)
             }
         return true
     }
