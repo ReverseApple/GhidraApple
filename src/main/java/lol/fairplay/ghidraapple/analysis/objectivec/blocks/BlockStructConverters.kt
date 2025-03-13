@@ -12,6 +12,7 @@ import ghidra.program.model.data.ParameterDefinitionImpl
 import ghidra.program.model.data.PointerDataType
 import ghidra.program.model.data.StringDataType
 import ghidra.program.model.data.StructureDataType
+import ghidra.program.model.data.TerminatedStringDataType
 import ghidra.program.model.data.Undefined
 import ghidra.program.model.data.VoidDataType
 import ghidra.program.model.listing.Function.FunctionUpdateType
@@ -365,7 +366,7 @@ class BlockDescriptor3(
                                 DataUtilities.createData(
                                     program,
                                     it.address,
-                                    StringDataType.dataType,
+                                    TerminatedStringDataType.dataType,
                                     -1,
                                     DataUtilities.ClearDataMode.CLEAR_ALL_CONFLICT_DATA,
                                 )
