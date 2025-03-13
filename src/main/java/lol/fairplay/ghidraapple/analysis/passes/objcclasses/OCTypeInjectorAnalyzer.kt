@@ -11,13 +11,10 @@ import ghidra.program.database.symbol.FunctionSymbol
 import ghidra.program.model.address.Address
 import ghidra.program.model.address.AddressSetView
 import ghidra.program.model.data.DataType
-import ghidra.program.model.data.FunctionDefinitionDataType
-import ghidra.program.model.data.ParameterDefinitionImpl
+import ghidra.program.model.data.PointerDataType
 import ghidra.program.model.listing.Function
-import ghidra.program.model.listing.FunctionSignature
 import ghidra.program.model.listing.ParameterImpl
 import ghidra.program.model.listing.Program
-import ghidra.program.model.pcode.HighFunctionDBUtil
 import ghidra.program.model.pcode.PcodeOp
 import ghidra.program.model.pcode.PcodeOpAST
 import ghidra.program.model.symbol.SourceType
@@ -28,7 +25,7 @@ import lol.fairplay.ghidraapple.analysis.objectivec.GhidraTypeBuilder.Companion.
 import lol.fairplay.ghidraapple.analysis.utilities.getConstantFromVarNode
 import kotlin.jvm.optionals.getOrNull
 
-data class AllocInfo(val function: Function, val callsite: Address, val signature: FunctionSignature)
+data class AllocInfo(val callsite: Address, val allocedType: DataType)
 
 class OCTypeInjectorAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.INSTRUCTION_ANALYZER) {
     lateinit var program: Program
@@ -63,9 +60,12 @@ class OCTypeInjectorAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.
         program.withTransaction<Exception>("Setup alloc signatures") {
             allocFnSymbols().forEach {
                 val func = it.`object` as FunctionDB
-                val id = program.dataTypeManager.getDataType("/_objc2_/ID")
+                val id = program.dataTypeManager.getDataType("/_objc2_/ID") ?: PointerDataType()
                 if (func.signature.arguments.isEmpty()) {
                     func.addParameter(ParameterImpl("cls", id, program), SourceType.IMPORTED)
+                    func.setReturnType(id, SourceType.IMPORTED)
+                } else if (func.signature.arguments[0].dataType.length != 8) {
+                    func.signature.arguments[0].dataType = id
                     func.setReturnType(id, SourceType.IMPORTED)
                 }
             }
@@ -82,8 +82,8 @@ class OCTypeInjectorAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.
 
         Msg.info(this, "Successfully analyzed ${results.size} callsites")
 
-        results.forEach { (function, callsite, signature) ->
-            HighFunctionDBUtil.writeOverride(function, callsite, signature)
+        results.forEach { (callsite, allocedType) ->
+            ApplyAllocTypeOverrideCommand(callsite, allocedType).applyTo(program)
         }
         return true
     }
@@ -99,6 +99,12 @@ class OCTypeInjectorAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.
                 .filter { it.name.startsWith("_OBJC_CLASS_\$_") || it.parentNamespace.name == "class_t" }
                 .filter { !it.isExternal }
                 .associate { it.address.offset to it }
+
+        if (objectLookUp.isEmpty()) {
+            Msg.error(this, "No Objective-C classes found in the program.")
+            messageLog.appendMsg(NAME, "No Objective-C classes found in the program.")
+            return emptyList()
+        }
 
         val decompiler = DecompInterface()
         decompiler.openProgram(program)
@@ -156,7 +162,7 @@ class OCTypeInjectorAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.
                 if (allocatedSymbol != null) {
                     runCatching {
                         val ocType = getDataTypeFromSymbol(allocatedSymbol)
-                        result.add(AllocInfo(function, allocCall.seqnum.target, generateFunctionSignatureForType(ocType)))
+                        result.add(AllocInfo(allocCall.seqnum.target, ocType))
                     }.onFailure { error ->
                         Msg.error(this, "Failed to inject type for ${allocatedSymbol.name} in ${function.name}", error)
                     }
@@ -170,13 +176,6 @@ class OCTypeInjectorAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.
         decompiler.closeProgram()
         decompiler.dispose()
         return result
-    }
-
-    private fun generateFunctionSignatureForType(type: DataType): FunctionSignature {
-        val fsig = FunctionDefinitionDataType("tmpname")
-        fsig.returnType = type
-        fsig.arguments = arrayOf(ParameterDefinitionImpl("cls", type, null))
-        return fsig
     }
 
     /**

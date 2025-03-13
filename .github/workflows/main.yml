@@ -41,5 +41,7 @@ jobs:
     - name: Build
       run: gradle classes
 
-    - name: Test
-      run: gradle test
+    - name: Run tests (with Xvfb)
+      uses: coactions/setup-xvfb@v1
+      with:
+        run: gradle test --info
