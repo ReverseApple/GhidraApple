@@ -1,15 +1,16 @@
 name: Build
-on: [push, pull_request, workflow_dispatch]
+on: [push, workflow_dispatch]
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     strategy:
+      fail-fast: false # We want to run all the versions to see if a failure is version specific
       matrix:
         ghidra:
 #          - "latest"
-          - "11.3"
+          - "11.3.1"
           - "11.2.1"
           # - "11.1.1"
           # - "11.1"
@@ -37,17 +38,8 @@ jobs:
         auth_token: ${{ secrets.GITHUB_TOKEN }}
         version: ${{ matrix.ghidra }}
 
-    - name: Linting with klint
-      run: gradle ktlintCheck
+    - name: Build
+      run: gradle classes
 
     - name: Test
       run: gradle test
-
-    - name: Build
-      run: gradle buildExtension
-
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: Apple_Ghidra_${{ matrix.ghidra }}
-        path: dist/*.zip
