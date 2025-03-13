@@ -11,12 +11,12 @@ import ghidra.program.model.listing.Data
 import ghidra.program.model.listing.Function
 import ghidra.program.model.listing.Program
 import ghidra.program.model.mem.Memory
+import ghidra.program.model.mem.MemoryBlock
 import ghidra.program.model.pcode.PcodeOp
 import ghidra.program.model.pcode.PcodeOpAST
 import ghidra.program.model.pcode.Varnode
 import ghidra.program.model.symbol.Namespace
 import ghidra.program.model.symbol.RefType
-import ghidra.program.model.symbol.Reference
 import ghidra.program.model.symbol.ReferenceIterator
 import ghidra.program.model.symbol.ReferenceIteratorAdapter
 import ghidra.program.model.symbol.ReferenceManager
@@ -227,12 +227,66 @@ fun PcodeOpAST.getOutputBytes(program: Program): ByteArray? {
 }
 
 /**
- * Gets an iterator of references in the program to the symbol with the given name.
+ * Gets an iterator of references in the program to a symbol with the given name.
  */
 fun Program.getReferencesToSymbol(symbolName: String): ReferenceIterator =
-    symbolTable.getSymbols(symbolName).firstOrNull()?.let {
-        referenceManager.getReferencesTo(it.address)
-    } ?: ReferenceIteratorAdapter(emptyList<Reference>().iterator())
+    ReferenceIteratorAdapter(
+        symbolTable
+            .getSymbols(symbolName)
+            .filter { !it.address.isExternalAddress }
+            .flatMap {
+                referenceManager.getReferencesTo(it.address)
+            }.iterator(),
+    )
+
+/**
+ * Gets a sequence of address in the program that contain an address of a symbol with the given name.
+ */
+fun Program.getPointersToSymbol(
+    symbolName: String,
+    block: MemoryBlock,
+): Sequence<Address> = getPointersToSymbol(symbolName, block.start, block.end)
+
+/**
+ * Gets a sequence of address in the program that contain an address of a symbol with the given name.
+ */
+fun Program.getPointersToSymbol(
+    symbolName: String,
+    startAddress: Address = minAddress,
+    endAddress: Address = maxAddress,
+): Sequence<Address> =
+    symbolTable
+        .getSymbols(symbolName)
+        .filter { !it.address.isExternalAddress }
+        .map { it.address.offset }
+        .let { symbolAddressOffsets ->
+            generateSequence(startAddress) { it.add(defaultPointerSize.toLong()) }
+                .takeWhile { it <= endAddress }
+                .filter { addressToFilter ->
+                    try {
+                        val pointerBytes = ByteArray(defaultPointerSize)
+                        val bytesRead = memory.getBytes(addressToFilter, pointerBytes)
+                        if (bytesRead != pointerBytes.size) return@filter false
+                        ByteBuffer
+                            .allocate(defaultPointerSize)
+                            .order(if (memory.isBigEndian) ByteOrder.BIG_ENDIAN else ByteOrder.LITTLE_ENDIAN)
+                            .put(pointerBytes)
+                            .flip()
+                            .let {
+                                return@filter symbolAddressOffsets.contains(
+                                    when (defaultPointerSize) {
+                                        4 -> it.int.toLong()
+                                        8 -> it.long
+                                        else -> return@filter false
+                                    },
+                                )
+                            }
+                        return@filter false
+                    } catch (_: Exception) {
+                        return@filter false
+                    }
+                }
+        }
 
 /**
  * Gets the label at the given address in the program, if one exists.
