@@ -1,0 +1,29 @@
+name: Linting
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+
+    steps:
+      - name: Clone Repository
+        uses: actions/checkout@v4
+
+      - name: Install Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Install Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Install Ghidra ${{ matrix.ghidra }}
+        uses: antoniovazquezblanco/setup-ghidra@v2.0.4
+        with:
+          auth_token: ${{ secrets.GITHUB_TOKEN }}
+          version: "latest"
+
+      - name: Linting with klint
+        run: gradle ktlintCheck
