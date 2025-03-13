@@ -294,11 +294,26 @@ class BlockLayout(
     )
 
     override fun toDataType(): DataType {
+        val defaultReturnTypeAndParameters =
+            Pair(VoidDataType.dataType, emptyArray<ParameterDefinitionImpl>())
         val (blockReturnType, blockParameters) =
             if (program.currentTransactionInfo != null) {
-                generateDataTypesFromEncodedSignature()
+                try {
+                    generateDataTypesFromEncodedSignature()
+                } catch (_: NotImplementedError) {
+                    // TODO: Trying to decode a signature with a bitfield is currently unsupported and throws
+                    //  a [NotImplementedError]. We should remove this when we add support for bitfields.
+                    defaultReturnTypeAndParameters
+                } catch (e: Throwable) {
+                    Msg.warn(
+                        this,
+                        "Failed to parse signature: ${this.descriptor3!!.signatureString}. " +
+                            "Throwable: $e",
+                    )
+                    defaultReturnTypeAndParameters
+                }
             } else {
-                Pair(VoidDataType.dataType, emptyArray())
+                defaultReturnTypeAndParameters
             }
         val minimalBlockSize = BlockLayoutDataType(program.dataTypeManager).length
         val actualBlockSize = descriptor1.blockSize
@@ -354,32 +369,31 @@ class BlockDescriptor3(
     val signaturePointer = buffer.getLong()
     val layout = buffer.getLong()
 
+    val signatureString get() =
+        program.listing
+            .getDataAt(program.address(signaturePointer))
+            .let {
+                if (it.dataType != StringDataType.dataType) {
+                    // If this isn't a string data type, we need to make it one.
+                    program.withTransaction<Exception>("Mark Block Signature as String") {
+                        DataUtilities.createData(
+                            program,
+                            it.address,
+                            TerminatedStringDataType.dataType,
+                            -1,
+                            DataUtilities.ClearDataMode.CLEAR_ALL_CONFLICT_DATA,
+                        )
+                    }
+                    it
+                } else {
+                    // Otherwise, just keep it as-is.
+                    it
+                }
+            }.bytes
+            .decodeToString()
+
     val encodedSignature: EncodedSignature get() =
-        {
-            val signatureString =
-                program.listing
-                    .getDataAt(program.address(signaturePointer))
-                    .let {
-                        if (it.dataType != StringDataType.dataType) {
-                            // If this isn't a string data type, we need to make it one.
-                            program.withTransaction<Exception>("Mark Block Signature as String") {
-                                DataUtilities.createData(
-                                    program,
-                                    it.address,
-                                    TerminatedStringDataType.dataType,
-                                    -1,
-                                    DataUtilities.ClearDataMode.CLEAR_ALL_CONFLICT_DATA,
-                                )
-                            }
-                            it
-                        } else {
-                            // Otherwise, just keep it as-is.
-                            it
-                        }
-                    }.bytes
-                    .decodeToString()
-            parseSignature(signatureString, EncodedSignatureType.BLOCK_SIGNATURE)
-        }()
+        parseSignature(signatureString, EncodedSignatureType.BLOCK_SIGNATURE)
 
     override fun toDataType() = BlockDescriptor3DataType(program.dataTypeManager)
 }
