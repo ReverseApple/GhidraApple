@@ -22,6 +22,7 @@ import ghidra.program.model.symbol.ReferenceIteratorAdapter
 import ghidra.program.model.symbol.ReferenceManager
 import ghidra.program.model.symbol.SourceType
 import ghidra.program.model.symbol.Symbol
+import ghidra.program.model.symbol.SymbolType
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.derefUntyped
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.get
 import java.nio.ByteBuffer
@@ -236,4 +237,5 @@ fun Program.getReferencesToSymbol(symbolName: String): ReferenceIterator =
 /**
  * Gets the label at the given address in the program, if one exists.
  */
-fun Program.getLabelAtAddress(address: Address): String? = listing.getCodeUnitAt(address)?.label
+fun Program.getLabelAtAddress(address: Address): String? =
+    symbolTable.getPrimarySymbol(address).takeIf { it?.symbolType == SymbolType.LABEL }?.name
