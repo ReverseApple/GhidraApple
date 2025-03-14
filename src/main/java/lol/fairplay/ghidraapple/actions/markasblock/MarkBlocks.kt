@@ -111,7 +111,7 @@ class MarkNSConcreteStackBlock(
                 .takeIf {
                     it.pcode.any { it.opcode == PcodeOp.LOAD }
                 }?.resultObjects
-                ?.first { it is Register } as Register
+                ?.first { it is Register } as Register?
 
         val minimalBlockLayoutType = BlockLayoutDataType(program.dataTypeManager, "${instruction.address}_minimal")
 
