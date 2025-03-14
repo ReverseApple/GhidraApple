@@ -6,6 +6,7 @@ import ghidra.framework.cmd.Command
 import ghidra.program.model.address.Address
 import ghidra.program.model.data.CategoryPath
 import ghidra.program.model.data.DataUtilities
+import ghidra.program.model.lang.Register
 import ghidra.program.model.listing.Function
 import ghidra.program.model.listing.Instruction
 import ghidra.program.model.listing.Program
@@ -79,6 +80,10 @@ class MarkNSConcreteStackBlock(
         // If the address is already marked as a block, don't do it again.
         if (program.isAddressBlockLayout(instruction.address)) return false
 
+        // At the start of every stack block, there should be instructions that load a pointer to the stack block
+        //  symbol into a register, and then, later, instructions to store it to the stack. This command is meant
+        //  to be used with either the specific load instruction or the specific store instruction.
+
         val instructionsThatBuildTheStackBlock =
             // Start with the first instruction.
             generateSequence(instruction) { currentInstruction ->
@@ -100,6 +105,14 @@ class MarkNSConcreteStackBlock(
                     instructionToTake.flowType?.let { !it.isJump && !it.isCall } == true
             }.toList()
 
+        // If we're here from the load instruction, we will save the result register for reference.
+        val loadRegister: Register? =
+            instruction
+                .takeIf {
+                    it.pcode.any { it.opcode == PcodeOp.LOAD }
+                }?.resultObjects
+                ?.first { it is Register } as Register
+
         val minimalBlockLayoutType = BlockLayoutDataType(program.dataTypeManager, "${instruction.address}_minimal")
 
         val minimalBlockLayoutSize = minimalBlockLayoutType.length
@@ -115,7 +128,10 @@ class MarkNSConcreteStackBlock(
                 //  location and the instruction that stores the start of the block onto the stack may not be
                 //  the same instruction. We traverse the instructions to find the one we need.
                 .first {
-                    it.doesReferenceStackBlockSymbol &&
+                    (
+                        it.doesReferenceStackBlockSymbol ||
+                            if (loadRegister != null) it.inputObjects.contains(loadRegister) else false
+                    ) &&
                         it.referencesFrom.count { it.isStackReference } != 0 &&
                         it.pcode.any { it.opcode == PcodeOp.STORE }
                 }.referencesFrom
