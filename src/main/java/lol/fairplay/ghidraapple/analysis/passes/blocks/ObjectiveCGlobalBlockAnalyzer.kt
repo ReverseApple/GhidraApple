@@ -46,8 +46,8 @@ class ObjectiveCGlobalBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, Analyz
             .toSet()
             .let { referenceAddresses ->
                 // TODO: This might be expensive in some binaries. Should we hide it behind an option?
-                FindGlobalBlockSymbolPointers().let {
-                    it.applyTo(program)
+                FindGlobalBlockSymbolPointers(program).let {
+                    it.run(TaskMonitor.DUMMY)
                     referenceAddresses + it.addresses
                 }
             }.forEach {
