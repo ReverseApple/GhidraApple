@@ -227,15 +227,25 @@ fun PcodeOpAST.getOutputBytes(program: Program): ByteArray? {
 }
 
 /**
+ * Geta a list of addresses for symbols that match the given name.
+ */
+fun Program.getAddressesOfSymbol(
+    symbolName: String,
+    allowExternal: Boolean = false,
+): List<Address> =
+    symbolTable
+        .getSymbols(symbolName)
+        .let { if (allowExternal) it else it.filter { !it.address.isExternalAddress } }
+        .map { it.address }
+
+/**
  * Gets an iterator of references in the program to a symbol with the given name.
  */
 fun Program.getReferencesToSymbol(symbolName: String): ReferenceIterator =
     ReferenceIteratorAdapter(
-        symbolTable
-            .getSymbols(symbolName)
-            .filter { !it.address.isExternalAddress }
+        getAddressesOfSymbol(symbolName)
             .flatMap {
-                referenceManager.getReferencesTo(it.address)
+                referenceManager.getReferencesTo(it)
             }.iterator(),
     )
 
@@ -255,10 +265,8 @@ fun Program.getPointersToSymbol(
     startAddress: Address = minAddress,
     endAddress: Address = maxAddress,
 ): Sequence<Address> =
-    symbolTable
-        .getSymbols(symbolName)
-        .filter { !it.address.isExternalAddress }
-        .map { it.address.offset }
+    getAddressesOfSymbol(symbolName)
+        .map { it.offset }
         .let { symbolAddressOffsets ->
             generateSequence(startAddress) { it.add(defaultPointerSize.toLong()) }
                 .takeWhile { it <= endAddress }

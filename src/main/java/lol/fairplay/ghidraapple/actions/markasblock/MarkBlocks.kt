@@ -12,15 +12,14 @@ import ghidra.program.model.listing.Instruction
 import ghidra.program.model.listing.Program
 import ghidra.program.model.pcode.PcodeOp
 import ghidra.program.model.symbol.SourceType
-import ghidra.program.model.symbol.StackReference
 import ghidra.util.Msg
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.analysis.objectivec.blocks.BLOCK_CATEGORY_PATH_STRING
 import lol.fairplay.ghidraapple.analysis.objectivec.blocks.BlockLayout
 import lol.fairplay.ghidraapple.analysis.objectivec.blocks.BlockLayoutDataType
-import lol.fairplay.ghidraapple.analysis.objectivec.blocks.doesReferenceStackBlockSymbol
 import lol.fairplay.ghidraapple.analysis.objectivec.blocks.isAddressBlockLayout
 import lol.fairplay.ghidraapple.analysis.utilities.address
+import lol.fairplay.ghidraapple.analysis.utilities.getAddressesOfSymbol
 import lol.fairplay.ghidraapple.analysis.utilities.getOutputBytes
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -113,40 +112,17 @@ class MarkNSConcreteStackBlock(
                 }?.resultObjects
                 ?.first { it is Register } as Register?
 
-        val minimalBlockLayoutType = BlockLayoutDataType(program.dataTypeManager, "${instruction.address}_minimal")
+        val minimalBlockLayoutType =
+            BlockLayoutDataType(
+                program.dataTypeManager,
+                "${instruction.address}_minimal",
+                "${instruction.address}_minimal",
+            )
 
         val minimalBlockLayoutSize = minimalBlockLayoutType.length
 
         // This will contain the stack block as it would appear on the stack.
         val stackBlockByteArray = ByteArray(minimalBlockLayoutSize)
-
-        // This is the offset into the function's stack frame where the actual program will write the
-        //  stack block. We'll use it to type that part of the function's stack frame.
-        val baseStackOffset =
-            instructionsThatBuildTheStackBlock
-                // If we got here through a decompiler action, the instruction associated with the decompiler
-                //  location and the instruction that stores the start of the block onto the stack may not be
-                //  the same instruction. We traverse the instructions to find the one we need.
-                .first {
-                    (
-                        it.doesReferenceStackBlockSymbol ||
-                            if (loadRegister != null) it.inputObjects.contains(loadRegister) else false
-                    ) &&
-                        it.referencesFrom.count { it.isStackReference } != 0 &&
-                        it.pcode.any { it.opcode == PcodeOp.STORE }
-                }.referencesFrom
-                .filterIsInstance<StackReference>()
-                .first()
-                .stackOffset
-
-        // Initially mark the stack address as a minimal block. If the decompilation and/or parsing
-        //  fails, at least we will have something to show the user.
-        function.stackFrame.createVariable(
-            "block_minimal_${instruction.address}",
-            baseStackOffset,
-            minimalBlockLayoutType,
-            SourceType.ANALYSIS,
-        )
 
         // TODO: This seems possible to write more elegantly
         val decompileResults =
@@ -159,20 +135,75 @@ class MarkNSConcreteStackBlock(
                         .also { decompiler.dispose() }
                 }
 
+        var baseStackOffset: Long? = null
+
+        val stackBlockSymbolAddresses =
+            program.getAddressesOfSymbol("__NSConcreteStackBlock") + program.getAddressesOfSymbol("__NSStackBlock__")
+
+        // This will be a map of all the stack writes made by the instructions.
+        val stackOffsetToBytesMap: MutableMap<Long, ByteArray> = mutableMapOf()
+
         instructionsThatBuildTheStackBlock.forEach { iteratedInstruction ->
             decompileResults.highFunction.pcodeOps
                 .iterator()
                 .asSequence()
                 .filter { it.seqnum.target == iteratedInstruction.address }
-                .forEach pcodeops_loop@{
+                .forEach pcodeops_loop@{ pcodeOp ->
                     // If the output is not a stack address, skip it.
-                    if (it.output?.address?.isStackAddress != true) return@pcodeops_loop
-                    val positiveOffset = it.output.address.offset - baseStackOffset
-                    // If the offset isn't within the range for our stack block, skip it.
-                    if (positiveOffset < 0 || positiveOffset >= minimalBlockLayoutSize) return@pcodeops_loop
-                    // If we can get the output bytes from the pcode operation, copy them into our stack.
-                    it.getOutputBytes(program)?.copyInto(stackBlockByteArray, positiveOffset.toInt())
+                    if (pcodeOp.output?.address?.isStackAddress != true) return@pcodeops_loop
+                    val stackOffset = pcodeOp.output.address.offset
+                    baseStackOffset?.let { base ->
+                        val positiveOffset = stackOffset - base
+                        // If the offset isn't within the range for our stack block, skip it.
+                        if (positiveOffset < 0 || positiveOffset >= minimalBlockLayoutSize) return@pcodeops_loop
+                    }
+                    pcodeOp.getOutputBytes(program)?.let { bytes ->
+                        stackOffsetToBytesMap[stackOffset] = bytes
+                        if (bytes.size == Long.SIZE_BYTES) {
+                            val bytesAsLong =
+                                ByteBuffer
+                                    .allocate(bytes.size)
+                                    .order(
+                                        if (program.memory.isBigEndian) {
+                                            ByteOrder.BIG_ENDIAN
+                                        } else {
+                                            ByteOrder.LITTLE_ENDIAN
+                                        },
+                                    ).put(bytes)
+                                    .flip()
+                                    .long
+                            if (stackBlockSymbolAddresses.any { it.offset == bytesAsLong }) {
+                                baseStackOffset = stackOffset
+                            }
+                        }
+                    }
                 }
+        }
+
+        // Since [baseOffset] is captured by the above lambda, the Kotlin compiler will complain if
+        //  we try to use it directly. We must store it as an immutable value.
+        val safeBaseStackOffset = baseStackOffset
+
+        if (safeBaseStackOffset == null) {
+            statusMsg = "Failed to find the base stack offset for the stack block at ${instruction.address}!"
+            return false
+        }
+
+        // Initially mark the stack address as a minimal block. If the decompilation and/or parsing
+        //  fails, at least we will have something to show the user.
+        function.stackFrame.createVariable(
+            "block_minimal_${instruction.address}",
+            safeBaseStackOffset.toInt(),
+            minimalBlockLayoutType,
+            SourceType.ANALYSIS,
+        )
+
+        // Now we go over the recovered stack writes and build up the stack block.
+        stackOffsetToBytesMap.forEach { (offset, bytes) ->
+            val positiveOffset = offset - safeBaseStackOffset
+            // If the offset isn't within the range for our stack block, skip it.
+            if (positiveOffset < 0 || positiveOffset >= minimalBlockLayoutSize) return@forEach
+            bytes.copyInto(stackBlockByteArray, positiveOffset.toInt())
         }
 
         BlockLayout(
@@ -188,11 +219,18 @@ class MarkNSConcreteStackBlock(
                 return true
             }
 
+            if (program.functionManager.getFunctionContaining(program.address(descriptorPointer)) != null) {
+                // TODO: Does setting this message really do anything if we aren't making this a failure state?
+                statusMsg = "Stack block at ${instruction.address} has a descriptor address that is inside a function!"
+                // We say the command "worked", because at least the minimal type should be applied.
+                return true
+            }
+
             // Now that we know we have a good block type, we mark it up.
             Msg.info(this, "Marking stack block at 0x${instruction.address}")
             function.stackFrame.createVariable(
                 "block_${program.address(invokePointer)}",
-                baseStackOffset,
+                safeBaseStackOffset.toInt(),
                 toDataType(),
                 SourceType.ANALYSIS,
             )
