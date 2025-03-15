@@ -57,7 +57,7 @@ val Instruction.doesReferenceStackBlockSymbol get() =
             }
         }
 
-class FindGlobalBlockPointers : BackgroundCommand<Program>() {
+class FindGlobalBlockSymbolPointers : BackgroundCommand<Program>() {
     var addresses: Set<Address> = emptySet()
 
     override fun applyTo(
