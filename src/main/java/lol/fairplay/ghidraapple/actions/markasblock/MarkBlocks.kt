@@ -12,11 +12,13 @@ import ghidra.program.model.listing.Instruction
 import ghidra.program.model.listing.Program
 import ghidra.program.model.pcode.PcodeOp
 import ghidra.program.model.symbol.SourceType
+import ghidra.program.model.symbol.StackReference
 import ghidra.util.Msg
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.analysis.objectivec.blocks.BLOCK_CATEGORY_PATH_STRING
 import lol.fairplay.ghidraapple.analysis.objectivec.blocks.BlockLayout
 import lol.fairplay.ghidraapple.analysis.objectivec.blocks.BlockLayoutDataType
+import lol.fairplay.ghidraapple.analysis.objectivec.blocks.doesReferenceStackBlockSymbol
 import lol.fairplay.ghidraapple.analysis.objectivec.blocks.isAddressBlockLayout
 import lol.fairplay.ghidraapple.analysis.utilities.address
 import lol.fairplay.ghidraapple.analysis.utilities.getAddressesOfSymbol
@@ -172,6 +174,8 @@ class MarkNSConcreteStackBlock(
                                     ).put(bytes)
                                     .flip()
                                     .long
+                            // If the storage of the stack block pointer is split across multiple writes, this
+                            //  check will not work. We fall back to stack references below.
                             if (stackBlockSymbolAddresses.any { it.offset == bytesAsLong }) {
                                 baseStackOffset = stackOffset
                             }
@@ -182,7 +186,18 @@ class MarkNSConcreteStackBlock(
 
         // Since [baseOffset] is captured by the above lambda, the Kotlin compiler will complain if
         //  we try to use it directly. We must store it as an immutable value.
-        val safeBaseStackOffset = baseStackOffset
+        val safeBaseStackOffset =
+            baseStackOffset
+                // Last-ditch effort to find the stack offset for the stack block. This covers
+                //  cases where the PCode is weird (see the comment in the lambda above).
+                ?: instructionsThatBuildTheStackBlock
+                    .firstOrNull {
+                        it.doesReferenceStackBlockSymbol && it.pcode.count { it.opcode == PcodeOp.STORE } == 1
+                    }?.referencesFrom
+                    ?.filterIsInstance<StackReference>()
+                    ?.firstOrNull()
+                    ?.stackOffset
+                    ?.toLong()
 
         if (safeBaseStackOffset == null) {
             statusMsg = "Failed to find the base stack offset for the stack block at ${instruction.address}!"
