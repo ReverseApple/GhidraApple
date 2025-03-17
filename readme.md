@@ -12,7 +12,7 @@ Better Apple Binary Analysis for Ghidra
       -  [x] Extended method signature types using MRO
       -  [x] Automatic selector-based parameter renaming
   -  [x] Automatic property tagging and annotation
-  -  [ ] NSBlock Analysis
+  -  [x] NSBlock Analysis
 - Swift
   -  [ ] String analysis
 - Universal
