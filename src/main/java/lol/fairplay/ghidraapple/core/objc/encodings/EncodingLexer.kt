@@ -110,7 +110,7 @@ class EncodingLexer(private val input: String) {
                     return id
                 }
 
-                if (currentChar in setOf('r', 'n', 'N', 'o', 'O', 'R', 'V')) {
+                if (currentChar in setOf('r', 'n', 'N', 'o', 'O', 'R', 'V', 'A', 'j')) {
                     return Token.TypeModifier(currentChar)
                         .also { advance() }
                 }
