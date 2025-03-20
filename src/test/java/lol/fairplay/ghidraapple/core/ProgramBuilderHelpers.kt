@@ -6,14 +6,16 @@ import ghidra.program.model.data.TerminatedStringDataType
 import ghidra.program.model.listing.Function
 
 fun ProgramBuilder.createFunction(
-    addr: String,
+    stringAddress: String,
     bytes: ByteArray,
+    name: String? = null
 ): Function {
-    setBytes(addr, bytes)
-    val func = createEmptyFunction(null, addr, bytes.size, DataType.DEFAULT)
-    disassemble(addr, bytes.size)
+    setBytes(stringAddress, bytes)
+    val func = createEmptyFunction(name, stringAddress, bytes.size, DataType.DEFAULT)
+    disassemble(stringAddress, bytes.size)
     return func
 }
+
 
 /**
  * Set a null-terminated string at the given address.
@@ -32,4 +34,17 @@ fun ProgramBuilder.setNullTerminatedString(
     if (applyStringType) {
         applyStringDataType(addr, TerminatedStringDataType.dataType, 1)
     }
+}
+
+
+fun ProgramBuilder.createThunk(addr: String, thunkOf: Function){
+    this.tx<Exception> {
+        val thunk = this.createEmptyFunction(
+            thunkOf.name,
+            addr,
+            1,
+            thunkOf.returnType)
+        thunk.setThunkedFunction(thunkOf)
+    }
+
 }
