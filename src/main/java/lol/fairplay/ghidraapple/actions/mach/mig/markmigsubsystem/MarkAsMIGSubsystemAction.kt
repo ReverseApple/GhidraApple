@@ -13,7 +13,6 @@ import ghidra.program.model.data.DataUtilities
 import ghidra.program.model.listing.Program
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.GhidraApplePluginPackage
-import lol.fairplay.ghidraapple.actions.mach.mig.markmigsubsystem.MarkMIGSubsystem
 import lol.fairplay.ghidraapple.analysis.mach.messaging.mig.MIGSubsystem
 import lol.fairplay.ghidraapple.analysis.mach.messaging.mig.isMIGServerRoutine
 import lol.fairplay.ghidraapple.analysis.utilities.getAddressOfPointerAtAddress
