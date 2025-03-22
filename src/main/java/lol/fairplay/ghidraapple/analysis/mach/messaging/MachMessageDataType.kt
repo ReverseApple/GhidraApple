@@ -39,6 +39,7 @@ class MachMessageDataType(
                 } ?: 0
             ),
     isBeingReceived: Boolean = false,
+    sizeIncludesTrailer: Boolean = false,
 ) : StructureDataType(
         CategoryPath(MACH_CATEGORY_PATH_STRING),
         name,
@@ -51,14 +52,20 @@ class MachMessageDataType(
             add(machMessageBodyDataType, "body", null)
             it.forEach { add(it.dataType) }
         }
-        val remainingBytes = size - this.length
+        val remainingBytes =
+            (size - this.length)
+                .let { if (isBeingReceived && sizeIncludesTrailer) it - machMessageMaxTrailerDataType.length else it }
         when {
             remainingBytes < 0 -> throw IllegalStateException("Size must be at least as long as mandatory fields.")
             remainingBytes > 0 -> {
                 repeat(remainingBytes) { add(DEFAULT, "", null) }
                 if (isBeingReceived) {
-                    val alignmentBytes = this.alignedLength - this.length
-                    repeat(alignmentBytes) { add(DEFAULT, "", null) }
+                    // If the passed-in size included the trailer, the alignment bytes
+                    //   should be already accounted for.
+                    if (!sizeIncludesTrailer) {
+                        val alignmentBytes = this.alignedLength - this.length
+                        repeat(alignmentBytes) { add(DEFAULT, "", null) }
+                    }
                     add(machMessageMaxTrailerDataType, "trailer", null)
                 }
             }

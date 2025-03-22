@@ -23,7 +23,7 @@ import lol.fairplay.ghidraapple.analysis.mach.messaging.MachMsgOptions
 class MarkupMachMsgCall(
     private val highFunction: HighFunction,
     private val callSiteAddress: Address,
-) : BackgroundCommand<Program>() {
+) : BackgroundCommand<Program>("Mark mach_msg Call", false, false, false) {
     override fun applyTo(
         program: Program,
         monitor: TaskMonitor,
@@ -79,7 +79,8 @@ class MarkupMachMsgCall(
                     program.dataTypeManager,
                     "mach_msg_${callSiteAddress}_received",
                     size = messageReceiveSize.toInt(),
-                    isBeingReceived = true,
+                    isBeingReceived = false,
+                    sizeIncludesTrailer = true,
                 )
             } else {
                 null
