@@ -23,7 +23,9 @@ import lol.fairplay.ghidraapple.analysis.mach.messaging.MachMsgOptions
 class MarkupMachMsgCall(
     private val highFunction: HighFunction,
     private val callSiteAddress: Address,
-) : BackgroundCommand<Program>("Mark mach_msg Call", false, false, false) {
+) : BackgroundCommand<Program>() {
+    override fun getName(): String = "Mark mach_msg call at 0x$callSiteAddress"
+
     override fun applyTo(
         program: Program,
         monitor: TaskMonitor,
