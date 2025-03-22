@@ -4,12 +4,6 @@ import ghidra.program.model.data.CategoryPath
 import ghidra.program.model.data.DataType
 import ghidra.program.model.data.DataTypeManager
 import ghidra.program.model.data.StructureDataType
-import lol.fairplay.ghidraapple.analysis.mach.machMessageBodyDataType
-import lol.fairplay.ghidraapple.analysis.mach.machMessageHeaderDataType
-import lol.fairplay.ghidraapple.analysis.mach.machMessageMaxTrailerDataType
-import lol.fairplay.ghidraapple.analysis.mach.machMessageOOLDescriptorDataType
-import lol.fairplay.ghidraapple.analysis.mach.machMessageOOLPortsDataType
-import lol.fairplay.ghidraapple.analysis.mach.machMessagePortDescriptorDataType
 
 private const val MACH_CATEGORY_PATH_STRING = "/GA_MACH"
 

@@ -11,7 +11,7 @@ import ghidra.program.model.listing.Function
 import ghidra.program.model.listing.Instruction
 import ghidra.program.model.pcode.PcodeOp
 import ghidra.util.task.TaskMonitor
-import lol.fairplay.ghidraapple.analysis.mach.macOSXDataTypeManager
+import lol.fairplay.ghidraapple.analysis.mach.messaging.macOSXDataTypeManager
 import lol.fairplay.ghidraapple.analysis.utilities.instructions
 import kotlin.also
 import kotlin.let

@@ -1,4 +1,4 @@
-package lol.fairplay.ghidraapple.actions.mach.mig
+package lol.fairplay.ghidraapple.actions.mach.messaging.mig
 
 import docking.ActionContext
 import docking.action.DockingAction
