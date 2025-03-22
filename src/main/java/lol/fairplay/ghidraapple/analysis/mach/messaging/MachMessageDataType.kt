@@ -5,7 +5,7 @@ import ghidra.program.model.data.DataType
 import ghidra.program.model.data.DataTypeManager
 import ghidra.program.model.data.StructureDataType
 
-private const val MACH_CATEGORY_PATH_STRING = "/GA_MACH"
+const val MACH_CATEGORY_PATH_STRING = "/GA_MACH"
 
 enum class MachMessageDescriptorType(
     val value: Int,

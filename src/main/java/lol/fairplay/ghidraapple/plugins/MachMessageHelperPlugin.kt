@@ -6,6 +6,7 @@ import ghidra.framework.plugintool.PluginInfo
 import ghidra.framework.plugintool.PluginTool
 import ghidra.framework.plugintool.util.PluginStatus
 import lol.fairplay.ghidraapple.GhidraApplePluginPackage
+import lol.fairplay.ghidraapple.actions.mach.messaging.MarkupMachMsgCallAction
 import lol.fairplay.ghidraapple.actions.mach.messaging.mig.MarkAsMIGSubsystemAction
 
 @PluginInfo(
@@ -20,5 +21,6 @@ class MachMessageHelperPlugin(
 ) : ProgramPlugin(tool) {
     override fun init() {
         tool.addAction(MarkAsMIGSubsystemAction(name, tool))
+        tool.addAction(MarkupMachMsgCallAction(name, tool))
     }
 }
