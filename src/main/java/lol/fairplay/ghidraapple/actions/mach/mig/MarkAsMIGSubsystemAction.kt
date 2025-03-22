@@ -1,4 +1,4 @@
-package lol.fairplay.ghidraapple.actions.mach.mig.markmigsubsystem
+package lol.fairplay.ghidraapple.actions.mach.mig
 
 import docking.ActionContext
 import docking.action.DockingAction

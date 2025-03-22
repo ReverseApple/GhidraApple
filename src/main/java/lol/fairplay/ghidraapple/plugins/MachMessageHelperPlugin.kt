@@ -6,7 +6,7 @@ import ghidra.framework.plugintool.PluginInfo
 import ghidra.framework.plugintool.PluginTool
 import ghidra.framework.plugintool.util.PluginStatus
 import lol.fairplay.ghidraapple.GhidraApplePluginPackage
-import lol.fairplay.ghidraapple.actions.mach.mig.markmigsubsystem.MarkAsMIGSubsystemAction
+import lol.fairplay.ghidraapple.actions.mach.mig.MarkAsMIGSubsystemAction
 
 @PluginInfo(
     status = PluginStatus.STABLE,
