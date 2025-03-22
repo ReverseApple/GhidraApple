@@ -3,6 +3,19 @@ package lol.fairplay.ghidraapple.core.objc.encodings
 class TypeStringify : TypeNodeVisitor {
     private lateinit var result: String
 
+    override fun visitModifiedType(modifiedType: TypeNode.ModifiedType) {
+        modifiedType.baseType.accept(this)
+
+        val keyword =
+            when (modifiedType.modifier) {
+                'A' -> "_Atomic"
+                'j' -> "_Complex"
+                else -> throw Exception("Unknown modifier: ${modifiedType.modifier}")
+            }
+
+        result = "$keyword($result)"
+    }
+
     companion object {
         fun getResult(node: TypeNode): String {
             val vis = TypeStringify()
