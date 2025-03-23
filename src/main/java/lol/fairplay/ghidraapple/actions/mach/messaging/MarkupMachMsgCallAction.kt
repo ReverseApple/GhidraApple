@@ -26,10 +26,15 @@ class MarkupMachMsgCall(
 ) : BackgroundCommand<Program>() {
     override fun getName(): String = "Mark mach_msg call at 0x$callSiteAddress"
 
+    private var errorMsg: String? = null
+
+    override fun getStatusMsg(): String? = errorMsg
+
     override fun applyTo(
         program: Program,
         monitor: TaskMonitor,
     ): Boolean {
+        errorMsg = "Failed to find PCode for mach_msg call"
         val callPCodeOp =
             highFunction
                 .getPcodeOps(callSiteAddress)
@@ -37,6 +42,8 @@ class MarkupMachMsgCall(
                 .toList()
                 .firstOrNull { it.opcode == PcodeOp.CALL }
                 ?: return false
+
+        errorMsg = "Failed to extract options used for mach_msg call"
         val callOptions =
             callPCodeOp.inputs[2]
                 .takeIf { it.isConstant }
@@ -45,15 +52,19 @@ class MarkupMachMsgCall(
                 ?.let { MachMsgOptions.fromValue(it.toInt()) }
                 ?: return false
 
+        errorMsg = "Failed to extract send size used for mach_msg call"
         val messageSendSize =
             callPCodeOp.inputs[3]
+                // TODO: Handle non-constant values
                 .takeIf { it.isConstant }
                 ?.address
                 ?.offset
                 ?: return false
 
+        errorMsg = "Failed to extract receive size used for mach_msg call"
         val messageReceiveSize =
             callPCodeOp.inputs[4]
+                // TODO: Handle non-constant values
                 .takeIf { it.isConstant }
                 ?.address
                 ?.offset
