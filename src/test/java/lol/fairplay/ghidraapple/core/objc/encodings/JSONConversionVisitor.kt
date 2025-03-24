@@ -14,6 +14,15 @@ class JSONConversionVisitor : TypeNodeVisitor {
         return JSONConversionVisitor()
     }
 
+    override fun visitModifiedType(modifiedType: TypeNode.ModifiedType) {
+        val json = JSONObject()
+        json.put("type", "ModifiedType")
+        json.put("modifier", modifiedType.modifier)
+        modifiedType.baseType.accept(this)
+        json.put("baseType", getJSON())
+        result = json
+    }
+
     override fun visitStruct(struct: TypeNode.Struct) {
         val json = JSONObject()
         json.put("type", "Struct")

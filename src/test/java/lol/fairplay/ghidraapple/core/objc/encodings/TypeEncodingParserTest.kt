@@ -26,6 +26,8 @@ class TypeEncodingParserTest {
                 @Suppress("ktlint:standard:max-line-length")
                 "{z_stream_s=\"next_in\"*\"avail_in\"I\"total_in\"Q\"next_out\"*\"avail_out\"I\"total_out\"Q\"msg\"*\"state\"^{internal_state}\"zalloc\"^?\"zfree\"^?\"opaque\"^v\"data_type\"i\"adler\"Q\"reserved\"Q}",
                 "{Person=[50c]b7b1df{Address=[50c][50c][20c]i}{Employment=[50c][50c]d}[5{Skill=[50c]i}](?=[50c][15c][30c])i}",
+                "{?=A*}",
+                "{?=AjdAjf^Ac}",
             )
 
         for (ex in examples) {

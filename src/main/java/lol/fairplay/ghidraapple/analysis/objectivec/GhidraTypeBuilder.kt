@@ -71,6 +71,10 @@ class GhidraTypeBuilder(val program: Program) : TypeNodeVisitor {
         return program.dataTypeManager.addDataType(StructureDataType(OBJC_CLASS_CATEGORY, name, 0), null)
     }
 
+    override fun visitModifiedType(modifiedType: TypeNode.ModifiedType) {
+        modifiedType.baseType.accept(this)
+    }
+
     override fun visitStruct(struct: TypeNode.Struct) {
         val name =
             (struct.name ?: "anon__${getRandomHexString(6)}").let {

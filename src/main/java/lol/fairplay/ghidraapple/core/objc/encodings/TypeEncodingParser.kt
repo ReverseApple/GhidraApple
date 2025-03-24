@@ -16,6 +16,7 @@ class TypeEncodingParser(lexer: EncodingLexer) : EncodingParser(lexer) {
     private fun parseType(): TypeNode {
         return when (currentToken) {
             is Token.StructOpen -> parseStructOrClassObject()
+            is Token.TypeModifier -> parseModifiedType()
             is Token.BitfieldType -> parseBitfield()
             is Token.ArrayOpen -> parseArray()
             is Token.PrimitiveType -> parsePrimitive()
@@ -26,6 +27,16 @@ class TypeEncodingParser(lexer: EncodingLexer) : EncodingParser(lexer) {
             is Token.ClassObjectType -> parseClassObject()
             else -> throw IllegalArgumentException("Unexpected token: $currentToken")
         }
+    }
+
+    private fun parseModifiedType(): TypeNode.ModifiedType {
+        val modifier = expectToken<Token.TypeModifier>()
+        val type = parseType()
+
+        return TypeNode.ModifiedType(
+            type,
+            modifier.value,
+        )
     }
 
     private fun parseSelectorType(): TypeNode {

@@ -3,6 +3,15 @@ package lol.fairplay.ghidraapple.core.objc.encodings
 sealed class TypeNode {
     abstract fun accept(visitor: TypeNodeVisitor)
 
+    data class ModifiedType(
+        val baseType: TypeNode,
+        val modifier: Char,
+    ) : TypeNode() {
+        override fun accept(visitor: TypeNodeVisitor) {
+            visitor.visitModifiedType(this)
+        }
+    }
+
     data class Struct(val name: String?, val fields: List<Pair<String?, TypeNode>>?) : TypeNode() {
         override fun accept(visitor: TypeNodeVisitor) {
             visitor.visitStruct(this)
@@ -71,6 +80,8 @@ sealed class TypeNode {
 }
 
 interface TypeNodeVisitor {
+    fun visitModifiedType(modifiedType: TypeNode.ModifiedType)
+
     fun visitStruct(struct: TypeNode.Struct)
 
     fun visitClassObject(classObject: TypeNode.ClassObject)
