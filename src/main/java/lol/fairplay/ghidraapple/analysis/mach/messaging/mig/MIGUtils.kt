@@ -26,10 +26,10 @@ val migReplyErrorDataType = macOSXDataTypeManager.getDataType("/mig_errors.h/mig
  * [very simple process](https://github.com/apple-oss-distributions/bootstrap_cmds/blob/bootstrap_cmds-136/migcom.tproj/server.c#L612-L634),
  * leading to fairly-consistent PCode across all cases. We can use that to our advantage when detecting such functions.
  */
-fun Function.isMIGServerRoutine(): Boolean {
+fun isFunctionMIGServerRoutine(function: Function): Boolean {
     // If there are more than 20 instructions, this function
     //  is too complex to be a MIG server routine.
-    if (instructions.size > 20) return false
+    if (function.instructions.size > 20) return false
 
     // A MIG server routine will attempt to access the message ID from the first argument. Since this
     //  will be one of the first things to happen in the function, and since the message ID will live
@@ -44,7 +44,7 @@ fun Function.isMIGServerRoutine(): Boolean {
     }
     // For [UndefinedFunctions] the [instructions] might be empty, so to
     //  cover all cases, we manually iterate from the beginning.
-    if (generateSequence(program.listing.getInstructionAt(entryPoint)) { it.next }
+    if (generateSequence(function.program.listing.getInstructionAt(function.entryPoint)) { it.next }
             // The instruction to access the message ID field should be one of the first several.
             .take(7)
             .any { it.isAccessingMessageIDField() } != true
@@ -60,9 +60,9 @@ fun Function.isMIGServerRoutine(): Boolean {
         DecompInterface()
             .let { decompiler ->
                 decompiler.simplificationStyle = "normalize"
-                decompiler.openProgram(this.program)
+                decompiler.openProgram(function.program)
                 decompiler
-                    .decompileFunction(this, 3, TaskMonitor.DUMMY)
+                    .decompileFunction(function, 3, TaskMonitor.DUMMY)
                     .also { decompiler.dispose() }
             }.highFunction.pcodeOps
             .iterator()

@@ -14,7 +14,7 @@ import ghidra.program.model.listing.Program
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.GhidraApplePluginPackage
 import lol.fairplay.ghidraapple.analysis.mach.messaging.mig.MIGSubsystem
-import lol.fairplay.ghidraapple.analysis.mach.messaging.mig.isMIGServerRoutine
+import lol.fairplay.ghidraapple.analysis.mach.messaging.mig.isFunctionMIGServerRoutine
 import lol.fairplay.ghidraapple.analysis.utilities.getAddressOfPointerAtAddress
 import lol.fairplay.ghidraapple.analysis.utilities.getPotentiallyUndefinedFunctionAtAddress
 
@@ -84,7 +84,7 @@ class MarkAsMIGSubsystemAction(
         typedContext.program
             .getAddressOfPointerAtAddress(typedContext.address)
             ?.let { typedContext.program.getPotentiallyUndefinedFunctionAtAddress(it) }
-            ?.takeIf { it.isMIGServerRoutine() }
+            ?.takeIf(::isFunctionMIGServerRoutine)
             ?: return false
 
         return true
