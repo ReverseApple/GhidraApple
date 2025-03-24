@@ -115,6 +115,9 @@ class MarkupMachMsgCall(
 
         highFunction.function.stackFrame.createVariable(
             "mach_msg_$callSiteAddress",
+            // The first argument to the mach_msg call is a pointer to a buffer that contains the
+            //  message to be sent and/or will contain the message to be received. The below will
+            //  extract the stack offset of the buffer so we can type it.
             callPCodeOp.inputs[1]
                 .def.inputs
                 .first { it.isConstant }
