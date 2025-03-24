@@ -34,12 +34,12 @@ fun isFunctionMIGServerRoutine(function: Function): Boolean {
     // A MIG server routine will attempt to access the message ID from the first argument. Since this
     //  will be one of the first things to happen in the function, and since the message ID will live
     //  at 0x14 in the first argument, we can heuristically check for a matching instruction.
-    fun Instruction.isAccessingMessageIDField(): Boolean {
-        if (pcode.size != 3) return false
-        if (pcode[0].opcode != PcodeOp.INT_ADD) return false
-        if (pcode[0].inputs.any { it.isConstant && it.offset == 0x14L } != true) return false
-        if (pcode[1].opcode != PcodeOp.LOAD) return false
-        if (pcode[2].opcode != PcodeOp.INT_ZEXT) return false
+    fun isInstructionAccessingMessageIDField(instruction: Instruction): Boolean {
+        if (instruction.pcode.size != 3) return false
+        if (instruction.pcode[0].opcode != PcodeOp.INT_ADD) return false
+        if (instruction.pcode[0].inputs.any { it.isConstant && it.offset == 0x14L } != true) return false
+        if (instruction.pcode[1].opcode != PcodeOp.LOAD) return false
+        if (instruction.pcode[2].opcode != PcodeOp.INT_ZEXT) return false
         return true
     }
     // For [UndefinedFunctions] the [instructions] might be empty, so to
@@ -47,7 +47,7 @@ fun isFunctionMIGServerRoutine(function: Function): Boolean {
     if (generateSequence(function.program.listing.getInstructionAt(function.entryPoint)) { it.next }
             // The instruction to access the message ID field should be one of the first several.
             .take(7)
-            .any { it.isAccessingMessageIDField() } != true
+            .any(::isInstructionAccessingMessageIDField) != true
     ) {
         return false
     }
