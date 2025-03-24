@@ -52,7 +52,7 @@ class ARCFixupInstallerAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerTy
     ): Boolean {
         val specExtension = SpecExtension(program)
 
-        val retainRegisters = (0..28).map { "objc_retain_x$it" }
+        val retainRegisters = (0..28).map { "_objc_retain_x$it" }
         val retainSpec =
             createCallFixupXML(
                 "_objc_retain",
@@ -70,7 +70,7 @@ class ARCFixupInstallerAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerTy
                 *retainRegisters.toTypedArray(),
             )
 
-        val releaseRegisters = (0..28).map { "objc_release_x$it" }
+        val releaseRegisters = (0..28).map { "_objc_release_x$it" }
         val releaseSpec =
             createCallFixupXML(
                 "objc_release",
@@ -84,6 +84,7 @@ class ARCFixupInstallerAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerTy
                 "_objc_storeStrong",
                 "*x0 = x1;",
                 "_objc_storeStrong",
+                "_objc_storeWeak",
             )
 
         val loadSpec =
@@ -91,6 +92,7 @@ class ARCFixupInstallerAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerTy
                 "_objc_loadWeakRetained",
                 "x0 = *x0;",
                 "_objc_loadWeakRetained",
+                "_objc_loadWeak",
             )
 
         val getPropertySpec =
@@ -106,6 +108,7 @@ class ARCFixupInstallerAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerTy
                 "*(x0 + x3) = x2;",
                 "_objc_setProperty",
                 "_objc_setProperty_atomic",
+                "_objc_setProperty_nonatomic_copy",
             )
 
         val specs =
