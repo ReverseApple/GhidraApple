@@ -283,14 +283,15 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
         typeResolver: TypeResolver,
         property: OCProperty,
         getter: Function,
-        setter: Function?
+        setter: Function?,
     ) {
         Msg.debug(this, "Applying property signatures for: ${property.name}...")
-        val propertyType = runCatching {
-            typeResolver.buildParsed(property.type!!.first)
-        }.onFailure {
-            Msg.error(this, "Could not parse property type for ${property.name}", it)
-        }.getOrNull() ?: return
+        val propertyType =
+            runCatching {
+                typeResolver.buildParsed(property.type!!.first)
+            }.onFailure {
+                Msg.error(this, "Could not parse property type for ${property.name}", it)
+            }.getOrNull() ?: return
 
         getter.setReturnType(propertyType, SourceType.ANALYSIS)
 
