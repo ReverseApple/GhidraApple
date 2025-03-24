@@ -18,6 +18,7 @@ import lol.fairplay.ghidraapple.core.objc.encodings.EncodedSignature
 import lol.fairplay.ghidraapple.core.objc.modelling.OCClass
 import lol.fairplay.ghidraapple.core.objc.modelling.OCField
 import lol.fairplay.ghidraapple.core.objc.modelling.OCMethod
+import lol.fairplay.ghidraapple.core.objc.modelling.OCProperty
 import lol.fairplay.ghidraapple.core.objc.modelling.OCProtocol
 import lol.fairplay.ghidraapple.core.objc.modelling.ResolvedEntity
 import lol.fairplay.ghidraapple.core.objc.modelling.ResolvedMethod
@@ -247,6 +248,8 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
         klass: OCClass,
         taskMonitor: TaskMonitor?,
     ) {
+        val typeResolver = TypeResolver(program)
+
         val fm = program.functionManager
         if (fm.functionTagManager.getFunctionTag(PROPERTY_TAG_GETTER) == null) {
             fm.functionTagManager.createFunctionTag(PROPERTY_TAG_GETTER, "Objective-C Property Getter Implementation")
@@ -271,8 +274,29 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
             val getter = fm.getFunctionAt(program.address(methodGetter.implAddress!!.toLong()))
             val setter = methodSetter?.let { fm.getFunctionAt(program.address(it.implAddress!!.toLong())) }
 
+            applyPropertySignature(typeResolver, property, getter, setter)
             applyPropertyInsights(it, getter, setter)
         }
+    }
+
+    private fun applyPropertySignature(
+        typeResolver: TypeResolver,
+        property: OCProperty,
+        getter: Function,
+        setter: Function?
+    ) {
+        Msg.debug(this, "Applying property signatures for: ${property.name}...")
+        val propertyType = runCatching {
+            typeResolver.buildParsed(property.type!!.first)
+        }.onFailure {
+            Msg.error(this, "Could not parse property type for ${property.name}", it)
+        }.getOrNull() ?: return
+
+        getter.setReturnType(propertyType, SourceType.ANALYSIS)
+
+        val setterParam = setter?.getParameter(2) ?: return
+        setterParam.setDataType(propertyType, SourceType.ANALYSIS)
+        setterParam.setName("value", SourceType.ANALYSIS)
     }
 
     fun splitCamelCase(input: String): List<String> {
