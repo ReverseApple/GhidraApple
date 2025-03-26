@@ -2,13 +2,17 @@ package lol.fairplay.ghidraapple.plugins
 
 import docking.action.MenuData
 import ghidra.app.decompiler.ClangVariableToken
+import ghidra.app.events.ProgramSelectionPluginEvent
 import ghidra.app.plugin.PluginCategoryNames
 import ghidra.app.plugin.ProgramPlugin
 import ghidra.app.plugin.core.decompile.DecompilerActionContext
 import ghidra.app.plugin.core.decompile.actions.AbstractDecompilerAction
+import ghidra.app.services.GoToService
+import ghidra.framework.plugintool.PluginEvent
 import ghidra.framework.plugintool.PluginInfo
 import ghidra.framework.plugintool.PluginTool
 import ghidra.framework.plugintool.util.PluginStatus
+import ghidra.program.util.ProgramSelection
 import lol.fairplay.ghidraapple.GhidraApplePluginPackage
 import lol.fairplay.ghidraapple.analysis.objectivec.GhidraTypeBuilder.Companion.OBJC_CLASS_CATEGORY
 import lol.fairplay.ghidraapple.analysis.passes.objcclasses.ApplyAllocTypeOverrideCommand
@@ -51,5 +55,26 @@ class DeveloperActionsPlugin(tool: PluginTool) : ProgramPlugin(tool) {
                 }
             },
         )
+        tool.addAction(GotoVariableDefinition())
+    }
+}
+
+class GotoVariableDefinition : AbstractDecompilerAction("GoTo Variable Definition") {
+    init {
+        popupMenuData = MenuData(arrayOf("Developer", this.name))
+    }
+
+    override fun isEnabledForDecompilerContext(context: DecompilerActionContext): Boolean {
+        return context.tokenAtCursor?.highVariable?.representative != null
+    }
+
+    override fun decompilerActionPerformed(context: DecompilerActionContext) {
+        val goToService = context.tool.getService(GoToService::class.java)
+        val targetAddress = context.tokenAtCursor.highVariable.representative.def.seqnum.target
+        goToService.goTo(targetAddress)
+
+        val evt: PluginEvent =
+            ProgramSelectionPluginEvent(javaClass.name, ProgramSelection(targetAddress, targetAddress), context.program)
+        context.tool.firePluginEvent(evt)
     }
 }
