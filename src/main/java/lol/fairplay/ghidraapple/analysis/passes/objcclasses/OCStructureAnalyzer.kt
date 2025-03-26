@@ -146,7 +146,8 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
                 )
             }
         }
-
+        // Set the `__objc_ivar` section back to read-only, so that the offsets there are used by the decompiler
+        program.memory.getBlock("__objc_ivar")?.isWrite = false
         return true
     }
 }
