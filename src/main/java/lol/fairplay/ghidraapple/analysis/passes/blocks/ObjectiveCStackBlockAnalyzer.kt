@@ -42,13 +42,16 @@ class ObjectiveCStackBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, Analyze
                 it.getReferencesToSymbol("__NSConcreteStackBlock") + it.getReferencesToSymbol("__NSStackBlock__")
             }.filter { set.contains(it.fromAddress) }
             .filter { reference -> reference.referenceType == RefType.DATA && reference.source == SourceType.ANALYSIS }
+            .also { monitor.maximum = it.size.toLong() }
             .stream()
             .parallel()
             .forEach { reference ->
+                monitor.checkCancelled()
                 MarkNSConcreteStackBlock(
                     program.listing.getFunctionContaining(reference.fromAddress),
                     program.listing.getInstructionAt(reference.fromAddress),
                 ).applyTo(program)
+                monitor.incrementProgress()
             }
         return true
     }
