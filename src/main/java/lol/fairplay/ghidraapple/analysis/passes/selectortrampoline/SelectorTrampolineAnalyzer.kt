@@ -24,6 +24,7 @@ import ghidra.program.model.util.StringPropertyMap
 import ghidra.util.Msg
 import ghidra.util.exception.CancelledException
 import ghidra.util.task.TaskMonitor
+import lol.fairplay.ghidraapple.analysis.passes.ObjectiveCDispatchTagAnalyzer
 import lol.fairplay.ghidraapple.analysis.passes.ObjectiveCDispatchTagAnalyzer.Companion.OBJC_TRAMPOLINE
 import lol.fairplay.ghidraapple.analysis.utilities.getConstantFromVarNode
 import lol.fairplay.ghidraapple.analysis.utilities.getFunctionsWithTag
@@ -64,6 +65,10 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
     ): Boolean {
         val trampolineFunctions = program.functionManager.getFunctionsWithTag(OBJC_TRAMPOLINE)
 
+        if (trampolineFunctions.isEmpty()) {
+            Msg.showError(this, null, "No trampoline functions found", "No trampoline functions found. " +
+                    "Did you run the ${ObjectiveCDispatchTagAnalyzer.NAME} first?")
+        }
         monitor.maximum = trampolineFunctions.size.toLong()
 
         val stubNamespace =
