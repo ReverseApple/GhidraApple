@@ -6,6 +6,7 @@ import ghidra.docking.settings.Settings
 import ghidra.framework.plugintool.ServiceProvider
 import ghidra.program.model.address.Address
 import ghidra.program.model.address.AddressSetView
+import ghidra.program.model.data.Pointer
 import ghidra.program.model.data.PointerDataType
 import ghidra.program.model.listing.Data
 import ghidra.program.model.listing.Function
@@ -23,6 +24,8 @@ import ghidra.program.model.symbol.ReferenceManager
 import ghidra.program.model.symbol.SourceType
 import ghidra.program.model.symbol.Symbol
 import ghidra.program.model.symbol.SymbolType
+import ghidra.util.UndefinedFunction
+import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.derefUntyped
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.get
 import java.nio.ByteBuffer
@@ -297,7 +300,50 @@ fun Program.getPointersToSymbol(
         }
 
 /**
- * Gets the label at the given address in the program, if one exists.
+ * Gets the label at the given [address] in the program, if one exists.
  */
 fun Program.getLabelAtAddress(address: Address): String? =
     symbolTable.getPrimarySymbol(address).takeIf { it?.symbolType == SymbolType.LABEL }?.name
+
+/**
+ * Finds a (potentially undefined) function at the given [address] within the program. Note that
+ *  the [monitor] is only used when the function at the address is undefined.
+ */
+fun Program.getPotentiallyUndefinedFunctionAtAddress(
+    address: Address,
+    monitor: TaskMonitor = TaskMonitor.DUMMY,
+): Function? =
+    functionManager.getFunctionAt(address)
+        ?: UndefinedFunction.findFunction(this, address, monitor)
+
+/**
+ * Gets the address that the pointer at the given [address] in the program is pointing to.
+ */
+fun Program.getAddressOfPointerAtAddress(address: Address): Address? =
+    listing.getDataAt(address).let {
+        if (it is Pointer) return it.address
+        val bytes = ByteArray(address.addressSpace.pointerSize)
+        if (memory.getBytes(address, bytes) != bytes.size) return null
+        return ByteBuffer
+            .allocate(bytes.size)
+            .order(if (memory.isBigEndian) ByteOrder.BIG_ENDIAN else ByteOrder.LITTLE_ENDIAN)
+            .put(bytes)
+            .flip()
+            .let { buffer ->
+                when (bytes.size) {
+                    4 -> address(buffer.int.toLong())
+                    8 -> address(buffer.long)
+                    else -> throw IllegalStateException("Unsupported pointer size ${bytes.size}!")
+                }
+            }
+    }
+
+/**
+ * Gets the instructions in a function.
+ */
+val Function.instructions get() =
+    body
+        .flatMap { range ->
+            generateSequence(program.listing.getInstructionAt(range.minAddress)) { it.next }
+                .takeWhile { it <= range.maxAddress }
+        }
