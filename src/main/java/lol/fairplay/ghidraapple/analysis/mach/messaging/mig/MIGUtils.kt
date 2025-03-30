@@ -27,9 +27,9 @@ val migReplyErrorDataType = macOSXDataTypeManager.getDataType("/mig_errors.h/mig
  * leading to fairly-consistent PCode across all cases. We can use that to our advantage when detecting such functions.
  */
 fun isFunctionMIGServerRoutine(function: Function): Boolean {
-    // If there are more than 20 instructions, this function
-    //  is too complex to be a MIG server routine.
-    if (function.instructions.size > 20) return false
+    // If there are a good number of instructions, this function
+    //  is likely too complex to be a MIG server routine.
+    if (function.instructions.size > 40) return false
 
     // A MIG server routine will attempt to access the message ID from the first argument. Since this
     //  will be one of the first things to happen in the function, and since the message ID will live
@@ -46,7 +46,7 @@ fun isFunctionMIGServerRoutine(function: Function): Boolean {
     //  cover all cases, we manually iterate from the beginning.
     if (generateSequence(function.program.listing.getInstructionAt(function.entryPoint)) { it.next }
             // The instruction to access the message ID field should be one of the first several.
-            .take(7)
+            .take(15)
             .any(::isInstructionAccessingMessageIDField) != true
     ) {
         return false
@@ -68,8 +68,8 @@ fun isFunctionMIGServerRoutine(function: Function): Boolean {
             .iterator()
             .asSequence()
             .toList()
-    if (pcodeOps.size != 13) return false
-    val expectedPCodeOpCodes =
+
+    val rangeCheckPCodeOps =
         arrayOf(
             PcodeOp.INT_ADD,
             PcodeOp.LOAD,
@@ -77,22 +77,47 @@ fun isFunctionMIGServerRoutine(function: Function): Boolean {
             PcodeOp.INT_LESS,
             PcodeOp.CBRANCH,
             PcodeOp.COPY,
-            PcodeOp.RETURN,
+        )
+
+    val routineDemuxPCodeOps =
+        arrayOf(
             PcodeOp.INT_ADD,
             PcodeOp.INT_ZEXT,
             PcodeOp.INT_MULT,
             PcodeOp.INT_ADD,
             PcodeOp.LOAD,
-            PcodeOp.RETURN,
         )
-    assert(expectedPCodeOpCodes.size == pcodeOps.size)
-    // TODO: Is this enough of a heuristic, or do we need to do more? What are the chances that a
-    //  non-MIG-server-routine function would have the same thirteen PCode operations, all in the
-    //  same exact order as an actual MIG server routine (and pass all previous checks)?
-    for ((index, op) in pcodeOps.withIndex()) {
-        if (op.opcode != expectedPCodeOpCodes[index]) return false
+
+    fun doesPCodeOpsContainServerRoutineLogicAtIndex(index: Int): Boolean {
+        // We need to set aside the index in a variable so we can mutate it.
+        var searchIndex = index
+        // A server routine will first check of the incoming ID is in the expected range, and
+        //  returns early if it is not. We'll check for that logic here.
+        rangeCheckPCodeOps.forEach { rangeCheckOpCode ->
+            if (searchIndex > pcodeOps.lastIndex) return false
+            if (pcodeOps[searchIndex].opcode != rangeCheckOpCode) return false
+            searchIndex++
+        }
+        // If the server routine function was compiled with stack-checking, there will likely be
+        //  a branch here to the stack-checking instructions at the end of the function, instead
+        //  of a simple return instruction. We need to account for both cases.
+        if (!arrayOf(PcodeOp.RETURN, PcodeOp.BRANCH).contains(pcodeOps[searchIndex].opcode)) {
+            return false
+        }
+        searchIndex++
+        // Once the incoming ID has been range-checked, a server routine will use the ID to index
+        //  into the routine array and load a pointer to it. We'll check that logic here.
+        routineDemuxPCodeOps.forEach { rangeCheckOpCode ->
+            if (searchIndex > pcodeOps.lastIndex) return false
+            if (pcodeOps[searchIndex].opcode != rangeCheckOpCode) return false
+            searchIndex++
+        }
+        return true
     }
-    return true
+
+    // We check if the server routine logic exists at any PCode index, because the function may be
+    //  prefixed with instructions related to stack-checking. We want to ignore those operations.
+    return pcodeOps.indices.any(::doesPCodeOpsContainServerRoutineLogicAtIndex)
 }
 
 fun makeMIGSubsystemDataType(
