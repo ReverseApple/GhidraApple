@@ -136,7 +136,7 @@ class EncodingLexer(private val input: String) {
 
     private fun collectIdentifierToken(): Token.Identifier {
         val start = pos
-        while (currentChar != '=' && currentChar != '}') {
+        while (currentChar !in setOf('=', '}', ')')) {
             advance()
         }
         return Token.Identifier(input.substring(start, pos))
