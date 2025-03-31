@@ -76,9 +76,7 @@ class EncodingLexer(private val input: String) {
             }
             '?' -> {
                 advance()
-                if (structOrUnionBegin) {
-                    structOrUnionBegin = false
-                }
+                structOrUnionBegin = false
 
                 return Token.Anonymous()
             }
@@ -138,7 +136,7 @@ class EncodingLexer(private val input: String) {
 
     private fun collectIdentifierToken(): Token.Identifier {
         val start = pos
-        while (currentChar.isLetterOrDigit() || currentChar == '_') {
+        while (currentChar !in setOf('=', '}', ')')) {
             advance()
         }
         return Token.Identifier(input.substring(start, pos))
