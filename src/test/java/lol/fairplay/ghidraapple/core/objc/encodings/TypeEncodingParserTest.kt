@@ -28,6 +28,11 @@ class TypeEncodingParserTest {
                 "{Person=[50c]b7b1df{Address=[50c][50c][20c]i}{Employment=[50c][50c]d}[5{Skill=[50c]i}](?=[50c][15c][30c])i}",
                 "{?=A*}",
                 "{?=AjdAjf^Ac}",
+                "^{IndexedTriangleList2D={vector<gmscore::model::Point2D, " +
+                    "std::__1::allocator<gmscore::model::Point2D> >=^{Point2D}^{Point2D}" +
+                    "{__compressed_pair<gmscore::model::Point2D *, std::__1::allocator<gmscore::model::Point2D> >=" +
+                    "^{Point2D}}}{vector<int, std::__1::allocator<int> >=^i^i{__compressed_pair<int *, " +
+                    "std::__1::allocator<int> >=^i}}}",
             )
 
         for (ex in examples) {
