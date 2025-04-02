@@ -56,7 +56,7 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
 
         monitor.message = "Reading classes..."
 
-        val klasses = parseObjCListSection(program, "__objc_classlist") ?: return false
+        val klasses = parseObjCListSection(program, "__objc_classlist")?.filterNotNull() ?: return false
 
         monitor.maximum = klasses.size.toLong()
         monitor.message = "Parsing class structures..."
@@ -124,7 +124,9 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
     ): String {
         // fixme: this is kind of sloppy
         val chain =
-            resolution.chain().reversed()
+            resolution
+                .chain()
+                .reversed()
                 .joinToString(" -> ") {
                     val type =
                         when (it.first) {
@@ -300,9 +302,7 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
         setterParam.setName("value", SourceType.ANALYSIS)
     }
 
-    fun splitCamelCase(input: String): List<String> {
-        return input.split(Regex("(?<=[a-zA-Z])(?=[A-Z])"))
-    }
+    fun splitCamelCase(input: String): List<String> = input.split(Regex("(?<=[a-zA-Z])(?=[A-Z])"))
 
     private fun parameterNamesForMethod(methodName: String): List<String> {
         // todo: make this optional.
@@ -311,7 +311,8 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
         val keywords = listOf("with", "for", "from", "to", "in", "at")
 
         val baseNames =
-            methodName.split(":")
+            methodName
+                .split(":")
                 .filter { !it.isEmpty() }
                 .map { part ->
                     val ccSplit = splitCamelCase(part)

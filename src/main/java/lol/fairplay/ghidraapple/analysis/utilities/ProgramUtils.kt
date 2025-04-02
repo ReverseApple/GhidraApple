@@ -96,7 +96,7 @@ fun idealClassStructures(program: Program): Map<String, Data>? {
 fun parseObjCListSection(
     program: Program,
     sectionName: String,
-): List<Data>? {
+): List<Data?>? {
     val sectionBlock = program.memory.getBlock(sectionName) ?: return null
     val entries = sectionBlock.size / 8
     val start = sectionBlock.start

@@ -50,39 +50,44 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
 
         val classStructures =
             (
-                parseObjCListSection(program, "__objc_classlist")?.mapNotNull { klassT ->
-                    // class_t[4]->class_rw[3]->name
-                    runCatching {
-                        klassT[4].derefUntyped()[3].deref<String>() to klassT
-                    }.onFailure {
-                        Msg.error(this, "Failed to parse class data at ${klassT.address}")
-                    }.getOrNull()
-                }?.toMap() ?: emptyMap()
+                parseObjCListSection(program, "__objc_classlist")
+                    ?.filterNotNull()
+                    ?.mapNotNull { klassT ->
+                        // class_t[4]->class_rw[3]->name
+                        runCatching {
+                            klassT[4].derefUntyped()[3].deref<String>() to klassT
+                        }.onFailure {
+                            Msg.error(this, "Failed to parse class data at ${klassT.address}")
+                        }.getOrNull()
+                    }?.toMap() ?: emptyMap()
             ).toMutableMap()
 
         val protocolStructures =
             (
-                parseObjCListSection(program, "__objc_protolist")?.associate { protoT ->
-                    // protocol_t[1]->name
-                    protoT[1].deref<String>() to protoT
-                } ?: emptyMap()
+                parseObjCListSection(program, "__objc_protolist")
+                    ?.filterNotNull()
+                    ?.associate { protoT ->
+                        // protocol_t[1]->name
+                        protoT[1].deref<String>() to protoT
+                    } ?: emptyMap()
             ).toMutableMap()
 
         // Some class symbols that are not inside the objc::class_t namespace are prefixed with `_OBJC_CLASS_$_`
         // These are not parsable, but are still useful for analysis purposes.
         val externalClasses =
-            program.symbolTable.symbolIterator.filter {
-                it.name.startsWith("_OBJC_CLASS_\$_")
-            }.mapNotNull {
-                val className = it.name.removePrefix("_OBJC_CLASS_\$_")
+            program.symbolTable.symbolIterator
+                .filter {
+                    it.name.startsWith("_OBJC_CLASS_\$_")
+                }.mapNotNull {
+                    val className = it.name.removePrefix("_OBJC_CLASS_\$_")
 
-                // just for sanity, ensure it's not already in either of the structure mappings.
-                if (className !in classStructures && className !in protocolStructures) {
-                    className
-                } else {
-                    null
+                    // just for sanity, ensure it's not already in either of the structure mappings.
+                    if (className !in classStructures && className !in protocolStructures) {
+                        className
+                    } else {
+                        null
+                    }
                 }
-            }
 
         buildStructureTypes(classStructures, protocolStructures, externalClasses, monitor)
 
