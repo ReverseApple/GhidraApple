@@ -1,77 +1,60 @@
 import ghidra.app.plugin.core.analysis.AnalysisBackgroundCommand
 import ghidra.app.plugin.core.analysis.AutoAnalysisManager
-import ghidra.base.project.GhidraProject
 import ghidra.framework.cmd.Command
 import ghidra.program.database.ProgramBuilder
 import ghidra.program.model.address.Address
 import ghidra.program.model.data.DataType
 import ghidra.program.model.data.FunctionDefinition
 import ghidra.program.model.data.Pointer
+import ghidra.program.model.data.PointerDataType
 import ghidra.program.model.data.StructureDataType
 import ghidra.program.model.listing.Function
+import ghidra.program.model.listing.ParameterImpl
 import ghidra.program.model.listing.Program
+import ghidra.program.model.mem.MemoryBlock.EXTERNAL_BLOCK_NAME
 import ghidra.program.model.pcode.DataTypeSymbol
 import ghidra.program.model.pcode.HighFunctionDBUtil
+import ghidra.program.model.symbol.SourceType
 import ghidra.program.model.symbol.Symbol
-import ghidra.test.AbstractGhidraHeadedIntegrationTest
 import lol.fairplay.ghidraapple.analysis.objectivec.GhidraTypeBuilder.Companion.OBJC_CLASS_CATEGORY
+import lol.fairplay.ghidraapple.analysis.passes.ObjectiveCDispatchTagAnalyzer.Companion.OBJC_ALLOC
 import lol.fairplay.ghidraapple.analysis.passes.objcclasses.ApplyAllocTypeOverrideCommand
-import lol.fairplay.ghidraapple.analysis.passes.objcclasses.OCMethodAnalyzer
-import lol.fairplay.ghidraapple.analysis.passes.objcclasses.OCStructureAnalyzer
 import lol.fairplay.ghidraapple.analysis.passes.objcclasses.OCTypeInjectorAnalyzer
 import lol.fairplay.ghidraapple.analysis.passes.selectortrampoline.SelectorTrampolineAnalyzer
+import lol.fairplay.ghidraapple.core.createFunction
+import lol.fairplay.ghidraapple.core.integrationtests.AbstractiOSAnalysisIntegrationTest
 import org.junit.jupiter.api.Test
 import resources.ResourceManager
-import java.io.File
 import kotlin.test.Ignore
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
-/*
-Type lattice of Mach-O binary "TestApplicationTypeInference":
-
-        ID
-        |
-     ___|______________________
-    |             |            |
-Accommodation    Human       Animal
-    |             |            |
-    |             |       _____|________________
-    |             |      |           |         |
-    |             |     Cat         Dog       Horse
-    |             |      |           |         |
-    |_____________|______|___________|_________|
-                      |
-                      |
-                    Bottom
-
-The binary is an objc release build with Xcode (Clang) for iOS (arm64) without optimization.
+/**
+ * Type lattice of Mach-O binary "TestApplicationTypeInference":
+ * ```
+ *     ID
+ *     |
+ *  ___|______________________
+ *|             |            |
+ *Accommodation Human       Animal
+ *|             |            |
+ *|             |       _____|________________
+ *|             |      |           |         |
+ *|             |     Cat         Dog       Horse
+ *|             |      |           |         |
+ *|_____________|______|___________|_________|
+ *|
+ *|
+ *Bottom
+ * ```
+ * The binary is an objc release build with Xcode (Clang) for iOS (arm64) without optimization.
+ *
+ * TODO: The test is currently more of a unit test, and expensive because it re-runs the auto analyses for each test
+ * It seems like a good canditate to try out the [ProgramBuilder] to only build up the relevant parts of the code
+ * as discussed [here](https://github.com/NationalSecurityAgency/ghidra/discussions/7441#discussioncomment-12045248)
+ *
  */
-
-class ObjcAllocationInitializationTest : AbstractGhidraHeadedIntegrationTest() {
-    /**
-     * Sets up the program for testing function overrides at allocation and initialization sites.
-     *
-     * @param file the binary file
-     * @return the Ghidra program
-     */
-    private fun setupProgramForBinary(file: File): Program {
-        val ghidraProject = GhidraProject.createProject("/tmp", "${this::class.simpleName}_${file.name}", true)
-        val program = ghidraProject.importProgram(file)
-        val autoAnalyzer = AutoAnalysisManager.getAnalysisManager(program)
-        val options = program.getOptions(Program.ANALYSIS_PROPERTIES)
-
-        options.setBoolean(OCMethodAnalyzer.NAME, true)
-        options.setBoolean(OCStructureAnalyzer.NAME, true)
-        options.setBoolean(OCTypeInjectorAnalyzer.NAME, true)
-
-        autoAnalyzer.reAnalyzeAll(null)
-        val cmd: Command<Program> = AnalysisBackgroundCommand(autoAnalyzer, false)
-        cmd.applyTo(program)
-
-        return program
-    }
-
+class ObjcAllocationInitializationTest : AbstractiOSAnalysisIntegrationTest() {
     /**
      * Returns the function by its name from the symbol table. Asserts that the function name is unique.
      *
@@ -264,16 +247,15 @@ class ObjcAllocationInitializationTest : AbstractGhidraHeadedIntegrationTest() {
             // Don't disassemble because this would trigger instruction analyzers already
             false,
         )
-        builder.createEmptyFunction(
-            "_objc_alloc",
-            "0x1000094f4",
-            1,
-            DataType.DEFAULT,
-            // This is intentionally created without a parameter, because the analyzer should handle
-            // cases where the alloc function is not properly typed yet
-        )
+        builder.createMemory(EXTERNAL_BLOCK_NAME, "0x100100000", 0x1000)
+//        val externalAlloc: Function = builder.createEmptyFunction("_objc_alloc", "0x100100000", 1, DataType.DEFAULT)
+//        // TODO: need to create function symbol
+//        builder.createThunk("0x1000094f4", externalAlloc)
+
+        builder.createFunction("0x1000094f4", bytes(0x00), "_objc_alloc")
         builder.createEmptyFunction("_testAllocationSiteHuman", "0x100008c34", 0x100008c6c - 0x100008c34, DataType.DEFAULT)
         builder.createEmptyFunction("_objc_storeStrong", "0x100009518", 1, DataType.DEFAULT)
+
         builder.createLabel("0x100011778", "_OBJC_CLASS_\$_Human")
         builder.setBytes("0x100011578", "78 17 01 00 01 00 00 00")
 
@@ -296,6 +278,15 @@ class ObjcAllocationInitializationTest : AbstractGhidraHeadedIntegrationTest() {
     fun testTypeInjectionAnalyzer() {
         val builder = buildAllocHumanProgram()
         val program = builder.program
+        val allocFunc = program.functionManager.getFunctionAt(builder.addr("0x1000094f4"))
+
+        program.withTransaction<Exception>("Setup alloc signature") {
+            val id = PointerDataType.dataType
+            allocFunc.addParameter(ParameterImpl("cls", id, program), SourceType.IMPORTED)
+            allocFunc.setReturnType(id, SourceType.IMPORTED)
+            allocFunc.addTag(OBJC_ALLOC)
+        }
+
         program.withTransaction<Exception>("first analysis") {
             val autoAnalyzer = AutoAnalysisManager.getAnalysisManager(program)
             val options = program.getOptions(Program.ANALYSIS_PROPERTIES)
@@ -305,6 +296,7 @@ class ObjcAllocationInitializationTest : AbstractGhidraHeadedIntegrationTest() {
             cmd.applyTo(program)
         }
 
+//        val env = TestEnv()
 //        env.launchDefaultTool(program)
         val signature: FunctionDefinition = getSignatureOverrideAtCallSite(program, builder.addr(0x100008c48))
         val returnType = signature.returnType as Pointer

@@ -147,6 +147,10 @@ data class OCClass(
     fun getImplementationForSelector(selector: String): OCMethod? {
         return resolvedMethods().find { it.name == selector }?.concrete()
     }
+
+    fun getStaticMethodForSelector(selector: String): OCMethod? {
+        return baseClassMethods?.find { it.name == selector }
+    }
 }
 
 data class OCProtocol(
@@ -205,6 +209,10 @@ data class OCProtocol(
             (classMethods ?: listOf()) +
             (optionalInstanceMethods ?: listOf()) +
             (optionalClassMethods ?: listOf())
+    }
+
+    override fun hashCode(): Int {
+        return super.hashCode()
     }
 }
 

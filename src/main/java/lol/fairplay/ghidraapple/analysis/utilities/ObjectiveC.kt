@@ -88,3 +88,12 @@ fun parameterNamesForMethod(methodName: String): List<String> {
 
     return result
 }
+
+
+
+fun getSuggestedVariableNameForSelectorResult(sel: Selector,
+                                              recvVariableName: String? = null,
+                                              recvTypeName: String? = null,
+): String {
+    TODO()
+}

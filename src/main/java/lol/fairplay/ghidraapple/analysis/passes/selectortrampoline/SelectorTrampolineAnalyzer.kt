@@ -11,21 +11,21 @@ import ghidra.app.services.AnalysisPriority
 import ghidra.app.services.AnalyzerType
 import ghidra.app.util.importer.MessageLog
 import ghidra.program.model.address.AddressSetView
-import ghidra.program.model.lang.CompilerSpec
 import ghidra.program.model.listing.Function
-import ghidra.program.model.listing.ParameterImpl
 import ghidra.program.model.listing.Program
-import ghidra.program.model.listing.ReturnParameterImpl
-import ghidra.program.model.listing.Variable
 import ghidra.program.model.mem.MemoryBlock
 import ghidra.program.model.pcode.PcodeOp
 import ghidra.program.model.symbol.SourceType
+import ghidra.program.model.util.StringPropertyMap
 import ghidra.util.Msg
 import ghidra.util.exception.CancelledException
 import ghidra.util.task.TaskMonitor
-import lol.fairplay.ghidraapple.analysis.passes.selectortrampoline.ARCFixupInstallerAnalyzer.Companion.OBJC_WO_SEL_CC
+import lol.fairplay.ghidraapple.analysis.passes.ObjectiveCDispatchTagAnalyzer
+import lol.fairplay.ghidraapple.analysis.passes.ObjectiveCDispatchTagAnalyzer.Companion.OBJC_TRAMPOLINE
 import lol.fairplay.ghidraapple.analysis.utilities.getConstantFromVarNode
+import lol.fairplay.ghidraapple.analysis.utilities.getFunctionsWithTag
 import lol.fairplay.ghidraapple.analysis.utilities.toDefaultAddressSpace
+import lol.fairplay.ghidraapple.analysis.utilities.updateFunctionSignatureFromSelector
 import kotlin.Boolean
 import kotlin.Exception
 import kotlin.Pair
@@ -40,10 +40,9 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
         const val NAME = "Objective-C Selector Trampoline Analysis"
         const val DESCRIPTION = "Identify and rename Objective-C trampoline procedures."
         const val OPT_SHOULD_COPY_REFS = "Copy Trampoline References to Actual Implementations"
-        val PRIORITY = AnalysisPriority.DATA_ANALYSIS.before().before()
+        const val TRAMPOLINE_SELECTOR_DATA = "TrampolineSelectorData"
 
-        const val TRAMPOLINE_TAG = "OBJC_TRAMPOLINE"
-        const val TRAMPOLINE_TAG_DESC = "Objective-C Selector Trampoline Function"
+        val PRIORITY: AnalysisPriority = AnalysisPriority.DATA_ANALYSIS.before().before()
 
         const val STUB_NAMESPACE_NAME = "stub"
     }
@@ -61,17 +60,19 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
         monitor: TaskMonitor,
         log: MessageLog,
     ): Boolean {
-        // Get all trampoline functions in the addressSet
-        program.functionManager.functionTagManager.createFunctionTag(
-            TRAMPOLINE_TAG,
-            TRAMPOLINE_TAG_DESC,
-        )
+        val taggedTrampolineFunctions = program.functionManager.getFunctionsWithTag(OBJC_TRAMPOLINE)
 
-        val trampolineFunctions =
-            program.functionManager
-                .getFunctions(set, true)
-                .filter { isPlausibleTrampoline(it) }.toList()
+        if (taggedTrampolineFunctions.isEmpty()) {
+            Msg.showError(
+                this,
+                null,
+                "No trampoline functions found",
+                "No trampoline functions found. " +
+                    "Did you run the ${ObjectiveCDispatchTagAnalyzer.NAME} first?",
+            )
+        }
 
+        val trampolineFunctions = taggedTrampolineFunctions.filter { it.entryPoint in set }
         monitor.maximum = trampolineFunctions.size.toLong()
 
         val stubNamespace =
@@ -80,14 +81,13 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
                 STUB_NAMESPACE_NAME,
                 SourceType.ANALYSIS,
             )
-
-        trampolineFunctions.forEach {
-            it.addTag(TRAMPOLINE_TAG)
-            it.symbol.setNamespace(stubNamespace)
-        }
-        findAllSelectors(program, trampolineFunctions, monitor, log).forEach {
-                (func, selector) ->
-            applySelectorToFunction(func, selector)
+        trampolineFunctions.forEach { it.symbol.setNamespace(stubNamespace) }
+        findAllSelectors(program, trampolineFunctions, monitor, log).forEach { (func, selector) ->
+            if (selector != null) {
+                applySelectorToFunction(func, selector)
+            } else {
+                log.appendMsg(this.name, "Could not determine selector for function at ${func.entryPoint}")
+            }
         }
         return true
     }
@@ -101,8 +101,7 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
         monitor: TaskMonitor,
         log: MessageLog,
     ): List<Pair<Function, String?>> {
-//        trampolineFunctions.filter { it.symbol.source  }
-
+        // Decompiler Factory (for each process we need a new instance)
         val configurer =
             DecompileConfigurer { decompiler: DecompInterface ->
                 decompiler.simplificationStyle = "normalize"
@@ -131,7 +130,9 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
                     }
 
                     val callOp =
-                        results.highFunction.pcodeOps.iterator().asSequence()
+                        results.highFunction.pcodeOps
+                            .iterator()
+                            .asSequence()
                             .singleOrNull { it.opcode == PcodeOp.CALLIND || it.opcode == PcodeOp.CALL }
                     if (callOp != null) {
                         val selAddress = getConstantFromVarNode(callOp.inputs[2]).getOrNull()?.toDefaultAddressSpace(program)
@@ -158,52 +159,20 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
 
     private fun applySelectorToFunction(
         func: Function,
-        selector: String?,
+        selector: String,
     ) {
-        if (selector != null) {
-            if (func.name != selector) {
-                // Change the function name based on the selector
-                // If it already had a name because symbol information was available, we don't want to overwrite it
-                // The name would be the same, but this way the SourceType.IMPORTED is preserved
-                func.setName(selector, SourceType.ANALYSIS)
-            }
+        // Add the selector to a special table for easier lookup later
+        getTrampolineSelectorUserData(func.program).add(func.entryPoint, selector)
+
+        if (func.name != selector) {
+            // Change the function name based on the selector
+            // If it already had a name because symbol information was available, we don't want to overwrite it
+            // The name would be the same, but this way the SourceType.IMPORTED is preserved
+            func.setName(selector, SourceType.ANALYSIS)
         }
 
         // Fixup signature of the function
-        fixTrampolineSignature(func, selector)
-    }
-
-    private fun fixTrampolineSignature(
-        func: Function,
-        selector: String?,
-    ) {
-        // Get ID datatype
-        val program = func.program
-        val idDataType = program.dataTypeManager.getDataType("/_objc2_/ID")
-        val returnVariable = ReturnParameterImpl(idDataType, program)
-
-        val arguments = mutableListOf<Variable>(ParameterImpl("recv", idDataType, program))
-
-//        if (selector?.contains(':') == true) {
-//            // We need to add a parameter for the selector otherwise Ghidra doesn't find the varargs in x2 and later
-//            // But we don't want the add clutter with a useless selector argument for selectors without arguments
-//            arguments.add(
-//                ParameterImpl("sel", program.dataTypeManager.getDataType("/_objc2_/SEL"), program),
-//            )
-//        }
-
-        func.updateFunction(
-            OBJC_WO_SEL_CC,
-            returnVariable,
-            arguments,
-            Function.FunctionUpdateType.DYNAMIC_STORAGE_FORMAL_PARAMS,
-            false,
-            SourceType.ANALYSIS,
-        )
-        // It's technically not varArgs, because that trampoline will always take the same number of arguments
-        // The correct way would be to tell Ghidra to not assume that this is the full signature, and then do
-        // regular parameter ID on the function
-        func.setVarArgs(true)
+        updateFunctionSignatureFromSelector(func, selector)
     }
 
     /**
@@ -224,7 +193,10 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
         return getStubsSegment(program) != null
     }
 
-    private fun getStubsSegment(program: Program): MemoryBlock? {
-        return program.memory.getBlock("__objc_stubs")
+    private fun getTrampolineSelectorUserData(program: Program): StringPropertyMap {
+        val propMap = program.usrPropertyManager.getStringPropertyMap(TRAMPOLINE_SELECTOR_DATA)
+        return propMap ?: program.usrPropertyManager.createStringPropertyMap(TRAMPOLINE_SELECTOR_DATA)
     }
+
+    private fun getStubsSegment(program: Program): MemoryBlock? = program.memory.getBlock("__objc_stubs")
 }
