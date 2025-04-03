@@ -1,5 +1,6 @@
 package lol.fairplay.ghidraapple.analysis.objectivec.modelling
 
+import ghidra.program.model.address.Address
 import ghidra.program.model.listing.Data
 import ghidra.program.model.listing.Program
 import ghidra.program.model.symbol.Namespace
@@ -149,6 +150,10 @@ class StructureParsing(
             alignment = dat[3].longValue().toInt(),
             size = dat[4].longValue().toInt(),
         )
+    }
+
+    fun parseClass(address: Address, isMetaclass: Boolean = false): OCClass? {
+        return parseClass(address.offset, isMetaclass)
     }
 
     fun parseClass(
