@@ -29,6 +29,9 @@ class MarkAsGlobalBlockAction(
         if (dataAtLocation.dataType.isBlockLayoutType) return false
 
         val pointerBytes = ByteArray(typedContext.program.defaultPointerSize)
+        // Check if address is external, if so, return false because we can't read it.
+        if (context.program.memory.isExternalBlockAddress(context.address)) return false
+
         try {
             val bytesRead =
                 typedContext.program.memory.getBytes(typedContext.address, pointerBytes)
