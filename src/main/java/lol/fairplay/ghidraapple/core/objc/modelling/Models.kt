@@ -143,6 +143,10 @@ data class OCClass(
     fun baseProperties(): List<OCProperty> {
         return (baseInstanceProperties ?: listOf()) + (baseClassProperties ?: listOf())
     }
+
+    fun getImplementationForSelector(selector: String): OCMethod? {
+        return resolvedMethods().find { it.name == selector }?.concrete()
+    }
 }
 
 data class OCProtocol(
