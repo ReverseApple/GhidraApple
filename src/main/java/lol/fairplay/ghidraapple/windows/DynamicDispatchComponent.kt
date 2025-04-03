@@ -2,6 +2,7 @@ package lol.fairplay.ghidraapple.windows
 
 import docking.ActionContext
 import docking.action.DockingAction
+import docking.action.MenuData
 import docking.action.ToolBarData
 import docking.widgets.table.TableColumnDescriptor
 import ghidra.framework.plugintool.ComponentProviderAdapter
@@ -20,14 +21,13 @@ import ghidra.util.table.GhidraFilterTable
 import ghidra.util.table.GhidraProgramTableModel
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.GhidraApplePluginPackage
+import lol.fairplay.ghidraapple.actions.CreateObjCMethodThunkCmd
 import lol.fairplay.ghidraapple.analysis.passes.ObjectiveCDispatchTagAnalyzer.Companion.OBJC_DISPATCH_CLASS
 import lol.fairplay.ghidraapple.analysis.passes.ObjectiveCDispatchTagAnalyzer.Companion.OBJC_DISPATCH_SELECTOR
 import lol.fairplay.ghidraapple.analysis.passes.ObjectiveCDispatchTagAnalyzer.Companion.OBJC_TRAMPOLINE
 import lol.fairplay.ghidraapple.analysis.utilities.addColumn
 import lol.fairplay.ghidraapple.analysis.utilities.getFunctionsWithAnyTag
 import lol.fairplay.ghidraapple.analysis.utilities.hasTag
-import lol.fairplay.ghidraapple.analysis.utilities.toDefaultAddressSpace
-import lol.fairplay.ghidraapple.core.objc.modelling.OCClass
 import lol.fairplay.ghidraapple.db.DataBaseLayer
 import lol.fairplay.ghidraapple.db.ObjectiveCClass
 import lol.fairplay.ghidraapple.plugins.ObjectiveCDynamicDispatchPlugin
@@ -117,6 +117,36 @@ class DynamicDispatchComponent(
             "<html>Push at any time to refresh the current table of references.<br>",
         )
         tool.addLocalAction(this, refreshAction)
+
+
+        val createThunkAction =
+            object : DockingAction("Create Thunk", ObjectiveCDynamicDispatchPlugin::class.simpleName) {
+                init {
+                    popupMenuData = MenuData(arrayOf("Create Thunk"), GhidraApplePluginPackage.PKG_NAME)
+                }
+
+                override fun isEnabledForContext(context: ActionContext?): Boolean {
+                    return tablePanel.selectedRowObject.let {
+                        val cls = it.staticOCClass ?: it.allocedOCClass
+                        return it.implementation == null && cls != null && it.selector != null
+                    }
+                }
+
+                override fun actionPerformed(ctx: ActionContext) {
+                    val row = tablePanel.selectedRowObject
+                    val cls: ObjectiveCClass = row.staticOCClass ?: row.allocedOCClass!!
+
+                    tool.executeBackgroundCommand(
+                        CreateObjCMethodThunkCmd(
+                            cls,
+                            row.selector!!,
+                        ), tableModel.program
+                    )
+                }
+
+            }
+        tool.addLocalAction(this, createThunkAction)
+
         return this
     }
 
