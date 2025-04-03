@@ -128,7 +128,7 @@ fun dataAt(
 fun ReferenceManager.setCallTarget(
     callsite: Address,
     targetFunction: Function,
-    sourceType: SourceType,
+    sourceType: SourceType = SourceType.USER_DEFINED,
 ) {
     val ref = addMemoryReference(callsite, targetFunction.entryPoint, RefType.UNCONDITIONAL_CALL, sourceType, 0)
     setPrimary(ref, true)
@@ -377,3 +377,6 @@ fun PropertyMapManager.getOrCreateLongPropertyMap(name: String): LongPropertyMap
     this.getLongPropertyMap(name) ?: this.createLongPropertyMap(name)
 
 fun Function.hasTag(tagName: String): Boolean = this.tags.any { it.name == tagName }
+
+val Memory.externalBlock: MemoryBlock
+    get() = this.getBlock(MemoryBlock.EXTERNAL_BLOCK_NAME)
