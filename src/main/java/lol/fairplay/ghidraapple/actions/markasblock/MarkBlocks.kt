@@ -90,6 +90,10 @@ class MarkNSConcreteStackBlock(
                         .decompileFunction(function, 30, monitor)
                         .also { decompiler.dispose() }
                 }
+        if (decompileResults.highFunction == null) {
+            Msg.error(this, "Failed to decompile function at ${function.entryPoint}")
+            return false
+        }
 
         val pcodeOps =
             decompileResults.highFunction.pcodeOps
