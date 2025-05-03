@@ -102,8 +102,6 @@ class MarkNSConcreteStackBlock(
         // If the first op does not put a stack block pointer onto the stack, we should bail early.
         if (!doesPCodeOpPutStackBlockPointerOnStack(opAtAddress, program)) return false
 
-        val baseStackAddress = opAtAddress.output.address
-
         val minimalBlockLayoutType =
             BlockLayoutDataType(
                 program.dataTypeManager,
