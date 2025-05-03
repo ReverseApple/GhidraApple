@@ -45,6 +45,8 @@ class BlockLayout(
     buffer: ByteBuffer,
     private val dataTypeSuffix: String? = null,
 ) : StructConverter {
+    val isaPointer = buffer.getLong()
+
     /**
      * A flag for a block layout.
      */
@@ -64,12 +66,12 @@ class BlockLayout(
         BLOCK_HAS_EXTENDED_LAYOUT(1 shl 31),
     }
 
-    val isaPointer = buffer.getLong()
     val flagsBitfield = buffer.getInt()
-    val flags: Set<Flag> get() =
+    val flags: Set<Flag> =
         Flag.entries
             .filter { (flagsBitfield and it.value) != 0 }
             .toSet()
+
     val reserved = buffer.getInt()
     val invokePointer = buffer.getLong()
     val descriptorPointer = buffer.getLong()
