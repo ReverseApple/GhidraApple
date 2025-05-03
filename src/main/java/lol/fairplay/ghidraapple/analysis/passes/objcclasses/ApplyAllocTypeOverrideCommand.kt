@@ -10,7 +10,11 @@ import ghidra.program.model.listing.Program
 import ghidra.program.model.pcode.HighFunctionDBUtil
 import ghidra.program.model.symbol.Symbol
 
-class ApplyAllocTypeOverrideCommand(val callsite: Address, val type: DataType, val withVarargs: Boolean = true) : Command<Program> {
+class ApplyAllocTypeOverrideCommand(
+    val callsite: Address,
+    val type: DataType,
+    val withVarargs: Boolean = true,
+) : Command<Program> {
     var errorMsg: String? = null
 
     override fun applyTo(program: Program): Boolean {
@@ -30,9 +34,7 @@ class ApplyAllocTypeOverrideCommand(val callsite: Address, val type: DataType, v
 
     override fun getStatusMsg(): String? = errorMsg
 
-    override fun getName(): String {
-        return "Apply Alloc Type Override"
-    }
+    override fun getName(): String = "Apply Alloc Type Override"
 
     private fun generateFunctionSignatureForType(
         type: DataType,
@@ -40,7 +42,7 @@ class ApplyAllocTypeOverrideCommand(val callsite: Address, val type: DataType, v
     ): FunctionSignature {
         val fsig = FunctionDefinitionDataType("tmpname")
         fsig.returnType = type
-        fsig.arguments = arrayOf(ParameterDefinitionImpl("cls", type, null))
+        fsig.setArguments(*arrayOf(ParameterDefinitionImpl("cls", type, null)))
         if (withVarargs) {
             fsig.setVarArgs(true)
         }
