@@ -47,20 +47,22 @@ class BlockLayoutDataType(
                 "invoke${invokeFunctionTypeSuffix?.let { "_$it" } ?: ""}",
             ).apply {
                 returnType = invokeReturnType
-                arguments =
-                    arrayOf(
-                        ParameterDefinitionImpl(
-                            "block",
-                            PointerDataType(
-                                // Throwing this all together at once seems to avoid data type conflicts. If this
-                                //  were instead defined outside the `apply` block and then used inside, it seems
-                                //  to cause two data types to be defined for this singular block layout type.
-                                this@BlockLayoutDataType,
-                                dataTypeManager,
+                setArguments(
+                    *
+                        arrayOf(
+                            ParameterDefinitionImpl(
+                                "block",
+                                PointerDataType(
+                                    // Throwing this all together at once seems to avoid data type conflicts. If this
+                                    //  were instead defined outside the `apply` block and then used inside, it seems
+                                    //  to cause two data types to be defined for this singular block layout type.
+                                    this@BlockLayoutDataType,
+                                    dataTypeManager,
+                                ),
+                                null,
                             ),
-                            null,
-                        ),
-                    ) + parameters
+                        ) + parameters,
+                )
             }
         add(PointerDataType(invokeFunctionType, dataTypeManager), "invoke", null)
         add(PointerDataType(BlockDescriptor1DataType(dataTypeManager), dataTypeManager), "descriptor", null)
@@ -84,21 +86,24 @@ class BlockDescriptor2DataType(
         val copyHelperFunctionDataType =
             FunctionDefinitionDataType("copy_helper").apply {
                 returnType = VoidDataType.dataType
-                arguments =
-                    arrayOf(
-                        ParameterDefinitionImpl("dst", PointerDataType(VoidDataType(), dataTypeManager), null),
-                        ParameterDefinitionImpl("src", PointerDataType(VoidDataType(), dataTypeManager), null),
-                    )
+                setArguments(
+                    *
+                        arrayOf(
+                            ParameterDefinitionImpl("dst", PointerDataType(VoidDataType(), dataTypeManager), null),
+                            ParameterDefinitionImpl("src", PointerDataType(VoidDataType(), dataTypeManager), null),
+                        ),
+                )
             }
         add(PointerDataType(copyHelperFunctionDataType), "copy_helper", null)
         val disposeHelperFunctionDataType =
             FunctionDefinitionDataType("dispose_helper").apply {
                 returnType = VoidDataType.dataType
-                arguments =
-                    arrayOf(
+                setArguments(
+                    *arrayOf(
                         ParameterDefinitionImpl("dst", PointerDataType(VoidDataType(), dataTypeManager), null),
                         ParameterDefinitionImpl("src", PointerDataType(VoidDataType(), dataTypeManager), null),
-                    )
+                    ),
+                )
             }
         add(PointerDataType(disposeHelperFunctionDataType, dataTypeManager), "dispose_helper", null)
     }

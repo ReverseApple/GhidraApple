@@ -5,8 +5,10 @@ import ghidra.formats.gfilesystem.FSRL
 import ghidra.formats.gfilesystem.FileSystemService
 import ghidra.program.model.address.Address
 import ghidra.program.model.data.DataType
+import ghidra.program.model.data.Pointer
 import ghidra.program.model.listing.Instruction
 import ghidra.program.model.listing.Program
+import ghidra.program.model.pcode.PcodeOp
 import ghidra.program.model.symbol.StackReference
 import ghidra.program.util.ProgramLocation
 import ghidra.util.task.Task
@@ -56,6 +58,31 @@ val Instruction.doesReferenceStackBlockSymbol get() =
                 ).contains(label)
             }
         }
+
+fun isAddressStackBlockPointer(
+    address: Address,
+    program: Program,
+): Boolean {
+    val data = program.listing.getDataAt(address)
+    if (data == null || data.dataType !is Pointer) {
+        return false
+    }
+    val pointee = data.value as? Address ?: return false
+    return program.getLabelAtAddress(pointee).let { label ->
+        arrayOf(
+            "__NSConcreteStackBlock",
+            "__NSStackBlock__",
+        ).contains(label)
+    }
+}
+
+fun doesPCodeOpPutStackBlockPointerOnStack(
+    op: PcodeOp,
+    program: Program,
+): Boolean {
+    if (!op.output.address.isStackAddress) return false
+    return op.inputs.any { isAddressStackBlockPointer(it.address, program) }
+}
 
 class FindGlobalBlockSymbolPointers(
     val program: Program,
