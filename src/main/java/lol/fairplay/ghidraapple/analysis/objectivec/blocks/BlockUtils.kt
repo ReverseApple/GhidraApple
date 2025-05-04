@@ -80,7 +80,7 @@ fun doesPCodeOpPutStackBlockPointerOnStack(
     op: PcodeOp,
     program: Program,
 ): Boolean {
-    if (!op.output.address.isStackAddress) return false
+    if (op.output?.address?.isStackAddress != true) return false
     return op.inputs.any { isAddressStackBlockPointer(it.address, program) }
 }
 
