@@ -29,8 +29,13 @@ class MarkAsGlobalBlockAction(
         if (dataAtLocation.dataType.isBlockLayoutType) return false
 
         val pointerBytes = ByteArray(typedContext.program.defaultPointerSize)
-        val bytesRead = typedContext.program.memory.getBytes(typedContext.address, pointerBytes)
-        if (bytesRead != pointerBytes.size) return false
+        try {
+            val bytesRead =
+                typedContext.program.memory.getBytes(typedContext.address, pointerBytes)
+            if (bytesRead != pointerBytes.size) return false
+        } catch (_: Throwable) {
+            return false
+        }
 
         // If the pointer isn't to the global block symbol, it's not a global block.
         typedContext.program.symbolTable
