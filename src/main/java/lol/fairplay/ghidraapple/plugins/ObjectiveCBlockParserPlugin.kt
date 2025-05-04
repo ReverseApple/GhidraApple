@@ -6,6 +6,7 @@ import ghidra.framework.plugintool.PluginInfo
 import ghidra.framework.plugintool.PluginTool
 import ghidra.framework.plugintool.util.PluginStatus
 import lol.fairplay.ghidraapple.GhidraApplePluginPackage
+import lol.fairplay.ghidraapple.actions.markasblock.MarkAsBlockByRefAction
 import lol.fairplay.ghidraapple.actions.markasblock.MarkAsGlobalBlockAction
 import lol.fairplay.ghidraapple.actions.markasblock.MarkAsStackBlockAction
 
@@ -22,5 +23,6 @@ class ObjectiveCBlockParserPlugin(
     override fun init() {
         tool.addAction(MarkAsGlobalBlockAction(name))
         tool.addAction(MarkAsStackBlockAction(name, tool))
+        tool.addAction(MarkAsBlockByRefAction(name, tool))
     }
 }

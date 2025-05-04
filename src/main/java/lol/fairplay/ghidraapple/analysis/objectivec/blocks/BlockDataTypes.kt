@@ -9,6 +9,7 @@ import ghidra.program.model.data.IntegerDataType
 import ghidra.program.model.data.ParameterDefinitionImpl
 import ghidra.program.model.data.PointerDataType
 import ghidra.program.model.data.StructureDataType
+import ghidra.program.model.data.UnsignedIntegerDataType
 import ghidra.program.model.data.UnsignedLongLongDataType
 import ghidra.program.model.data.VoidDataType
 
@@ -108,6 +109,93 @@ class BlockDescriptor3DataType(
 ) : StructureDataType(CategoryPath(BLOCK_CATEGORY_PATH_STRING), "Block_descriptor_3", 0, dataTypeManager) {
     init {
         add(PointerDataType(CharDataType.dataType, dataTypeManager), "signature", null)
+        // TODO: Potentially handle this data type better (it appears to be polymorphic).
+        add(PointerDataType(CharDataType.dataType, dataTypeManager), "layout", null)
+    }
+}
+
+class BlockByRefDataType(
+    dataTypeManager: DataTypeManager,
+    dataTypeSuffix: String? = null,
+    expectedSize: UInt? = null,
+    hasBlockByRef2: Boolean = false,
+    hasBlockByRef3: Boolean = false,
+) : StructureDataType(
+        CategoryPath(BLOCK_CATEGORY_PATH_STRING),
+        "Block_byref${dataTypeSuffix?.let { "_$it" } ?: ""}",
+        0,
+        dataTypeManager,
+    ) {
+    init {
+        add(PointerDataType(VoidDataType.dataType, dataTypeManager), "isa", null)
+        add(PointerDataType(this, dataTypeManager), "forwarding", null)
+        add(IntegerDataType.dataType, "flags", null)
+        add(UnsignedIntegerDataType.dataType, "size", null)
+        if (hasBlockByRef2) add(BlockByRef2DataType(dataTypeManager))
+        if (hasBlockByRef3) add(BlockByRef3DataType(dataTypeManager))
+        expectedSize?.let {
+            val remainingBytes = it.toInt() - this.length
+            if (remainingBytes > 0) {
+                repeat(remainingBytes) { add(DEFAULT) }
+            }
+            // TODO: Maybe handle the case where [remainingBytes] < 0
+        }
+    }
+}
+
+class BlockByrefKeepFunctionDefinitionDataType(
+    dataTypeManager: DataTypeManager,
+) : FunctionDefinitionDataType("BlockByrefKeepFunction", dataTypeManager) {
+    init {
+        val blockByRefPointerType =
+            PointerDataType(BlockByRef3DataType(dataTypeManager), dataTypeManager)
+        arguments =
+            arrayOf(
+                ParameterDefinitionImpl(null, blockByRefPointerType, null),
+                ParameterDefinitionImpl(null, blockByRefPointerType, null),
+            )
+    }
+}
+
+class BlockByrefDestroyFunctionDefinitionDataType(
+    dataTypeManager: DataTypeManager,
+) : FunctionDefinitionDataType("BlockByrefDestroyFunction", dataTypeManager) {
+    init {
+        arguments =
+            arrayOf(
+                ParameterDefinitionImpl(
+                    null,
+                    PointerDataType(BlockByRef3DataType(dataTypeManager), dataTypeManager),
+                    null,
+                ),
+            )
+    }
+}
+
+class BlockByRef2DataType(
+    dataTypeManager: DataTypeManager,
+) : StructureDataType(
+        CategoryPath(BLOCK_CATEGORY_PATH_STRING),
+        "Block_byref_2",
+        0,
+        dataTypeManager,
+    ) {
+    init {
+        add(BlockByrefKeepFunctionDefinitionDataType(dataTypeManager), "byref_keep", null)
+        add(BlockByrefDestroyFunctionDefinitionDataType(dataTypeManager), "byref_destroy", null)
+    }
+}
+
+class BlockByRef3DataType(
+    dataTypeManager: DataTypeManager,
+    dataTypeSuffix: String? = null,
+) : StructureDataType(
+        CategoryPath(BLOCK_CATEGORY_PATH_STRING),
+        "Block_byref_3",
+        0,
+        dataTypeManager,
+    ) {
+    init {
         // TODO: Potentially handle this data type better (it appears to be polymorphic).
         add(PointerDataType(CharDataType.dataType, dataTypeManager), "layout", null)
     }

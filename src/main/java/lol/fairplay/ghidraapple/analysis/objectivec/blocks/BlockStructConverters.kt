@@ -399,3 +399,51 @@ class BlockDescriptor3(
 
     override fun toDataType() = BlockDescriptor3DataType(program.dataTypeManager)
 }
+
+class BlockByRef(
+    private var program: Program,
+    buffer: ByteBuffer,
+    private val dataTypeSuffix: String? = null,
+) : StructConverter {
+    val isa = buffer.getLong()
+    val forwarding = buffer.getLong()
+
+    enum class Flag(
+        val value: Int,
+    ) {
+        BLOCK_BYREF_LAYOUT_MASK(0xf shl 28),
+        BLOCK_BYREF_LAYOUT_EXTENDED(1 shl 28),
+        BLOCK_BYREF_LAYOUT_NON_OBJECT(2 shl 28),
+        BLOCK_BYREF_LAYOUT_STRONG(3 shl 28),
+        BLOCK_BYREF_LAYOUT_WEAK(4 shl 28),
+        BLOCK_BYREF_LAYOUT_UNRETAINED(5 shl 28),
+        BLOCK_BYREF_IS_GC(1 shl 27),
+        BLOCK_BYREF_HAS_COPY_DISPOSE(1 shl 25),
+        BLOCK_BYREF_NEEDS_FREE(1 shl 24),
+    }
+
+    val flagsBitfield = buffer.getInt()
+    val flags =
+        Flag.entries
+            .filter { (flagsBitfield and it.value) != 0 }
+            .toSet()
+
+    val size = buffer.getInt().toUInt()
+
+    val hasBlockByRef2 = Flag.BLOCK_BYREF_HAS_COPY_DISPOSE in flags
+    val hasBlockByRef3 = Flag.BLOCK_BYREF_LAYOUT_EXTENDED in flags
+
+    val keepFunctionPointer = if (hasBlockByRef2) buffer.getLong() else null
+    val destroyFunctionPointer = if (hasBlockByRef2) buffer.getLong() else null
+
+    val layoutPointer = if (hasBlockByRef3) buffer.getLong() else null
+
+    override fun toDataType() =
+        BlockByRefDataType(
+            program.dataTypeManager,
+            dataTypeSuffix,
+            size,
+            hasBlockByRef2,
+            hasBlockByRef3,
+        )
+}
