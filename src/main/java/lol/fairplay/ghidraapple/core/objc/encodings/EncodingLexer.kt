@@ -2,7 +2,9 @@ package lol.fairplay.ghidraapple.core.objc.encodings
 
 const val EOF_RAW = '\u0000'
 
-class EncodingLexer(private val input: String) {
+class EncodingLexer(
+    val input: String,
+) {
     private var pos = 0
     var latestToken: Token? = null
 

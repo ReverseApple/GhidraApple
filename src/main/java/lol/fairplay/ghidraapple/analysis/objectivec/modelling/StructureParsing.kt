@@ -4,6 +4,7 @@ import ghidra.program.model.address.Address
 import ghidra.program.model.listing.Data
 import ghidra.program.model.listing.Program
 import ghidra.program.model.symbol.Namespace
+import ghidra.util.Msg
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.deref
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.derefUntyped
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.get
@@ -152,9 +153,10 @@ class StructureParsing(
         )
     }
 
-    fun parseClass(address: Address, isMetaclass: Boolean = false): OCClass? {
-        return parseClass(address.offset, isMetaclass)
-    }
+    fun parseClass(
+        address: Address,
+        isMetaclass: Boolean = false,
+    ): OCClass? = parseClass(address.offset, isMetaclass)
 
     fun parseClass(
         address: Long,
@@ -239,10 +241,20 @@ class StructureParsing(
 
     fun parseMethod(dat: Data): OCMethod? {
         if (dat.dataType.name == "method_t") {
+            val signatureString = dat[1].deref<String>()
+            val parsedSignature =
+                kotlin
+                    .runCatching {
+                        parseSignature(signatureString, EncodedSignatureType.METHOD_SIGNATURE)
+                    }.getOrElse {
+                        Msg.error(this, "Failed to parse method signature", it)
+                        return null
+                    }
+
             return OCMethod(
                 parent = parentStack.last(),
                 name = dat[0].deref<String>(),
-                signature = parseSignature(dat[1].deref<String>(), EncodedSignatureType.METHOD_SIGNATURE),
+                signature = parsedSignature,
                 implAddress = dat[2].longValue(false),
             )
         } else if (dat.dataType.name == "method_small_t") {
