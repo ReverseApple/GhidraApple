@@ -23,7 +23,7 @@ abstract class EncodingParser(val lexer: EncodingLexer) {
         if (token is T) {
             return token
         } else {
-            throw IllegalArgumentException("Expected token ${T::class} but found ${token::class}")
+            throw ParserException(lexer, "Expected token ${T::class} but found ${token::class}")
         }
     }
 
