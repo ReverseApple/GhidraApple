@@ -19,11 +19,11 @@ class TypeEncodingParserTest {
         println(result)
     }
 
+    @Suppress("ktlint:standard:max-line-length")
     @Test
     fun test_ParseBulk() {
         val examples =
             listOf(
-                @Suppress("ktlint:standard:max-line-length")
                 "{z_stream_s=\"next_in\"*\"avail_in\"I\"total_in\"Q\"next_out\"*\"avail_out\"I\"total_out\"Q\"msg\"*\"state\"^{internal_state}\"zalloc\"^?\"zfree\"^?\"opaque\"^v\"data_type\"i\"adler\"Q\"reserved\"Q}",
                 "{Person=[50c]b7b1df{Address=[50c][50c][20c]i}{Employment=[50c][50c]d}[5{Skill=[50c]i}](?=[50c][15c][30c])i}",
                 "{?=A*}",
@@ -33,6 +33,10 @@ class TypeEncodingParserTest {
                     "{__compressed_pair<gmscore::model::Point2D *, std::__1::allocator<gmscore::model::Point2D> >=" +
                     "^{Point2D}}}{vector<int, std::__1::allocator<int> >=^i^i{__compressed_pair<int *, " +
                     "std::__1::allocator<int> >=^i}}}",
+                "@32@0:8{shared_ptr<void>=^v^{__shared_weak_count}}16",
+                """{unique_ptr<facebook::xplat::module::CxxModule, std::default_delete<facebook::xplat::module::CxxModule>>={__compressed_pair<facebook::xplat::module::CxxModule *, std::default_delete<facebook::xplat::module::CxxModule>>=^{CxxModule}}}16@0:8""",
+                """{shared_ptr<facebook::react::MessageQueueThread>=^{MessageQueueThread}^{__shared_weak_count}}16@0:8""",
+                """{unique_ptr<facebook::react::JSExecutorFactory, std::default_delete<facebook::react::JSExecutorFactory>>={__compressed_pair<facebook::react::JSExecutorFactory *, std::default_delete<facebook::react::JSExecutorFactory>>=^{JSExecutorFactory}}}24@0:8@16""",
             )
 
         for (ex in examples) {
