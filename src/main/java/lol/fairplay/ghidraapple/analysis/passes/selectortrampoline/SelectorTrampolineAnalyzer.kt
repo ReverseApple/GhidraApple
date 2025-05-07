@@ -23,6 +23,7 @@ import ghidra.program.model.symbol.SourceType
 import ghidra.util.Msg
 import ghidra.util.exception.CancelledException
 import ghidra.util.task.TaskMonitor
+import lol.fairplay.ghidraapple.analysis.passes.selectortrampoline.ARCFixupInstallerAnalyzer.Companion.OBJC_WO_SEL_CC
 import lol.fairplay.ghidraapple.analysis.utilities.getConstantFromVarNode
 import lol.fairplay.ghidraapple.analysis.utilities.toDefaultAddressSpace
 import kotlin.Boolean
@@ -182,16 +183,17 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
         val returnVariable = ReturnParameterImpl(idDataType, program)
 
         val arguments = mutableListOf<Variable>(ParameterImpl("recv", idDataType, program))
-        if (selector?.contains(':') == true) {
-            // We need to add a parameter for the selector otherwise Ghidra doesn't find the varargs in x2 and later
-            // But we don't want the add clutter with a useless selector argument for selectors without arguments
-            arguments.add(
-                ParameterImpl("sel", program.dataTypeManager.getDataType("/_objc2_/SEL"), program),
-            )
-        }
+
+//        if (selector?.contains(':') == true) {
+//            // We need to add a parameter for the selector otherwise Ghidra doesn't find the varargs in x2 and later
+//            // But we don't want the add clutter with a useless selector argument for selectors without arguments
+//            arguments.add(
+//                ParameterImpl("sel", program.dataTypeManager.getDataType("/_objc2_/SEL"), program),
+//            )
+//        }
 
         func.updateFunction(
-            CompilerSpec.CALLING_CONVENTION_unknown,
+            OBJC_WO_SEL_CC,
             returnVariable,
             arguments,
             Function.FunctionUpdateType.DYNAMIC_STORAGE_FORMAL_PARAMS,

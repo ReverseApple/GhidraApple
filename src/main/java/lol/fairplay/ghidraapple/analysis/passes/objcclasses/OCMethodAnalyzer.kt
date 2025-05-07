@@ -12,6 +12,7 @@ import ghidra.util.Msg
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.analysis.objectivec.TypeResolver
 import lol.fairplay.ghidraapple.analysis.objectivec.modelling.StructureParsing
+import lol.fairplay.ghidraapple.analysis.passes.selectortrampoline.ARCFixupInstallerAnalyzer.Companion.OBJC_WO_SEL_CC
 import lol.fairplay.ghidraapple.analysis.utilities.address
 import lol.fairplay.ghidraapple.analysis.utilities.parseObjCListSection
 import lol.fairplay.ghidraapple.core.objc.encodings.EncodedSignature
@@ -181,7 +182,8 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
                 ?: program.dataTypeManager.getDataType("/_objc2_/ID")!!
 
         parameters.add(ParameterImpl("self", recvType, 0, program))
-        parameters.add(ParameterImpl("selector", program.dataTypeManager.getDataType("/_objc2_/SEL")!!, 8, program))
+//        parameters.add(ParameterImpl("selector", program.dataTypeManager.getDataType("/_objc2_/SEL")!!, 8, program))
+
         var newNames = parameterNamesForMethod(method.name)
 
         // Reconstruct and apply parameter types.
@@ -210,7 +212,7 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
         Msg.debug(this, newNames)
 
         fcnEntity.updateFunction(
-            null,
+            OBJC_WO_SEL_CC,
             returnVar,
             parameters,
             Function.FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS,
