@@ -9,6 +9,7 @@ import ghidra.program.database.SpecExtension
 import ghidra.program.model.address.AddressSetView
 import ghidra.program.model.listing.Program
 import ghidra.util.task.TaskMonitor
+import resources.ResourceManager
 
 class ARCFixupInstallerAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYTE_ANALYZER) {
     companion object {
@@ -124,6 +125,8 @@ class ARCFixupInstallerAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerTy
             specExtension.addReplaceCompilerSpecExtension(it, monitor)
         }
 
+        val xmlSpec = ResourceManager.getResourceAsStream("objc_skip_x1_cc.cspec").bufferedReader().readText()
+        specExtension.addReplaceCompilerSpecExtension(xmlSpec, monitor)
         return true
     }
 }

@@ -38,7 +38,7 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
 
     init {
         priority = PRIORITY
-        setPrototype()
+        setDefaultEnablement(true)
     }
 
     override fun canAnalyze(program: Program): Boolean {
@@ -69,7 +69,7 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
                 runCatching {
                     parser.parseClass(klassData.address.unsignedOffset)
                 }.onFailure { exception ->
-                    Msg.error(this, "Could not parse class at ${klassData.address.unsignedOffset}", exception)
+                    Msg.error(this, "Could not parse class at ${klassData.address.unsignedOffset.toString(16)}", exception)
                 }.getOrNull() ?: return@forEach
 
             monitor.message = "Propagating signatures for ${model.name}..."
@@ -181,7 +181,8 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
                 ?: program.dataTypeManager.getDataType("/_objc2_/ID")!!
 
         parameters.add(ParameterImpl("self", recvType, 0, program))
-        parameters.add(ParameterImpl("selector", program.dataTypeManager.getDataType("/_objc2_/SEL")!!, 8, program))
+//        parameters.add(ParameterImpl("selector", program.dataTypeManager.getDataType("/_objc2_/SEL")!!, 8, program))
+
         var newNames = parameterNamesForMethod(method.name)
 
         // Reconstruct and apply parameter types.
@@ -210,7 +211,7 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
         Msg.debug(this, newNames)
 
         fcnEntity.updateFunction(
-            null,
+            "__objc_stub",
             returnVar,
             parameters,
             Function.FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS,
