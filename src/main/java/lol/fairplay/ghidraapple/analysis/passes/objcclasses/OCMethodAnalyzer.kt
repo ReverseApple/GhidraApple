@@ -69,7 +69,7 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
                 runCatching {
                     parser.parseClass(klassData.address.unsignedOffset)
                 }.onFailure { exception ->
-                    Msg.error(this, "Could not parse class at ${klassData.address.unsignedOffset}", exception)
+                    Msg.error(this, "Could not parse class at ${klassData.address.unsignedOffset.toString(16)}", exception)
                 }.getOrNull() ?: return@forEach
 
             monitor.message = "Propagating signatures for ${model.name}..."
