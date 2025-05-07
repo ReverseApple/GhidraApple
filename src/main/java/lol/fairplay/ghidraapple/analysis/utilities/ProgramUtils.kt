@@ -24,11 +24,11 @@ import ghidra.program.model.symbol.ReferenceIteratorAdapter
 import ghidra.program.model.symbol.ReferenceManager
 import ghidra.program.model.symbol.SourceType
 import ghidra.program.model.symbol.Symbol
+import ghidra.program.model.symbol.SymbolType
 import ghidra.program.model.util.LongPropertyMap
 import ghidra.program.model.util.PropertyMap
 import ghidra.program.model.util.PropertyMapManager
 import ghidra.program.model.util.StringPropertyMap
-import ghidra.program.model.symbol.SymbolType
 import ghidra.util.UndefinedFunction
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.derefUntyped
@@ -106,18 +106,19 @@ fun parseObjCListSection(
     val entries = sectionBlock.size / 8
     val start = sectionBlock.start
 
-    return (0 until entries).map {
-        val pointerAddress = start.add(it * 8)
-        var data = program.listing.getDataAt(pointerAddress)
-        if (!data.isPointer) {
-            data = program.listing.createData(pointerAddress, PointerDataType.dataType)
-        }
-        val datAddress =
-            data
-                .getPrimaryReference(0)
-                .toAddress
-        program.listing.getDefinedDataAt(datAddress)
-    }
+    return (0 until entries)
+        .map {
+            val pointerAddress = start.add(it * 8)
+            var data = program.listing.getDataAt(pointerAddress)
+            if (!data.isPointer) {
+                data = program.listing.createData(pointerAddress, PointerDataType.dataType)
+            }
+            val datAddress =
+                data
+                    .getPrimaryReference(0)
+                    .toAddress
+            program.listing.getDefinedDataAt(datAddress)
+        }.filterNotNull()
 }
 
 fun dataAt(

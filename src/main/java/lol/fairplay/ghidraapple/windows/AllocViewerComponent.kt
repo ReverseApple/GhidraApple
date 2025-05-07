@@ -12,7 +12,6 @@ import ghidra.program.model.listing.Function
 import ghidra.program.model.listing.Program
 import ghidra.program.model.pcode.HighFunctionDBUtil
 import ghidra.program.model.symbol.Reference
-import ghidra.program.model.symbol.Symbol
 import ghidra.program.util.ProgramLocation
 import ghidra.program.util.ProgramSelection
 import ghidra.util.datastruct.Accumulator

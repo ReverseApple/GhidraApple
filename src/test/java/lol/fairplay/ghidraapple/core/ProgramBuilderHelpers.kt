@@ -8,14 +8,13 @@ import ghidra.program.model.listing.Function
 fun ProgramBuilder.createFunction(
     stringAddress: String,
     bytes: ByteArray,
-    name: String? = null
+    name: String? = null,
 ): Function {
     setBytes(stringAddress, bytes)
     val func = createEmptyFunction(name, stringAddress, bytes.size, DataType.DEFAULT)
     disassemble(stringAddress, bytes.size)
     return func
 }
-
 
 /**
  * Set a null-terminated string at the given address.
@@ -36,15 +35,18 @@ fun ProgramBuilder.setNullTerminatedString(
     }
 }
 
-
-fun ProgramBuilder.createThunk(addr: String, thunkOf: Function){
+fun ProgramBuilder.createThunk(
+    addr: String,
+    thunkOf: Function,
+) {
     this.tx<Exception> {
-        val thunk = this.createEmptyFunction(
-            thunkOf.name,
-            addr,
-            1,
-            thunkOf.returnType)
+        val thunk =
+            this.createEmptyFunction(
+                thunkOf.name,
+                addr,
+                1,
+                thunkOf.returnType,
+            )
         thunk.setThunkedFunction(thunkOf)
     }
-
 }

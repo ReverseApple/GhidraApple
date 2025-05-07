@@ -16,15 +16,12 @@ import ghidra.program.model.pcode.DataTypeSymbol
 import ghidra.program.model.pcode.HighFunctionDBUtil
 import ghidra.program.model.symbol.SourceType
 import ghidra.program.model.symbol.Symbol
-import ghidra.test.TestEnv
 import lol.fairplay.ghidraapple.analysis.objectivec.GhidraTypeBuilder.Companion.OBJC_CLASS_CATEGORY
-import lol.fairplay.ghidraapple.analysis.passes.ObjectiveCDispatchTagAnalyzer
 import lol.fairplay.ghidraapple.analysis.passes.ObjectiveCDispatchTagAnalyzer.Companion.OBJC_ALLOC
 import lol.fairplay.ghidraapple.analysis.passes.objcclasses.ApplyAllocTypeOverrideCommand
 import lol.fairplay.ghidraapple.analysis.passes.objcclasses.OCTypeInjectorAnalyzer
 import lol.fairplay.ghidraapple.analysis.passes.selectortrampoline.SelectorTrampolineAnalyzer
 import lol.fairplay.ghidraapple.core.createFunction
-import lol.fairplay.ghidraapple.core.createThunk
 import lol.fairplay.ghidraapple.core.integrationtests.AbstractiOSAnalysisIntegrationTest
 import org.junit.jupiter.api.Test
 import resources.ResourceManager
@@ -255,7 +252,7 @@ class ObjcAllocationInitializationTest : AbstractiOSAnalysisIntegrationTest() {
 //        // TODO: need to create function symbol
 //        builder.createThunk("0x1000094f4", externalAlloc)
 
-        builder.createFunction("0x1000094f4",  bytes(0x00), "_objc_alloc")
+        builder.createFunction("0x1000094f4", bytes(0x00), "_objc_alloc")
         builder.createEmptyFunction("_testAllocationSiteHuman", "0x100008c34", 0x100008c6c - 0x100008c34, DataType.DEFAULT)
         builder.createEmptyFunction("_objc_storeStrong", "0x100009518", 1, DataType.DEFAULT)
 
@@ -290,7 +287,6 @@ class ObjcAllocationInitializationTest : AbstractiOSAnalysisIntegrationTest() {
             allocFunc.addTag(OBJC_ALLOC)
         }
 
-
         program.withTransaction<Exception>("first analysis") {
             val autoAnalyzer = AutoAnalysisManager.getAnalysisManager(program)
             val options = program.getOptions(Program.ANALYSIS_PROPERTIES)
@@ -299,7 +295,6 @@ class ObjcAllocationInitializationTest : AbstractiOSAnalysisIntegrationTest() {
             val cmd: Command<Program> = AnalysisBackgroundCommand(autoAnalyzer, false)
             cmd.applyTo(program)
         }
-
 
 //        val env = TestEnv()
 //        env.launchDefaultTool(program)

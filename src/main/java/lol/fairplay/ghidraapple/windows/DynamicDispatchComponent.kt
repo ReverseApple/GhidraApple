@@ -4,9 +4,12 @@ import docking.ActionContext
 import docking.action.DockingAction
 import docking.action.MenuData
 import docking.action.ToolBarData
+import docking.widgets.table.AbstractDynamicTableColumn
 import docking.widgets.table.TableColumnDescriptor
+import ghidra.docking.settings.Settings
 import ghidra.framework.plugintool.ComponentProviderAdapter
 import ghidra.framework.plugintool.PluginTool
+import ghidra.framework.plugintool.ServiceProvider
 import ghidra.program.model.address.Address
 import ghidra.program.model.address.AddressSet
 import ghidra.program.model.data.DataType
@@ -29,6 +32,8 @@ import lol.fairplay.ghidraapple.analysis.utilities.addColumn
 import lol.fairplay.ghidraapple.analysis.utilities.getFunctionsWithAnyTag
 import lol.fairplay.ghidraapple.analysis.utilities.hasTag
 import lol.fairplay.ghidraapple.db.DataBaseLayer
+import lol.fairplay.ghidraapple.db.ExternalObjectiveCClass
+import lol.fairplay.ghidraapple.db.LocalObjectiveCClass
 import lol.fairplay.ghidraapple.db.ObjectiveCClass
 import lol.fairplay.ghidraapple.plugins.ObjectiveCDynamicDispatchPlugin
 import resources.Icons
@@ -53,7 +58,12 @@ data class DynamicDispatchCallsiteData(
             val dataBase = DataBaseLayer(program)
             return from(dataBase, program, reference)
         }
-        fun from(dataBase: DataBaseLayer, program: Program, reference: Reference): DynamicDispatchCallsiteData {
+
+        fun from(
+            dataBase: DataBaseLayer,
+            program: Program,
+            reference: Reference,
+        ): DynamicDispatchCallsiteData {
             val primaryRef = program.referenceManager.getPrimaryReferenceFrom(reference.fromAddress, 0)
             val impl =
                 if (primaryRef != null && primaryRef != reference) {
@@ -81,7 +91,7 @@ data class DynamicDispatchCallsiteData(
                 dataType,
                 staticOcClass,
                 allocedOcClass,
-                paramReceiver
+                paramReceiver,
             )
         }
     }
@@ -118,32 +128,32 @@ class DynamicDispatchComponent(
         )
         tool.addLocalAction(this, refreshAction)
 
-
         val createThunkAction =
             object : DockingAction("Create Thunk", ObjectiveCDynamicDispatchPlugin::class.simpleName) {
                 init {
                     popupMenuData = MenuData(arrayOf("Create Thunk"), GhidraApplePluginPackage.PKG_NAME)
                 }
 
-                override fun isEnabledForContext(context: ActionContext?): Boolean {
-                    return tablePanel.selectedRowObject.let {
+                override fun isEnabledForContext(context: ActionContext): Boolean {
+                    tablePanel.selectedRowObject?.let {
                         val cls = it.staticOCClass ?: it.allocedOCClass
-                        return it.implementation == null && cls != null && it.selector != null
-                    }
+                        val isEnabled = it.implementation == null && cls != null && it.selector != null
+                        return isEnabled
+                    } ?: return false
                 }
 
                 override fun actionPerformed(ctx: ActionContext) {
                     val row = tablePanel.selectedRowObject
-                    val cls: ObjectiveCClass = row.staticOCClass ?: row.allocedOCClass!!
+                    val cls: ExternalObjectiveCClass = (row.staticOCClass ?: row.allocedOCClass!!) as ExternalObjectiveCClass
 
                     tool.executeBackgroundCommand(
                         CreateObjCMethodThunkCmd(
                             cls,
                             row.selector!!,
-                        ), tableModel.program
+                        ),
+                        tableModel.program,
                     )
                 }
-
             }
         tool.addLocalAction(this, createThunkAction)
 
@@ -167,12 +177,7 @@ class DynamicDispatchTable(
         descriptor.addColumn("Type Result", true, String::class.java) {
             it.staticOCClass?.name ?: it.allocedOCClass?.name ?: it.typeBoundName
         }
-        descriptor.addColumn("Local Class", true, Boolean::class.java) {
-            (it.staticOCClass ?: it.allocedOCClass)?.isPartOfProgram(program) ?:
-            // If the type bound struct has a size greater than the empty struct, it's a local class, because we don't
-            // know (or even care) about the size of external classes
-            (it.typeBound?.isZeroLength == false)
-        }
+        descriptor.addVisibleColumn(IsLocalClassColumnDescriptor())
 
         descriptor.addColumn("Static Receiver", true, String::class.java) { it.staticOCClass?.name }
 
@@ -203,12 +208,23 @@ class DynamicDispatchTable(
 
         descriptor.addColumn("Selector", true, String::class.java) { it.selector }
         descriptor.addColumn("Implementation", true, Function::class.java) { it.implementation }
-        descriptor.addColumn("Is Trampoline", true, Boolean::class.java) {
-            it.calledRuntimeFunction
-                ?.tags
-                ?.map { tag -> tag.name }
-                ?.contains(OBJC_TRAMPOLINE)
-        }
+
+        descriptor.addVisibleColumn(
+            object : AbstractDynamicTableColumn<DynamicDispatchCallsiteData, Boolean, Any?>() {
+                override fun getColumnName(): String = "Is Trampoline"
+
+                override fun getValue(
+                    it: DynamicDispatchCallsiteData,
+                    p1: Settings?,
+                    p2: Any?,
+                    p3: ServiceProvider?,
+                ): Boolean? =
+                    it.calledRuntimeFunction
+                        ?.tags
+                        ?.map { tag -> tag.name }
+                        ?.contains(OBJC_TRAMPOLINE)
+            },
+        )
         descriptor.addColumn("Runtime Function", true, Function::class.java) { it.calledRuntimeFunction }
 
         return descriptor
@@ -232,8 +248,7 @@ class DynamicDispatchTable(
             .onEach {
                 monitor.checkCancelled()
                 monitor.incrementProgress(1)
-            }
-            .map { DynamicDispatchCallsiteData.from(db, program, it) }
+            }.map { DynamicDispatchCallsiteData.from(db, program, it) }
 //            .toSortedSet(compareBy { it.reference.fromAddress })
             .forEach(accumulator::add)
     }
@@ -253,5 +268,26 @@ class DynamicDispatchTable(
             addressSet.add(getRowObject(it).reference.fromAddress)
         }
         return ProgramSelection(addressSet)
+    }
+}
+
+class IsLocalClassColumnDescriptor : AbstractDynamicTableColumn<DynamicDispatchCallsiteData, Boolean, Any?>() {
+    override fun getColumnName(): String = "Local Class"
+
+    override fun getValue(
+        it: DynamicDispatchCallsiteData,
+        p1: Settings?,
+        p2: Any?,
+        p3: ServiceProvider?,
+    ): Boolean? {
+        if ((it.staticOCClass ?: it.allocedOCClass) is LocalObjectiveCClass) {
+            return true
+        }
+        if (it.typeBound?.isZeroLength == false) {
+            // If the type bound struct has a size greater than the empty struct, it's a local class, because we don't
+            // know (or even care) about the size of external classes
+            return true
+        }
+        return false
     }
 }

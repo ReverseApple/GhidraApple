@@ -7,18 +7,17 @@ import ghidra.program.model.data.PointerDataType
 import ghidra.program.model.data.Structure
 import ghidra.program.model.lang.Register
 import ghidra.program.model.listing.GhidraClass
+import ghidra.program.model.listing.Library
 import ghidra.program.model.listing.Program
 import ghidra.program.model.mem.MemoryBlock.EXTERNAL_BLOCK_NAME
-import ghidra.program.model.symbol.Namespace
-import ghidra.program.model.symbol.Reference
 import ghidra.program.model.symbol.Symbol
 import ghidra.program.model.util.LongPropertyMap
 import ghidra.program.model.util.PropertyMapManager
+import ghidra.util.Msg
 import lol.fairplay.ghidraapple.analysis.objectivec.GhidraTypeBuilder.Companion.OBJC_CLASS_CATEGORY
 import lol.fairplay.ghidraapple.analysis.objectivec.modelling.StructureParsing
 import lol.fairplay.ghidraapple.analysis.passes.selectortrampoline.SelectorTrampolineAnalyzer.Companion.STUB_NAMESPACE_NAME
 import lol.fairplay.ghidraapple.analysis.utilities.addCollection
-import lol.fairplay.ghidraapple.analysis.utilities.getLabelAtAddress
 import lol.fairplay.ghidraapple.analysis.utilities.getOrCreateLongPropertyMap
 import lol.fairplay.ghidraapple.analysis.utilities.toDefaultAddressSpace
 import lol.fairplay.ghidraapple.analysis.utilities.toMap
@@ -53,9 +52,9 @@ class DataBaseLayer(
     /**
      * TODO: should this also return the selector for stub calls?
      */
-    fun getSelectorAtCallsite(addr: Address): Selector? {
-        return program.usrPropertyManager.getStringPropertyMap(SELECTOR_DATA)?.get(addr)
-    }
+    fun getSelectorAtCallsite(addr: Address): Selector? = program.usrPropertyManager.getStringPropertyMap(SELECTOR_DATA)?.get(addr)
+
+    fun getSelectorMap(): Map<Address, Selector> = program.usrPropertyManager.getStringPropertyMap(SELECTOR_DATA).toMap()
 
     fun findSelectorCallsites(selector: Selector): Set<Address> {
         // Get callsites to dispatch methods with that selector
@@ -67,7 +66,6 @@ class DataBaseLayer(
         val stubCallsites = stubSymbol.references.map { it.fromAddress }.toSet()
 
         return msgSendCallsites + stubCallsites
-
     }
 
     fun getStaticReceiverAddrAtCallsite(addr: Address): Address? {
@@ -78,16 +76,10 @@ class DataBaseLayer(
         return receiver
     }
 
-    fun getStaticReceiverSymbolAtCallsite(addr: Address): Symbol? {
-        val addr = getStaticReceiverAddrAtCallsite(addr)?.toDefaultAddressSpace(program)
-        return addr?.let { program.symbolTable.getPrimarySymbol(it) }
-    }
-
     fun getStaticReceiverClassAtCallsite(addr: Address): ObjectiveCClass? {
-        val symbol = getStaticReceiverSymbolAtCallsite(addr)
-        return symbol?.let { getClassFromSymbol(it) }
+        val classAddr = getStaticReceiverAddrAtCallsite(addr)?.toDefaultAddressSpace(program)
+        return classAddr?.let { getClassForAddress(it) }
     }
-
 
     fun getAllocedReceiverAddrAtCallsite(addr: Address): Address? {
         val receiver =
@@ -97,20 +89,12 @@ class DataBaseLayer(
         return receiver
     }
 
-    fun getAllocedReceiverClassAtCallsite(addr: Address): ObjectiveCClass? {
-        val symbol = getAllocedReceiverSymbolAtCallsite(addr)
-        return symbol?.let { getClassFromSymbol(it) }
-    }
+    fun getAllocedReceiverClassAtCallsite(callsite: Address): ObjectiveCClass? =
+        getAllocedReceiverAddrAtCallsite(callsite)?.let {
+            getClassForAddress(it)
+        }
 
-    fun getAllocedReceiverSymbolAtCallsite(addr: Address): Symbol? {
-        val addr = getAllocedReceiverAddrAtCallsite(addr)?.toDefaultAddressSpace(program)
-        return addr?.let { program.symbolTable.getPrimarySymbol(it) }
-    }
-
-    fun getAllocedReceiverClassnameAtCallsite(addr: Address): String? {
-        val symbol = getAllocedReceiverSymbolAtCallsite(addr)
-        return symbol?.name?.removePrefix("_OBJC_CLASS_\$_")
-    }
+    fun getAllocedReceiverClassnameAtCallsite(callsite: Address): String? = getClassForAddress(callsite)?.name
 
     fun getTypeBoundAtCallsite(addr: Address): DataType? {
         val typeId = program.usrPropertyManager.getLongPropertyMap(TYPE_BOUND_TABLE)?.get(addr)
@@ -119,7 +103,9 @@ class DataBaseLayer(
 
     fun getParamReceiverAtCallsite(addr: Address): Register? {
         val registerOffset = program.usrPropertyManager.getLongPropertyMap(PARAM_DISPATCH_TABLE)?.get(addr) ?: return null
-        val registerAddress = program.language.addressFactory.registerSpace.getAddress(registerOffset)
+        val registerAddress =
+            program.language.addressFactory.registerSpace
+                .getAddress(registerOffset)
         val register = program.language.getRegister(registerAddress, 8)
         return register
     }
@@ -132,6 +118,11 @@ class DataBaseLayer(
 
         return typeBoundData.toMap().mapValues { (k, v) -> program.dataTypeManager.getDataType(v) }.toMap()
     }
+
+    fun getAllStaticReceiverCallsites(): Map<Address, String> =
+        program.usrPropertyManager.getStringPropertyMap(STATIC_DISPATCH_TABLE).toMap()
+
+    fun getAllAllocedReceivers(): Map<Address, String> = program.usrPropertyManager.getStringPropertyMap(ALLOCED_DISPATCH_TABLE).toMap()
 
     fun addSelectors(selectors: Map<Address, Selector?>) {
         val propMap =
@@ -167,13 +158,15 @@ class DataBaseLayer(
         propMap.addCollection(paramDispatchTable.map { (ref, clsAddr) -> ref to clsAddr?.offset })
     }
 
-
-    fun getClassNameFromSymbol(symbol: Symbol): String {
-        return when(program.memory.getBlock(symbol.address).name) {
+    fun getClassNameFromSymbol(symbol: Symbol): String =
+        when (program.memory.getBlock(symbol.address).name) {
             "__got" -> {
                 // This is a global offset table entry, which are named like `PTR__OBJC_CLASS_$_CWWiFiClient_100155330`
                 // where `100155330` is the address inside the __got section
-                symbol.name.removePrefix("PTR__OBJC_CLASS_\$_").split('_').first()
+                symbol.name
+                    .removePrefix("PTR__OBJC_CLASS_\$_")
+                    .split('_')
+                    .first()
             }
             "__objc_data" -> symbol.name
             EXTERNAL_BLOCK_NAME -> {
@@ -181,29 +174,41 @@ class DataBaseLayer(
                 symbol.name.removePrefix("_OBJC_CLASS_\$_")
             }
             else -> throw IllegalArgumentException("Unexpected kind of symbol: ${symbol.name} from ${symbol.address}")
-
         }
+
+    fun isExternalClass(addr: Address): Boolean = addr.offset in externalClassAddresses
+
+    fun isInternalClass(addr: Address): Boolean = addr.offset in internalClassAdresses
+
+    val internalClassAdresses: Set<Long> by lazy {
+        val objcNs = program.symbolTable.getNamespace("objc", program.globalNamespace)
+        val classNameSpace = program.symbolTable.getNamespace("class_t", objcNs)
+        program.symbolTable
+            .getSymbols(classNameSpace)
+            .map { it.address.offset }
+            .toSet()
     }
 
-    /**
-     * Takes a symbol like `_OBJC_CLASS_$_CLCircularRegion` or `PTR__OBJC_CLASS_$_NSMutableDictionary_1001553d0`
-     */
-    fun getClassFromSymbol(symbol: Symbol): ObjectiveCClass {
-        val className = getClassNameFromSymbol(symbol)
-        val layout = program.dataTypeManager.getDataType("/GA_OBJC/$className") as Structure
-        val classStructLocation = getAddressForClassName(className)
-//        val namespace = program.symbolTable.classNamespaces.asSequence().singleOrNull { it.name == className }
-        val namespace = symbolToClassMap[className]
-        return ObjectiveCClass(classStructLocation, namespace, layout, null)
+    val externalClassAddresses: Set<Long> by lazy {
+        program.symbolTable
+            .getAllSymbols(false)
+            .filter { it.name.startsWith("_OBJC_CLASS_") }
+            .filter { program.memory.isExternalBlockAddress(it.address) }
+            .map { it.address.offset }
+            .toSet()
     }
 
     val symbolToClassMap: Map<String, GhidraClass> by lazy {
-        program.symbolTable.classNamespaces.asSequence().associateBy { it.name }
+        program.symbolTable.classNamespaces
+            .asSequence()
+            .associateBy { it.name }
     }
 
     val classParser: StructureParsing by lazy {
         StructureParsing(program)
     }
+
+    val classModelCache: MutableMap<Address, OCClass?> = mutableMapOf()
 
     private fun getAddressForClassName(className: String): Address {
         // Two scenarios:
@@ -213,7 +218,7 @@ class DataBaseLayer(
         }
         // 2. There is a symbol in the `objc::class_t` namespace
         // In rare cases there are _two_ symbols for the same class, one is the metaclass of the other
-        getInternalClassSymbols().firstOrNull() { it.name == className }?.let {
+        getInternalClassSymbols().firstOrNull { it.name == className }?.let {
             return it.address
         }
 
@@ -229,40 +234,71 @@ class DataBaseLayer(
     /**
      * Get the class for a given address
      * this can include GOT addresses
-     *
      * or "constant" addresses
      */
-    fun getClassForAddress(address: Address): ObjectiveCClass {
-        val symbol: Symbol =
-            program.symbolTable.getPrimarySymbol(
-                if (address.isConstantAddress) {
-                    address.toDefaultAddressSpace(program)
-                } else {
-                    address
-                },
-            ) ?: throw IllegalArgumentException("No symbol at address $address")
-        return getClassFromSymbol(symbol)
+    fun getClassForAddress(address: Address): ObjectiveCClass? {
+        if (address.offset == 0L) {
+            return null
+        }
+
+        val ramAddress = program.addressFactory.defaultAddressSpace.getAddress(address.offset)
+        val block = program.memory.getBlock(ramAddress)
+
+        if (block.name == "__got") {
+            TODO()
+        }
+        val className =
+            program.symbolTable
+                .getPrimarySymbol(ramAddress)
+                ?.name
+                ?.removePrefix("_OBJC_CLASS_\$_") ?: return null
+        when {
+            // Classes don't start with underscores, this can happen if a global symbol is passed in
+            className.startsWith("_") -> return null
+            // TODO: CFConstantStringClassReference aren't supported for now
+            //  because I don't know what the relevant underlying class for them is, and if it is imported?
+            className.startsWith("cf_") -> return null
+            className.startsWith("DAT_") -> return null
+        }
+        val layout: Structure =
+            program.dataTypeManager.getDataType(OBJC_CLASS_CATEGORY, className) as Structure? ?: run {
+                Msg.error(this, "Could not find class layout for $className")
+                return null
+            }
+        val namespace: GhidraClass =
+            program.symbolTable.classNamespaces
+                .asSequence()
+                .singleOrNull { it.name == className }
+                ?: throw IllegalArgumentException("Could not find class namespace for $className")
+        return when {
+            isExternalClass(ramAddress) -> {
+                /**
+                 *  The [OCStructureAnalyzer] will have already parsed the class
+                 */
+
+                val library: Library = namespace.parentNamespace as Library
+                ExternalObjectiveCClass(program, ramAddress, namespace, layout!!, library)
+            }
+            isInternalClass(ramAddress) -> {
+                val metaData = classParser.parseClass(ramAddress)!!
+                LocalObjectiveCClass(program, ramAddress, namespace, layout!!, metaData)
+            }
+            else -> null
+        }
     }
 
     fun getClassForDataType(dataType: DataType): ObjectiveCClass? {
         val className = dataType.name
-        val layout = dataType as Structure
         val classStructLocation = getAddressForClassName(className)
-        val namespace = program.symbolTable.classNamespaces.asSequence().singleOrNull { it.name == className }
-        val metaData = classParser.parseClass(classStructLocation)
-        return ObjectiveCClass(classStructLocation, namespace, layout, metaData)
+        return getClassForAddress(classStructLocation)
     }
 
     /**
      * Decide if a dataType belongs to an Objective-C class that is internal to the program or external
      * For now this is just a heuristic based on the size of the type
-      */
-    fun isTypeInternal(dataType: DataType): Boolean {
-        return dataType.categoryPath == OBJC_CLASS_CATEGORY && !dataType.isZeroLength
-    }
-
+     */
+    fun isTypeInternal(dataType: DataType): Boolean = dataType.categoryPath == OBJC_CLASS_CATEGORY && !dataType.isZeroLength
 }
-
 
 /**
  *
@@ -274,12 +310,11 @@ class DataBaseLayer(
  * @property namespace The namespace of the class, if it exists
  * @property classStructLocation The address of the class struct, if it is in the local [Program]
  */
-data class ObjectiveCClass(
-    val classStructLocation: Address,
-    val namespace: GhidraClass?,
-    val layout: Structure,
-    val metadata: OCClass?,
-) {
+sealed class ObjectiveCClass {
+    abstract val program: Program
+    abstract val classStructLocation: Address
+    abstract val namespace: GhidraClass
+    abstract val layout: Structure
 
     /**
      * Returns a pointer type to the underlying class layout struct
@@ -289,11 +324,40 @@ data class ObjectiveCClass(
     val classPointerType: Pointer
         get() = PointerDataType(layout)
 
-
     val name: String
-        get() = namespace?.name ?: layout.name
+        get() = namespace.name ?: layout.name
 
-    fun isPartOfProgram(program: Program): Boolean {
-        return program.memory.contains(classStructLocation) && !program.memory.isExternalBlockAddress(this.classStructLocation)
+    fun isPartOfProgram(program: Program): Boolean =
+        program.memory.contains(classStructLocation) && !program.memory.isExternalBlockAddress(this.classStructLocation)
+}
+
+/**
+ * A special case of [ObjectiveCClass] that is local to the [program] and has the class model available as [metaData]
+ */
+data class LocalObjectiveCClass(
+    override val program: Program,
+    override val classStructLocation: Address,
+    override val namespace: GhidraClass,
+    override val layout: Structure,
+    val metaData: OCClass,
+) : ObjectiveCClass() {
+    override fun hashCode(): Int = program.hashCode() xor classStructLocation.hashCode() xor namespace.hashCode() xor layout.hashCode()
+}
+
+/**
+ * A special case of [ObjectiveCClass] that is external to the [program] and has no class model available
+ * The [namespace] is the [GhidraClass]
+ */
+data class ExternalObjectiveCClass(
+    override val program: Program,
+    override val classStructLocation: Address,
+    override val namespace: GhidraClass,
+    override val layout: Structure,
+    val library: Library,
+) : ObjectiveCClass() {
+    init {
+        if (namespace.parentNamespace != library) {
+            throw IllegalArgumentException("Namespace is not part of the library")
+        }
     }
 }
