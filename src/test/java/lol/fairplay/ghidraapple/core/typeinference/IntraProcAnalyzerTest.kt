@@ -3,8 +3,7 @@ package lol.fairplay.ghidraapple.core.typeinference
 import lol.fairplay.ghidraapple.core.integrationtests.AbstractiOSAnalysisIntegrationTest
 import org.junit.jupiter.api.Test
 
-class IntraProcAnalyzerTest: AbstractiOSAnalysisIntegrationTest() {
-
+class IntraProcAnalyzerTest : AbstractiOSAnalysisIntegrationTest() {
     /**
      *                              **************************************************************
      *                              *                          FUNCTION                          *
@@ -40,7 +39,6 @@ class IntraProcAnalyzerTest: AbstractiOSAnalysisIntegrationTest() {
      *
      */
     @Test
-    fun testDataReceiver(){
-
+    fun testDataReceiver() {
     }
 }

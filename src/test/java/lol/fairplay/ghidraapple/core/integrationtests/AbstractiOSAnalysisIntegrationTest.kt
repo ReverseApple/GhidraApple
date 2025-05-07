@@ -69,7 +69,7 @@ abstract class AbstractiOSAnalysisIntegrationTest : AbstractGhidraHeadedIntegrat
             val address = program.addressFactory.defaultAddressSpace.getAddress(callsite)
             assertEquals(
                 className,
-                db.getStaticReceiverSymbolAtCallsite(address)?.name?.removePrefix("_OBJC_CLASS_\$_"),
+                db.getStaticReceiverClassAtCallsite(address)?.name?.removePrefix("_OBJC_CLASS_\$_"),
                 "Wrong static receiver at $address",
             )
         }
