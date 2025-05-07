@@ -185,16 +185,17 @@ class SelectorTrampolineAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerT
         val returnVariable = ReturnParameterImpl(idDataType, program)
 
         val arguments = mutableListOf<Variable>(ParameterImpl("recv", idDataType, program))
-        if (selector?.contains(':') == true) {
-            // We need to add a parameter for the selector otherwise Ghidra doesn't find the varargs in x2 and later
-            // But we don't want the add clutter with a useless selector argument for selectors without arguments
-            arguments.add(
-                ParameterImpl("sel", program.dataTypeManager.getDataType("/_objc2_/SEL"), program),
-            )
-        }
+
+//        if (selector?.contains(':') == true) {
+//            // We need to add a parameter for the selector otherwise Ghidra doesn't find the varargs in x2 and later
+//            // But we don't want the add clutter with a useless selector argument for selectors without arguments
+//            arguments.add(
+//                ParameterImpl("sel", program.dataTypeManager.getDataType("/_objc2_/SEL"), program),
+//            )
+//        }
 
         func.updateFunction(
-            CompilerSpec.CALLING_CONVENTION_unknown,
+            "__objc_stub",
             returnVariable,
             arguments,
             Function.FunctionUpdateType.DYNAMIC_STORAGE_FORMAL_PARAMS,

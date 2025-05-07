@@ -63,10 +63,11 @@ class OCSelectorAnalyzer :
         program.withTransaction<Exception>("Setup msgSend signatures") {
             functionsToAnalyze.forEach { func ->
                 val id = program.dataTypeManager.getDataType("/_objc2_/ID")
-                val sel = program.dataTypeManager.getDataType("/_objc2_/SEL")
+//                val sel = program.dataTypeManager.getDataType("/_objc2_/SEL")
                 if (func.signature.arguments.isEmpty()) {
                     func.addParameter(ParameterImpl("cls", id, program), SourceType.IMPORTED)
-                    func.addParameter(ParameterImpl("sel", sel, program), SourceType.IMPORTED)
+//                    func.addParameter(ParameterImpl("sel", sel, program), SourceType.IMPORTED)
+                    func.setCallingConvention("__objc_stub")
                     func.setReturnType(id, SourceType.IMPORTED)
                 }
             }
