@@ -3,6 +3,7 @@ package lol.fairplay.ghidraapple.analysis.passes.objcclasses
 import ghidra.app.services.AbstractAnalyzer
 import ghidra.app.services.AnalyzerType
 import ghidra.app.util.importer.MessageLog
+import ghidra.framework.options.Options
 import ghidra.program.model.address.AddressSetView
 import ghidra.program.model.listing.Function
 import ghidra.program.model.listing.ParameterImpl
@@ -14,6 +15,7 @@ import lol.fairplay.ghidraapple.analysis.objectivec.TypeResolver
 import lol.fairplay.ghidraapple.analysis.objectivec.modelling.StructureParsing
 import lol.fairplay.ghidraapple.analysis.passes.selectortrampoline.ARCFixupInstallerAnalyzer.Companion.OBJC_WO_SEL_CC
 import lol.fairplay.ghidraapple.analysis.utilities.address
+import lol.fairplay.ghidraapple.analysis.utilities.parameterNamesForMethod
 import lol.fairplay.ghidraapple.analysis.utilities.parseObjCListSection
 import lol.fairplay.ghidraapple.core.objc.encodings.EncodedSignature
 import lol.fairplay.ghidraapple.core.objc.modelling.OCClass
@@ -26,6 +28,7 @@ import lol.fairplay.ghidraapple.core.objc.modelling.ResolvedMethod
 import lol.fairplay.ghidraapple.core.objc.modelling.ResolvedProperty
 
 class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTION_ANALYZER) {
+    private var renameFromSelector: Boolean = true
     lateinit var program: Program
     lateinit var log: MessageLog
 
@@ -35,6 +38,9 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
         const val PROPERTY_TAG_GETTER = "OBJC_PROPERTY_GETTER"
         const val PROPERTY_TAG_SETTER = "OBJC_PROPERTY_SETTER"
         val PRIORITY = OCStructureAnalyzer.PRIORITY.after()
+        private val OPTION_NAME_RENAME_METHOD_ARGUMENTS_FROM_SELECTOR: String = "Rename Method Arguments from Selector"
+        private val OPTION_DESCRIPTION_RENAME_METHOD_ARGUMENTS_FROM_SELECTOR: String =
+            "If enabled, rename method arguments based on the selector name."
     }
 
     init {
@@ -125,7 +131,9 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
     ): String {
         // fixme: this is kind of sloppy
         val chain =
-            resolution.chain().reversed()
+            resolution
+                .chain()
+                .reversed()
                 .joinToString(" -> ") {
                     val type =
                         when (it.first) {
@@ -184,8 +192,12 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
         parameters.add(ParameterImpl("self", recvType, 0, program))
 //        parameters.add(ParameterImpl("selector", program.dataTypeManager.getDataType("/_objc2_/SEL")!!, 8, program))
 
-        var newNames = parameterNamesForMethod(method.name)
-
+        val newNames =
+            if (renameFromSelector) {
+                parameterNamesForMethod(method.name)
+            } else {
+                listOf()
+        }
         // Reconstruct and apply parameter types.
         encSignature.parameters.forEachIndexed { i, (type, stackOffset, modifiers) ->
             val paramDT =
@@ -201,7 +213,7 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
 
             Msg.debug(this, "Applying argument ${i + 2} type to function for ${klass.name}->${method.name}...")
 
-            parameters.add(ParameterImpl(newNames[i], paramDT, stackOffset, program))
+            parameters.add(ParameterImpl(newNames.getOrNull(i), paramDT, stackOffset, program))
         }
 
         val returnVar = fcnEntity.getReturn()
@@ -302,54 +314,16 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
         setterParam.setName("value", SourceType.ANALYSIS)
     }
 
-    fun splitCamelCase(input: String): List<String> {
-        return input.split(Regex("(?<=[a-zA-Z])(?=[A-Z])"))
+    override fun registerOptions(options: Options, program: Program) {
+        options.registerOption(
+            OPTION_NAME_RENAME_METHOD_ARGUMENTS_FROM_SELECTOR, renameFromSelector, null,
+            OPTION_DESCRIPTION_RENAME_METHOD_ARGUMENTS_FROM_SELECTOR
+        )
     }
 
-    private fun parameterNamesForMethod(methodName: String): List<String> {
-        // todo: make this optional.
-        // create parameter names, acknowledging common objective-c naming conventions.
-
-        val keywords = listOf("with", "for", "from", "to", "in", "at")
-
-        val baseNames =
-            methodName.split(":")
-                .filter { !it.isEmpty() }
-                .map { part ->
-                    val ccSplit = splitCamelCase(part)
-
-                    val matchIndex =
-                        ccSplit.indexOfFirst {
-                            it.lowercase() in keywords
-                        }
-                    val match = ccSplit.getOrNull(matchIndex) ?: return@map part
-
-                    when (match.lowercase()) {
-                        "for" -> {
-                            if (part.startsWith(match)) {
-                                part.substringAfter(match).replaceFirstChar { it.lowercase() }
-                            } else {
-                                part.substringAfter(match).replaceFirstChar { it.lowercase() }
-                            }
-                        }
-                        in keywords -> part.substringAfter(match).replaceFirstChar { it.lowercase() }
-                        else -> part
-                    }
-                }
-
-        val uniqueNames =
-            mutableMapOf<String, Int>(
-                "self" to 1,
-                "selector" to 1,
-            )
-
-        val result =
-            baseNames.map { name ->
-                val count = uniqueNames.getOrDefault(name, 0)
-                uniqueNames[name] = count + 1
-                if (count > 0) "${name}_$count" else name
-            }
-
-        return result
+    override fun optionsChanged(options: Options, program: Program) {
+        renameFromSelector =
+            options.getBoolean(OPTION_NAME_RENAME_METHOD_ARGUMENTS_FROM_SELECTOR, renameFromSelector)
     }
+
 }
