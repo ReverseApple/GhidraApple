@@ -131,8 +131,8 @@ class BlockByRefDataType(
         add(PointerDataType(this, dataTypeManager), "forwarding", null)
         add(IntegerDataType.dataType, "flags", null)
         add(UnsignedIntegerDataType.dataType, "size", null)
-        if (hasBlockByRef2) add(BlockByRef2DataType(dataTypeManager))
-        if (hasBlockByRef3) add(BlockByRef3DataType(dataTypeManager))
+        if (hasBlockByRef2) add(BlockByRef2DataType(dataTypeManager), "byref2", null)
+        if (hasBlockByRef3) add(BlockByRef3DataType(dataTypeManager), "byref3", null)
         expectedSize?.let {
             val remainingBytes = it.toInt() - this.length
             if (remainingBytes > 0) {
