@@ -235,9 +235,6 @@ class MarkBlockByRef(
 
         val minimalBlockByRefSize = minimalBlockByRefType.length
 
-        // This will contain the stack block as it would appear on the stack.
-        val stackBlockByteArray = ByteArray(minimalBlockByRefSize)
-
         val baseStackOffset = opAtAddress.output.address.offset
 
         function.stackFrame.createVariable(
@@ -256,18 +253,35 @@ class MarkBlockByRef(
                     .sortedBy { it.seqnum.order }
                     .toList()
 
-        for (op in ops) {
-            if (op !is PcodeOpAST) continue
-            val positiveOffset = op.output.address.offset - baseStackOffset
-            // If the offset isn't within the range for our stack block, skip it.
-            if (positiveOffset < 0 || positiveOffset >= minimalBlockByRefSize) continue
-            val bytes = op.getOutputBytes(program) ?: continue
-            bytes.copyInto(stackBlockByteArray, positiveOffset.toInt())
+        fun makeBlockByRefByteArray(byteArraySize: Int): ByteArray {
+            // This will contain the block reference variable as it would appear on the stack.
+            val byteArray = ByteArray(byteArraySize)
+
+            for (op in ops) {
+                if (op !is PcodeOpAST) continue
+                val positiveOffset = op.output.address.offset - baseStackOffset
+                // If the offset isn't within the range, skip it.
+                if (positiveOffset < 0 || positiveOffset >= byteArraySize) continue
+                val bytes = op.getOutputBytes(program) ?: continue
+                bytes.copyInto(byteArray, positiveOffset.toInt())
+            }
+
+            return byteArray
         }
 
+        // Parse the block very minimally (just enough to get the size).
+        val minimalBlockByRef =
+            BlockByRef(
+                program,
+                ByteBuffer.wrap(makeBlockByRefByteArray(minimalBlockByRefSize)).order(ByteOrder.LITTLE_ENDIAN),
+                instruction.address.toString(),
+                minimal = true,
+            )
+
+        // Use the actual size for the second and final parsing pass.
         BlockByRef(
             program,
-            ByteBuffer.wrap(stackBlockByteArray).order(ByteOrder.LITTLE_ENDIAN),
+            ByteBuffer.wrap(makeBlockByRefByteArray(minimalBlockByRef.size.toInt())).order(ByteOrder.LITTLE_ENDIAN),
             instruction.address.toString(),
         ).apply {
             // Now that we know we have a good block reference variable type, we mark it up.

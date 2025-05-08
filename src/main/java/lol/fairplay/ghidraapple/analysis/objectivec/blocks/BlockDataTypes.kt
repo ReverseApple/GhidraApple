@@ -181,8 +181,8 @@ class BlockByRef2DataType(
         dataTypeManager,
     ) {
     init {
-        add(BlockByrefKeepFunctionDefinitionDataType(dataTypeManager), "byref_keep", null)
-        add(BlockByrefDestroyFunctionDefinitionDataType(dataTypeManager), "byref_destroy", null)
+        add(PointerDataType(BlockByrefKeepFunctionDefinitionDataType(dataTypeManager)), "byref_keep", null)
+        add(PointerDataType(BlockByrefDestroyFunctionDefinitionDataType(dataTypeManager)), "byref_destroy", null)
     }
 }
 

@@ -404,6 +404,7 @@ class BlockByRef(
     private var program: Program,
     buffer: ByteBuffer,
     private val dataTypeSuffix: String? = null,
+    minimal: Boolean = false,
 ) : StructConverter {
     val isa = buffer.getLong()
     val forwarding = buffer.getLong()
@@ -433,10 +434,10 @@ class BlockByRef(
     val hasBlockByRef2 = Flag.BLOCK_BYREF_HAS_COPY_DISPOSE in flags
     val hasBlockByRef3 = Flag.BLOCK_BYREF_LAYOUT_EXTENDED in flags
 
-    val keepFunctionPointer = if (hasBlockByRef2) buffer.getLong() else null
-    val destroyFunctionPointer = if (hasBlockByRef2) buffer.getLong() else null
+    val keepFunctionPointer = if (hasBlockByRef2 && !minimal) buffer.getLong() else null
+    val destroyFunctionPointer = if (hasBlockByRef2 && !minimal) buffer.getLong() else null
 
-    val layoutPointer = if (hasBlockByRef3) buffer.getLong() else null
+    val layoutPointer = if (hasBlockByRef3 && !minimal) buffer.getLong() else null
 
     override fun toDataType() =
         BlockByRefDataType(
