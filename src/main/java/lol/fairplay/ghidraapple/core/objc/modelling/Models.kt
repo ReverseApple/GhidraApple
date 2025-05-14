@@ -258,9 +258,12 @@ data class OCMethod(
         val returnType = TypeStringify.getResult(sig.returnType.first)
 
         if (sig.parameters.count() > 0) {
-            var nsplit = name.split(":").filter { it.trim().isNotEmpty() }
+            val nsplit = name.split(":").filter { it.trim().isNotEmpty() }
             var result = "$prefix($returnType)${nsplit[0]}:(${TypeStringify.getResult(sig.parameters.first().first)})"
 
+            if (nsplit.size != sig.parameters.count()) {
+                return result
+            }
             for (i in 1 until sig.parameters.count()) {
                 val typeStr = TypeStringify.getResult(sig.parameters[i].first)
                 result += " ${nsplit[i]}:($typeStr)"
@@ -277,7 +280,7 @@ data class OCIVar(
     val ocClass: OCClass,
     override val name: String,
     val offset: Int,
-    val type: TypeNode,
+    val type: TypeNode?,
     val alignment: Int,
     val size: Int,
 ) : OCField(name) {

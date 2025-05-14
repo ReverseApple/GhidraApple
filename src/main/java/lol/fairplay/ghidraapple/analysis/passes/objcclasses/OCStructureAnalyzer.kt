@@ -7,6 +7,7 @@ import ghidra.app.util.importer.MessageLog
 import ghidra.program.model.address.AddressSetView
 import ghidra.program.model.data.Structure
 import ghidra.program.model.data.StructureDataType
+import ghidra.program.model.data.Undefined
 import ghidra.program.model.listing.Data
 import ghidra.program.model.listing.Program
 import ghidra.util.Msg
@@ -55,7 +56,7 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
                     runCatching {
                         klassT[4].derefUntyped()[3].deref<String>() to klassT
                     }.onFailure {
-                        Msg.error(this, "Failed to parse class data at ${klassT.address}")
+                        Msg.error(this, "Failed to parse class data at ${klassT.address}", it)
                     }.getOrNull()
                 }?.toMap() ?: emptyMap()
             ).toMutableMap()
@@ -108,12 +109,13 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
             program.dataTypeManager.addDataType(StructureDataType(OBJC_CLASS_CATEGORY, it, 0), null)
         }
 
+        taskMonitor?.message = "Creating structs for protocols..."
         protoData.keys.forEach { name ->
             taskMonitor?.incrementProgress()
 
             program.dataTypeManager.addDataType(StructureDataType(OBJC_CLASS_CATEGORY, "<$name>", 0), null)
         }
-
+        taskMonitor?.message = "Creating structs for internal classes..."
         // Create class types with fields.
         klassData.forEach { (name, data) ->
             val dataType = program.dataTypeManager.addDataType(StructureDataType(OBJC_CLASS_CATEGORY, name, 0), null)
@@ -130,9 +132,10 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
 
             // Create the instance variables for the structure.
             for (ivar in model.instanceVariables ?: return@forEach) {
-                var fieldType =
+                val fieldType =
                     runCatching {
-                        typeResolver.buildParsed(ivar.type)
+                        // Some ivars can have no type string, and only a size
+                        ivar.type?.let { typeResolver.buildParsed(it) } ?: Undefined.getUndefinedDataType(ivar.size)
                     }.onFailure {
                         Msg.error(this, "Could not reconstruct type for ivar ${model.name}->${ivar.name}")
                     }.getOrNull() ?: continue
