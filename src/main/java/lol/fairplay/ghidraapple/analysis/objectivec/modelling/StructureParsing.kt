@@ -1,6 +1,7 @@
 package lol.fairplay.ghidraapple.analysis.objectivec.modelling
 
 import ghidra.program.model.address.Address
+import ghidra.program.model.data.TerminatedStringDataType
 import ghidra.program.model.listing.Data
 import ghidra.program.model.listing.Program
 import ghidra.program.model.symbol.Namespace
@@ -141,7 +142,14 @@ class StructureParsing(
     fun parseIvar(dat: Data): OCIVar? {
         if (dat.dataType.name != "ivar_t") return null
 
-        val parsedType = TypeEncodingParser(EncodingLexer(dat[2].deref<String>())).parse()
+        val typeString = dat[2].deref<String>()
+
+        val parsedType = if (typeString.isNotEmpty()) {
+            TypeEncodingParser(EncodingLexer(typeString)).parse()
+        } else {
+            // Some ivars don't have a type string, and only a size and name
+            null
+        }
 
         return OCIVar(
             ocClass = parentStack.last() as OCClass,
@@ -167,6 +175,10 @@ class StructureParsing(
         // get the class_t->data (class_rw_t *) field...
         val rwStruct = klassRo[4].derefUntyped(tolerant = true)
         val superAddress = klassRo[1].longValue(false)
+        // Make sure that the data behind the name pointer is recognized as a string value
+        if (program.listing.getDataAt(rwStruct[3].value as Address)?.value !is String) {
+            program.listing.createData(rwStruct[3].value as Address, TerminatedStringDataType())
+        }
 
         val klass =
             OCClass(

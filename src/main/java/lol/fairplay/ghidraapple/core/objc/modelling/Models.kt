@@ -285,7 +285,7 @@ data class OCIVar(
     val ocClass: OCClass,
     override val name: String,
     val offset: Int,
-    val type: TypeNode,
+    val type: TypeNode?,
     val alignment: Int,
     val size: Int,
 ) : OCField(name) {
