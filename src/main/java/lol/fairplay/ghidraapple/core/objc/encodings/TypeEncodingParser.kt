@@ -25,7 +25,7 @@ class TypeEncodingParser(lexer: EncodingLexer) : EncodingParser(lexer) {
             is Token.ObjectType -> parseObject()
             is Token.SelectorType -> parseSelectorType()
             is Token.ClassObjectType -> parseClassObject()
-            else -> throw IllegalArgumentException("Unexpected token: $currentToken")
+            else -> throw ParserException(lexer, "Unexpected token: $currentToken")
         }
     }
 

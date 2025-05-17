@@ -3,6 +3,7 @@ package lol.fairplay.ghidraapple.analysis.utilities
 import ghidra.program.model.address.GenericAddress
 import ghidra.program.model.listing.Data
 import ghidra.program.model.scalar.Scalar
+import ghidra.util.Msg
 
 object StructureHelpers {
     // allow components of the data object to be accessed using the subscript operator.
@@ -31,14 +32,22 @@ object StructureHelpers {
     /**
      * Return the value of type `T` pointed to by `value`
      */
-    fun <T> Data.deref(): T {
+    inline fun <reified T> Data.deref(): T {
         // program.listing.getDataAt(fields[1].value as GenericAddress?).value as String
-        return this.program.listing.getDataAt(this.value as GenericAddress?).value as T
+//        return this.program.listing.getDataAt(this.value as GenericAddress?).value as T?
+        val value = this.program.listing.getDataAt(this.value as GenericAddress?)?.value
+        return if (value is T) {
+            value
+        } else {
+            Msg.error(this,"Failed to dereference value at ${this.value} as requested type")
+            throw IllegalArgumentException("Failed to dereference value at ${this.value} as requested type")
+        }
     }
 
     fun Data.derefUntyped(tolerant: Boolean = false): Data {
         return if (!tolerant) {
-            this.program.listing.getDataAt(this.value as GenericAddress?)
+            program.listing.getDataAt(value as GenericAddress?)
+                ?: throw IllegalArgumentException("Failed to retrieve non-null value at ${this.value}")
         } else {
             this.program.listing.getDataContaining(this.value as GenericAddress?)
         }

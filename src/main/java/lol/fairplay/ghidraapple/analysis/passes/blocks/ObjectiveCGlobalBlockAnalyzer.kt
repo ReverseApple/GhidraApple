@@ -28,6 +28,7 @@ class ObjectiveCGlobalBlockAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, Analyz
 
     init {
         priority = AnalysisPriority.DATA_TYPE_PROPOGATION
+        setDefaultEnablement(true)
         setSupportsOneTimeAnalysis()
     }
 

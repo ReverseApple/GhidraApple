@@ -1,8 +1,11 @@
 package lol.fairplay.ghidraapple.analysis.objectivec.modelling
 
+import ghidra.program.model.address.Address
+import ghidra.program.model.data.TerminatedStringDataType
 import ghidra.program.model.listing.Data
 import ghidra.program.model.listing.Program
 import ghidra.program.model.symbol.Namespace
+import ghidra.util.Msg
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.deref
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.derefUntyped
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.get
@@ -139,7 +142,14 @@ class StructureParsing(
     fun parseIvar(dat: Data): OCIVar? {
         if (dat.dataType.name != "ivar_t") return null
 
-        val parsedType = TypeEncodingParser(EncodingLexer(dat[2].deref<String>())).parse()
+        val typeString = dat[2].deref<String>()
+
+        val parsedType = if (typeString.isNotEmpty()) {
+            TypeEncodingParser(EncodingLexer(typeString)).parse()
+        } else {
+            // Some ivars don't have a type string, and only a size and name
+            null
+        }
 
         return OCIVar(
             ocClass = parentStack.last() as OCClass,
@@ -152,6 +162,11 @@ class StructureParsing(
     }
 
     fun parseClass(
+        address: Address,
+        isMetaclass: Boolean = false,
+    ): OCClass? = parseClass(address.offset, isMetaclass)
+
+    fun parseClass(
         address: Long,
         isMetaclass: Boolean = false,
     ): OCClass? {
@@ -160,6 +175,10 @@ class StructureParsing(
         // get the class_t->data (class_rw_t *) field...
         val rwStruct = klassRo[4].derefUntyped(tolerant = true)
         val superAddress = klassRo[1].longValue(false)
+        // Make sure that the data behind the name pointer is recognized as a string value
+        if (program.listing.getDataAt(rwStruct[3].value as Address)?.value !is String) {
+            program.listing.createData(rwStruct[3].value as Address, TerminatedStringDataType())
+        }
 
         val klass =
             OCClass(
@@ -234,10 +253,20 @@ class StructureParsing(
 
     fun parseMethod(dat: Data): OCMethod? {
         if (dat.dataType.name == "method_t") {
+            val signatureString = dat[1].deref<String>()
+            val parsedSignature =
+                kotlin
+                    .runCatching {
+                        parseSignature(signatureString, EncodedSignatureType.METHOD_SIGNATURE)
+                    }.getOrElse {
+                        Msg.error(this, "Failed to parse method signature", it)
+                        return null
+                    }
+
             return OCMethod(
                 parent = parentStack.last(),
                 name = dat[0].deref<String>(),
-                signature = parseSignature(dat[1].deref<String>(), EncodedSignatureType.METHOD_SIGNATURE),
+                signature = parsedSignature,
                 implAddress = dat[2].longValue(false),
             )
         } else if (dat.dataType.name == "method_small_t") {
