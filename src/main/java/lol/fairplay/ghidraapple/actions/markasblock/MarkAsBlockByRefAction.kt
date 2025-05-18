@@ -4,6 +4,8 @@ import docking.ActionContext
 import docking.action.MenuData
 import ghidra.app.context.ProgramLocationActionContext
 import ghidra.app.context.ProgramLocationContextAction
+import ghidra.app.decompiler.ClangVariableToken
+import ghidra.app.plugin.core.decompile.DecompilerActionContext
 import ghidra.framework.plugintool.PluginTool
 import lol.fairplay.ghidraapple.GhidraApplePluginPackage
 
@@ -24,8 +26,8 @@ class MarkAsBlockByRefAction(
 
     override fun isEnabledForContext(context: ActionContext?): Boolean {
         val typedContext =
-            context as? ProgramLocationActionContext ?: return false
+            context as? DecompilerActionContext ?: return false
 
-        return true // TODO: Make this check more robust.
+        return typedContext.tokenAtCursor is ClangVariableToken // TODO: Make this check more robust.
     }
 }
