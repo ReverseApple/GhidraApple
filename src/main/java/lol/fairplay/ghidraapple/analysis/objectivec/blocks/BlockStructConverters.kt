@@ -34,25 +34,6 @@ import java.nio.ByteOrder
 // https://github.com/Kotlin/kotlin-spec/blob/release/docs/src/md/kotlin.core/declarations.md?plain=1#L881
 
 /**
- * A flag for a block layout.
- */
-enum class BlockFlag(
-    val value: Int,
-) {
-    BLOCK_INLINE_LAYOUT_STRING(1 shl 21),
-    BLOCK_SMALL_DESCRIPTOR(1 shl 22),
-    BLOCK_IS_NOESCAPE(1 shl 23),
-    BLOCK_NEEDS_FREE(1 shl 24),
-    BLOCK_HAS_COPY_DISPOSE(1 shl 25),
-    BLOCK_HAS_CTOR(1 shl 26),
-    BLOCK_IS_GC(1 shl 27),
-    BLOCK_IS_GLOBAL(1 shl 28),
-    BLOCK_USE_STRET(1 shl 29),
-    BLOCK_HAS_SIGNATURE(1 shl 30),
-    BLOCK_HAS_EXTENDED_LAYOUT(1 shl 31),
-}
-
-/**
  * An Objective-C block (relevant to the given program) with the layout representation contained in the given buffer.
  *
  * @param program The program the block is in.
@@ -65,11 +46,32 @@ class BlockLayout(
     private val dataTypeSuffix: String? = null,
 ) : StructConverter {
     val isaPointer = buffer.getLong()
+
+    /**
+     * A flag for a block layout.
+     */
+    enum class Flag(
+        val value: Int,
+    ) {
+        BLOCK_INLINE_LAYOUT_STRING(1 shl 21),
+        BLOCK_SMALL_DESCRIPTOR(1 shl 22),
+        BLOCK_IS_NOESCAPE(1 shl 23),
+        BLOCK_NEEDS_FREE(1 shl 24),
+        BLOCK_HAS_COPY_DISPOSE(1 shl 25),
+        BLOCK_HAS_CTOR(1 shl 26),
+        BLOCK_IS_GC(1 shl 27),
+        BLOCK_IS_GLOBAL(1 shl 28),
+        BLOCK_USE_STRET(1 shl 29),
+        BLOCK_HAS_SIGNATURE(1 shl 30),
+        BLOCK_HAS_EXTENDED_LAYOUT(1 shl 31),
+    }
+
     val flagsBitfield = buffer.getInt()
-    val flags: Set<BlockFlag> get() =
-        BlockFlag.entries
+    val flags: Set<Flag> =
+        Flag.entries
             .filter { (flagsBitfield and it.value) != 0 }
             .toSet()
+
     val reserved = buffer.getInt()
     val invokePointer = buffer.getLong()
     val descriptorPointer = buffer.getLong()
@@ -81,8 +83,8 @@ class BlockLayout(
     // All values relating to descriptors beyond the first struct are defined as getters, as they should
     //  not be calculated during initialization. They will be used later when marking up the structs.
 
-    private val descriptorHasCopyDispose get() = BlockFlag.BLOCK_HAS_COPY_DISPOSE in flags
-    private val descriptorHasSignature get() = BlockFlag.BLOCK_HAS_SIGNATURE in flags
+    private val descriptorHasCopyDispose get() = Flag.BLOCK_HAS_COPY_DISPOSE in flags
+    private val descriptorHasSignature get() = Flag.BLOCK_HAS_SIGNATURE in flags
 
     private val descriptor1Address = program.address(descriptorPointer)
     private val descriptor2Address get() =
@@ -396,4 +398,53 @@ class BlockDescriptor3(
         parseSignature(signatureString, EncodedSignatureType.BLOCK_SIGNATURE)
 
     override fun toDataType() = BlockDescriptor3DataType(program.dataTypeManager)
+}
+
+class BlockByRef(
+    private var program: Program,
+    buffer: ByteBuffer,
+    private val dataTypeSuffix: String? = null,
+    minimal: Boolean = false,
+) : StructConverter {
+    val isa = buffer.getLong()
+    val forwarding = buffer.getLong()
+
+    enum class Flag(
+        val value: Int,
+    ) {
+        BLOCK_BYREF_LAYOUT_MASK(0xf shl 28),
+        BLOCK_BYREF_LAYOUT_EXTENDED(1 shl 28),
+        BLOCK_BYREF_LAYOUT_NON_OBJECT(2 shl 28),
+        BLOCK_BYREF_LAYOUT_STRONG(3 shl 28),
+        BLOCK_BYREF_LAYOUT_WEAK(4 shl 28),
+        BLOCK_BYREF_LAYOUT_UNRETAINED(5 shl 28),
+        BLOCK_BYREF_IS_GC(1 shl 27),
+        BLOCK_BYREF_HAS_COPY_DISPOSE(1 shl 25),
+        BLOCK_BYREF_NEEDS_FREE(1 shl 24),
+    }
+
+    val flagsBitfield = buffer.getInt()
+    val flags =
+        Flag.entries
+            .filter { (flagsBitfield and it.value) != 0 }
+            .toSet()
+
+    val size = buffer.getInt().toUInt()
+
+    val hasBlockByRef2 = Flag.BLOCK_BYREF_HAS_COPY_DISPOSE in flags
+    val hasBlockByRef3 = Flag.BLOCK_BYREF_LAYOUT_EXTENDED in flags
+
+    val keepFunctionPointer = if (hasBlockByRef2 && !minimal) buffer.getLong() else null
+    val destroyFunctionPointer = if (hasBlockByRef2 && !minimal) buffer.getLong() else null
+
+    val layoutPointer = if (hasBlockByRef3 && !minimal) buffer.getLong() else null
+
+    override fun toDataType() =
+        BlockByRefDataType(
+            program.dataTypeManager,
+            dataTypeSuffix,
+            size,
+            hasBlockByRef2,
+            hasBlockByRef3,
+        )
 }
