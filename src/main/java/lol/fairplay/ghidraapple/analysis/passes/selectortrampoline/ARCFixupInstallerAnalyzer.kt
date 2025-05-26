@@ -67,6 +67,7 @@ class ARCFixupInstallerAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerTy
                 "___chkstk_darwin",
                 "_objc_opt_self",
                 "_objc_unsafeClaimAutoreleasedReturnValue",
+                "_objc_retainBlock",
                 *retainRegisters.toTypedArray(),
             )
 
@@ -108,6 +109,8 @@ class ARCFixupInstallerAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerTy
                 "*(x0 + x3) = x2;",
                 "_objc_setProperty",
                 "_objc_setProperty_atomic",
+                "_objc_setProperty_atomic_copy",
+                "_objc_setProperty_nonatomic",
                 "_objc_setProperty_nonatomic_copy",
             )
 
