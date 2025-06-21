@@ -4,4 +4,6 @@ open class Node
 
 open class Expression : Node()
 
-open class Statement : Node()
+sealed class Statement : Node() {
+    data class ExpressionStatement(val expression: Expression) : Statement()
+}
