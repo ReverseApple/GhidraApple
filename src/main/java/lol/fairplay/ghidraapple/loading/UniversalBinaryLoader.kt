@@ -3,6 +3,7 @@ package lol.fairplay.ghidraapple.loading
 import ghidra.app.util.Option
 import ghidra.app.util.bin.ByteProvider
 import ghidra.app.util.importer.MessageLog
+import ghidra.app.util.opinion.LoadSpec
 import ghidra.app.util.opinion.Loaded
 import ghidra.app.util.opinion.MachoLoader
 import ghidra.framework.model.Project
@@ -24,13 +25,14 @@ class UniversalBinaryLoader : MachoLoader() {
     }
 
     override fun postLoadProgramFixups(
-        loadedPrograms: MutableList<Loaded<Program>>?,
-        project: Project?,
-        options: MutableList<Option>?,
-        messageLog: MessageLog?,
-        monitor: TaskMonitor?,
+        loadedPrograms: List<Loaded<Program>>?,
+        project: Project,
+        loadSpec: LoadSpec,
+        options: List<Option>,
+        messageLog: MessageLog,
+        monitor: TaskMonitor,
     ) {
-        super.postLoadProgramFixups(loadedPrograms, project, options, messageLog, monitor)
+        super.postLoadProgramFixups(loadedPrograms, project, loadSpec, options, messageLog, monitor)
         if (loadedPrograms != null) {
             for (loaded in loadedPrograms) {
                 // The actual program is wrapped, so we need to unwrap it.
@@ -60,7 +62,7 @@ class UniversalBinaryLoader : MachoLoader() {
                         .joinToString("/")
                 loaded.projectFolderPath = newFolderPath
                 // Now that the program is up one folder, we can delete the original one.
-                project?.projectData?.getFolder(originalFolderPath)?.delete()
+                project.projectData?.getFolder(originalFolderPath)?.delete()
             }
         }
     }
