@@ -42,7 +42,7 @@ class ApplyAllocTypeOverrideCommand(
     ): FunctionSignature {
         val fsig = FunctionDefinitionDataType("tmpname")
         fsig.returnType = type
-        fsig.arguments = arrayOf(ParameterDefinitionImpl("cls", type, null))
+        fsig.setArguments(ParameterDefinitionImpl("cls", type, null))
         if (withVarargs) {
             fsig.setVarArgs(true)
         }
