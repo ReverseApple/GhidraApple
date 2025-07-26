@@ -88,8 +88,10 @@ class BlockDescriptor2DataType(
             FunctionDefinitionDataType("copy_helper").apply {
                 returnType = VoidDataType.dataType
                 setArguments(
-                    ParameterDefinitionImpl("dst", PointerDataType(VoidDataType(), dataTypeManager), null),
-                    ParameterDefinitionImpl("src", PointerDataType(VoidDataType(), dataTypeManager), null),
+                    *arrayOf(
+                        ParameterDefinitionImpl("dst", PointerDataType(VoidDataType(), dataTypeManager), null),
+                        ParameterDefinitionImpl("src", PointerDataType(VoidDataType(), dataTypeManager), null),
+                    ),
                 )
             }
         add(PointerDataType(copyHelperFunctionDataType), "copy_helper", null)
@@ -97,8 +99,10 @@ class BlockDescriptor2DataType(
             FunctionDefinitionDataType("dispose_helper").apply {
                 returnType = VoidDataType.dataType
                 setArguments(
-                    ParameterDefinitionImpl("dst", PointerDataType(VoidDataType(), dataTypeManager), null),
-                    ParameterDefinitionImpl("src", PointerDataType(VoidDataType(), dataTypeManager), null),
+                    *arrayOf(
+                        ParameterDefinitionImpl("dst", PointerDataType(VoidDataType(), dataTypeManager), null),
+                        ParameterDefinitionImpl("src", PointerDataType(VoidDataType(), dataTypeManager), null),
+                    ),
                 )
             }
         add(PointerDataType(disposeHelperFunctionDataType, dataTypeManager), "dispose_helper", null)
@@ -151,8 +155,10 @@ class BlockByrefKeepFunctionDefinitionDataType(
         val blockByRefPointerType =
             PointerDataType(BlockByRef3DataType(dataTypeManager), dataTypeManager)
         setArguments(
-            ParameterDefinitionImpl(null, blockByRefPointerType, null),
-            ParameterDefinitionImpl(null, blockByRefPointerType, null),
+            *arrayOf(
+                ParameterDefinitionImpl(null, blockByRefPointerType, null),
+                ParameterDefinitionImpl(null, blockByRefPointerType, null),
+            ),
         )
     }
 }
@@ -162,10 +168,12 @@ class BlockByrefDestroyFunctionDefinitionDataType(
 ) : FunctionDefinitionDataType("BlockByrefDestroyFunction", dataTypeManager) {
     init {
         setArguments(
-            ParameterDefinitionImpl(
-                null,
-                PointerDataType(BlockByRef3DataType(dataTypeManager), dataTypeManager),
-                null,
+            *arrayOf(
+                ParameterDefinitionImpl(
+                    null,
+                    PointerDataType(BlockByRef3DataType(dataTypeManager), dataTypeManager),
+                    null,
+                ),
             ),
         )
     }
