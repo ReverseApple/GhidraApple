@@ -1,3 +1,5 @@
+import java.util.Properties
+
 // This cannot be used inside the `plugins` block, but can (and is) used elsewhere and
 //  should match the version used inside the `plugins` block.
 val kotlinVersion = "1.9.23"
@@ -25,9 +27,63 @@ plugins {
 // for the correction version of Gradle to use for the Ghidra installation you specify.
 
 // ----------------------START "DO NOT MODIFY" SECTION------------------------------
-val ghidraInstallDir: String? = System.getenv("GHIDRA_INSTALL_DIR") ?: project.findProperty("GHIDRA_INSTALL_DIR") as String?
+val ghidraInstallDir: String? =
+    System.getenv("GHIDRA_INSTALL_DIR") ?: project.findProperty("GHIDRA_INSTALL_DIR") as String?
+
+data class Version(
+    val major: Int,
+    val minor: Int,
+    val patch: Int = 0,
+) : Comparable<Version> {
+    override fun compareTo(other: Version): Int =
+        when {
+            major != other.major -> major.compareTo(other.major)
+            minor != other.minor -> minor.compareTo(other.minor)
+            else -> patch.compareTo(other.patch)
+        }
+
+    companion object {
+        fun parse(version: String): Version {
+            val parts = version.split(".")
+            return Version(
+                major = parts[0].toInt(),
+                minor = parts.getOrNull(1)?.toInt() ?: 0,
+                patch = parts.getOrNull(2)?.toInt() ?: 0,
+            )
+        }
+    }
+}
 
 if (ghidraInstallDir != null) {
+    val ghidraPropsFile = file("$ghidraInstallDir/Ghidra/application.properties")
+    if (!ghidraPropsFile.exists()) {
+        throw GradleException("Unable to find the Ghidra properties file")
+    }
+    val ghidraProps =
+        ghidraPropsFile.inputStream().use { stream ->
+            Properties().apply { load(stream) }
+        }
+    val (ghidraAppName, ghidraAppVersion, ghidraReleaseName) =
+        run {
+            val appName =
+                ghidraProps.getProperty("application.name")
+                    ?: throw GradleException("Unable to get Ghidra app name")
+            val appVersion =
+                ghidraProps.getProperty("application.version")
+                    ?: throw GradleException("Unable to get Ghidra app version")
+            val releaseName =
+                ghidraProps.getProperty("application.release.name")
+                    ?: throw GradleException("Unable to Ghidra release name")
+            Triple(appName, appVersion, releaseName)
+        }
+    if (ghidraAppName != "Ghidra") {
+        throw GradleException("GHIDRA_INSTALL_DIR does not point to a valid Ghidra installation")
+    }
+    if (ghidraReleaseName != "PUBLIC") {
+        logger.warn("Building against a non-PUBLIC version of Ghidra. Release name is $ghidraReleaseName.")
+    }
+    // TODO: Handle different source sets based on Ghidra version.
+
     apply(from = File(ghidraInstallDir).canonicalPath + "/support/buildExtension.gradle")
 } else {
     throw GradleException("GHIDRA_INSTALL_DIR is not defined!")
