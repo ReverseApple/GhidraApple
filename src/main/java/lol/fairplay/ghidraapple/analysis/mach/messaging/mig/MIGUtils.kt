@@ -81,7 +81,6 @@ fun isFunctionMIGServerRoutine(function: Function): Boolean {
 
     val routineDemuxPCodeOps =
         arrayOf(
-            PcodeOp.INT_ADD,
             PcodeOp.INT_ZEXT,
             PcodeOp.INT_MULT,
             PcodeOp.INT_ADD,
@@ -105,9 +104,11 @@ fun isFunctionMIGServerRoutine(function: Function): Boolean {
             return false
         }
         searchIndex++
+        // Sometimes there's an INT_ADD instruction, sometimes there's not.
+        if (pcodeOps[searchIndex].opcode == PcodeOp.INT_ADD) searchIndex++
         // Once the incoming ID has been range-checked, a server routine will use the ID to index
         //  into the routine array and load a pointer to it. We'll check that logic here.
-        routineDemuxPCodeOps.forEach { rangeCheckOpCode ->
+        routineDemuxPCodeOps.forEachIndexed { index, rangeCheckOpCode ->
             if (searchIndex > pcodeOps.lastIndex) return false
             if (pcodeOps[searchIndex].opcode != rangeCheckOpCode) return false
             searchIndex++
