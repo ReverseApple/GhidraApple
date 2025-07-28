@@ -10,6 +10,7 @@ import ghidra.program.model.data.Pointer
 import ghidra.program.model.data.PointerDataType
 import ghidra.program.model.listing.Data
 import ghidra.program.model.listing.Function
+import ghidra.program.model.listing.FunctionManager
 import ghidra.program.model.listing.Program
 import ghidra.program.model.mem.Memory
 import ghidra.program.model.mem.MemoryBlock
@@ -24,6 +25,10 @@ import ghidra.program.model.symbol.ReferenceManager
 import ghidra.program.model.symbol.SourceType
 import ghidra.program.model.symbol.Symbol
 import ghidra.program.model.symbol.SymbolType
+import ghidra.program.model.util.LongPropertyMap
+import ghidra.program.model.util.PropertyMap
+import ghidra.program.model.util.PropertyMapManager
+import ghidra.program.model.util.StringPropertyMap
 import ghidra.util.UndefinedFunction
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.analysis.utilities.StructureHelpers.derefUntyped
@@ -101,18 +106,19 @@ fun parseObjCListSection(
     val entries = sectionBlock.size / 8
     val start = sectionBlock.start
 
-    return (0 until entries).map {
-        val pointerAddress = start.add(it * 8)
-        var data = program.listing.getDataAt(pointerAddress)
-        if (!data.isPointer) {
-            data = program.listing.createData(pointerAddress, PointerDataType.dataType)
-        }
-        val datAddress =
-            data
-                .getPrimaryReference(0)
-                .toAddress
-        program.listing.getDefinedDataAt(datAddress)
-    }
+    return (0 until entries)
+        .map {
+            val pointerAddress = start.add(it * 8)
+            var data = program.listing.getDataAt(pointerAddress)
+            if (!data.isPointer) {
+                data = program.listing.createData(pointerAddress, PointerDataType.dataType)
+            }
+            val datAddress =
+                data
+                    .getPrimaryReference(0)
+                    .toAddress
+            program.listing.getDefinedDataAt(datAddress)
+        }.filterNotNull()
 }
 
 fun dataAt(
@@ -123,7 +129,7 @@ fun dataAt(
 fun ReferenceManager.setCallTarget(
     callsite: Address,
     targetFunction: Function,
-    sourceType: SourceType,
+    sourceType: SourceType = SourceType.USER_DEFINED,
 ) {
     val ref = addMemoryReference(callsite, targetFunction.entryPoint, RefType.UNCONDITIONAL_CALL, sourceType, 0)
     setPrimary(ref, true)
@@ -347,3 +353,31 @@ val Function.instructions get() =
             generateSequence(program.listing.getInstructionAt(range.minAddress)) { it.next }
                 .takeWhile { it <= range.maxAddress }
         }
+
+fun FunctionManager.getFunctionsWithTag(tagName: String): List<Function> {
+    val tag = functionTagManager.getFunctionTag(tagName) ?: return emptyList()
+    return this.getFunctions(true).filter { it.tags.contains(tag) }
+}
+
+fun FunctionManager.getFunctionsWithAnyTag(vararg tagNames: String): List<Function> {
+    val tags = tagNames.mapNotNull { functionTagManager.getFunctionTag(it) }.toSet()
+    if (tags.isEmpty()) return emptyList()
+    return this.getFunctions(true).filter { it.tags.intersect(tags).isNotEmpty() }
+}
+
+fun <T> PropertyMap<T>.toMap(): Map<Address, T> = this.propertyIterator.associateWith { this.get(it) }
+
+fun <T> PropertyMap<T>.addCollection(d: Collection<Pair<Address, T?>>) {
+    d.forEach { (address, value) -> this.add(address, value) }
+}
+
+fun PropertyMapManager.getOrCreateStringPropertyMap(name: String): StringPropertyMap =
+    this.getStringPropertyMap(name) ?: this.createStringPropertyMap(name)
+
+fun PropertyMapManager.getOrCreateLongPropertyMap(name: String): LongPropertyMap =
+    this.getLongPropertyMap(name) ?: this.createLongPropertyMap(name)
+
+fun Function.hasTag(tagName: String): Boolean = this.tags.any { it.name == tagName }
+
+val Memory.externalBlock: MemoryBlock
+    get() = this.getBlock(MemoryBlock.EXTERNAL_BLOCK_NAME)

@@ -1,6 +1,8 @@
 package lol.fairplay.ghidraapple.plugins
 
 import docking.action.MenuData
+import ghidra.app.context.ProgramActionContext
+import ghidra.app.context.ProgramContextAction
 import ghidra.app.decompiler.ClangVariableToken
 import ghidra.app.events.ProgramSelectionPluginEvent
 import ghidra.app.plugin.PluginCategoryNames
@@ -13,9 +15,11 @@ import ghidra.framework.plugintool.PluginInfo
 import ghidra.framework.plugintool.PluginTool
 import ghidra.framework.plugintool.util.PluginStatus
 import ghidra.program.util.ProgramSelection
+import ghidra.util.Msg
 import lol.fairplay.ghidraapple.GhidraApplePluginPackage
 import lol.fairplay.ghidraapple.analysis.objectivec.GhidraTypeBuilder.Companion.OBJC_CLASS_CATEGORY
 import lol.fairplay.ghidraapple.analysis.passes.objcclasses.ApplyAllocTypeOverrideCommand
+import lol.fairplay.ghidraapple.analysis.passes.objcclasses.OCTypeInjectorAnalyzer.Companion.ALLOC_DATA
 
 @PluginInfo(
     status = PluginStatus.STABLE,
@@ -55,6 +59,8 @@ class DeveloperActionsPlugin(tool: PluginTool) : ProgramPlugin(tool) {
                 }
             },
         )
+        tool.addAction(DropTableAction(ALLOC_DATA))
+        tool.addAction(DropTableAction("AllocedCallTable"))
         tool.addAction(GotoVariableDefinition())
     }
 }
@@ -76,5 +82,18 @@ class GotoVariableDefinition : AbstractDecompilerAction("GoTo Variable Definitio
         val evt: PluginEvent =
             ProgramSelectionPluginEvent(javaClass.name, ProgramSelection(targetAddress, targetAddress), context.program)
         context.tool.firePluginEvent(evt)
+    }
+}
+
+class DropTableAction(val tableName: String) : ProgramContextAction("Delete table $tableName", DeveloperActionsPlugin::class.simpleName) {
+    init {
+        menuBarData = MenuData(arrayOf("Developer", "Delete Table '$tableName'"))
+    }
+
+    override fun actionPerformed(programContext: ProgramActionContext) {
+        programContext.program.withTransaction<Exception>("Delete table $tableName") {
+            programContext.program.usrPropertyManager.removePropertyMap(tableName)
+        }
+        Msg.showInfo(this, null, "Deleted table $tableName", "Deleted table $tableName")
     }
 }

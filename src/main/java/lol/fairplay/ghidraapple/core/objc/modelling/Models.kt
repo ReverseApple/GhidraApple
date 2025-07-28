@@ -147,6 +147,10 @@ data class OCClass(
     fun getImplementationForSelector(selector: String): OCMethod? {
         return resolvedMethods().find { it.name == selector }?.concrete()
     }
+
+    fun getStaticMethodForSelector(selector: String): OCMethod? {
+        return baseClassMethods?.find { it.name == selector }
+    }
 }
 
 data class OCProtocol(
@@ -206,6 +210,10 @@ data class OCProtocol(
             (optionalInstanceMethods ?: listOf()) +
             (optionalClassMethods ?: listOf())
     }
+
+    override fun hashCode(): Int {
+        return super.hashCode()
+    }
 }
 
 data class OCMethod(
@@ -258,9 +266,12 @@ data class OCMethod(
         val returnType = TypeStringify.getResult(sig.returnType.first)
 
         if (sig.parameters.count() > 0) {
-            var nsplit = name.split(":").filter { it.trim().isNotEmpty() }
+            val nsplit = name.split(":").filter { it.trim().isNotEmpty() }
             var result = "$prefix($returnType)${nsplit[0]}:(${TypeStringify.getResult(sig.parameters.first().first)})"
 
+            if (nsplit.size != sig.parameters.count()) {
+                return result
+            }
             for (i in 1 until sig.parameters.count()) {
                 val typeStr = TypeStringify.getResult(sig.parameters[i].first)
                 result += " ${nsplit[i]}:($typeStr)"
@@ -277,7 +288,7 @@ data class OCIVar(
     val ocClass: OCClass,
     override val name: String,
     val offset: Int,
-    val type: TypeNode,
+    val type: TypeNode?,
     val alignment: Int,
     val size: Int,
 ) : OCField(name) {

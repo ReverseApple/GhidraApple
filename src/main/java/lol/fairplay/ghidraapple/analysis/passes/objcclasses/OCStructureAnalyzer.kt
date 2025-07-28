@@ -7,8 +7,12 @@ import ghidra.app.util.importer.MessageLog
 import ghidra.program.model.address.AddressSetView
 import ghidra.program.model.data.Structure
 import ghidra.program.model.data.StructureDataType
+import ghidra.program.model.data.Undefined
 import ghidra.program.model.listing.Data
+import ghidra.program.model.listing.GhidraClass
+import ghidra.program.model.listing.Library
 import ghidra.program.model.listing.Program
+import ghidra.program.model.symbol.SourceType
 import ghidra.util.Msg
 import ghidra.util.task.TaskMonitor
 import lol.fairplay.ghidraapple.analysis.objectivec.GhidraTypeBuilder.Companion.OBJC_CLASS_CATEGORY
@@ -55,7 +59,7 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
                     runCatching {
                         klassT[4].derefUntyped()[3].deref<String>() to klassT
                     }.onFailure {
-                        Msg.error(this, "Failed to parse class data at ${klassT.address}")
+                        Msg.error(this, "Failed to parse class data at ${klassT.address}", it)
                     }.getOrNull()
                 }?.toMap() ?: emptyMap()
             ).toMutableMap()
@@ -103,17 +107,16 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
 
         taskMonitor?.message = "Creating nullary types..."
 
-        externalClasses.forEach {
-            Msg.debug(this, "Creating nullary: $it")
-            program.dataTypeManager.addDataType(StructureDataType(OBJC_CLASS_CATEGORY, it, 0), null)
-        }
+        taskMonitor?.message = "Creating structs and namespaces for external classes..."
+        externalClasses.forEach(::handleExternalClass)
 
+        taskMonitor?.message = "Creating structs for protocols..."
         protoData.keys.forEach { name ->
             taskMonitor?.incrementProgress()
 
             program.dataTypeManager.addDataType(StructureDataType(OBJC_CLASS_CATEGORY, "<$name>", 0), null)
         }
-
+        taskMonitor?.message = "Creating structs for internal classes..."
         // Create class types with fields.
         klassData.forEach { (name, data) ->
             val dataType = program.dataTypeManager.addDataType(StructureDataType(OBJC_CLASS_CATEGORY, name, 0), null)
@@ -130,9 +133,10 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
 
             // Create the instance variables for the structure.
             for (ivar in model.instanceVariables ?: return@forEach) {
-                var fieldType =
+                val fieldType =
                     runCatching {
-                        typeResolver.buildParsed(ivar.type)
+                        // Some ivars can have no type string, and only a size
+                        ivar.type?.let { typeResolver.buildParsed(it) } ?: Undefined.getUndefinedDataType(ivar.size)
                     }.onFailure {
                         Msg.error(this, "Could not reconstruct type for ivar ${model.name}->${ivar.name}")
                     }.getOrNull() ?: continue
@@ -146,7 +150,46 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
                 )
             }
         }
-
+        // Set the `__objc_ivar` section back to read-only, so that the offsets there are used by the decompiler
+        program.memory.getBlock("__objc_ivar")?.isWrite = false
         return true
+    }
+
+    /**
+     * - Creates an empty structure datatype for the class, so we can use this to type variables and parameters
+     * - Create a [GhidraClass] that is part of the correct [Library] namespace, so we can associate method thunks with it
+     * The [GhidraClass] namespace is left empty, because inferring the existence of methods is handled by other analyses
+     *
+     */
+    private fun handleExternalClass(className: String) {
+        // Check if there already is a namespace with this name
+        if (program.symbolTable.classNamespaces.asSequence().any { it.name == className }) {
+            Msg.debug(this, "Class $className already exists")
+            return
+        }
+
+        Msg.debug(this, "Creating nullary: $className")
+        // Create empty struct
+        program.dataTypeManager.addDataType(StructureDataType(OBJC_CLASS_CATEGORY, className, 0), null)
+        // Find the existing [Library] namespace that has the symbol _OBJC_CLASS_$_${it}
+        val externalClassSymbol =
+            with(program.externalManager) {
+                externalLibraryNames
+                    // For each collection of external locations
+                    .map { getExternalLocations(it).asSequence().toList() }
+                    // Find the one that has a symbol like `_OBJC_CLASS_$_${cls.name}`
+                    .mapNotNull { locations ->
+                        locations.singleOrNull { it.label == "_OBJC_CLASS_\$_$className" }
+                    }.singleOrNull()
+            }
+        if (externalClassSymbol != null) {
+            val externalLibrary: Library = externalClassSymbol.parentNameSpace as Library
+            // Create the new class namespace
+            val classNameSpace: GhidraClass = program.symbolTable.createClass(externalLibrary, className, SourceType.ANALYSIS)
+            // Move the symbol to the new namespace
+            externalClassSymbol.symbol.setNamespace(classNameSpace)
+        } else {
+            Msg.error(this, "Could not find external class symbol for $className")
+        }
     }
 }
