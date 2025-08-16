@@ -199,14 +199,25 @@ data class OCProtocol(
     }
 
     fun baseMethods(): List<OCMethod> {
-// //         fixme: I believe this function was devised in a misconception that only one of these
-// //          fields could be non-null per instance.
         return (instanceMethods ?: listOf()) +
             (classMethods ?: listOf()) +
             (optionalInstanceMethods ?: listOf()) +
             (optionalClassMethods ?: listOf())
     }
 }
+
+data class OCCategory(
+    override val name: String,
+    var contents: List<OCCategoryClassEntry>,
+) : OCFieldContainer(name)
+
+data class OCCategoryClassEntry(
+    val category: OCCategory,
+    val klass: OCClass,
+    val instanceMethods: List<OCMethod>?,
+    val classMethods: List<OCMethod>?,
+    val protocols: List<OCProtocol>?,
+) : OCFieldContainer("${klass.name} (${category.name})")
 
 data class OCMethod(
     var parent: OCFieldContainer,
