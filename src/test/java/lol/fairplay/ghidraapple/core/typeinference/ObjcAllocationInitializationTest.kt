@@ -83,7 +83,11 @@ class ObjcAllocationInitializationTest : AbstractGhidraHeadedIntegrationTest() {
         program: Program,
         functionName: String,
     ): Function {
-        val functionAddress = program.symbolTable.getGlobalSymbols(functionName).single().address
+        val functionAddress =
+            program.symbolTable
+                .getGlobalSymbols(functionName)
+                .single()
+                .address
         val function = program.functionManager.getFunctionAt(functionAddress)
         assertNotNull(functionAddress, "Function not found in program")
 
@@ -136,7 +140,8 @@ class ObjcAllocationInitializationTest : AbstractGhidraHeadedIntegrationTest() {
 
         // check if there is a unique reference to function in the encapsulating function body (true by test design)
         val functionReferences = program.referenceManager.getReferencesTo(functionAddress)
-        val listOfReferencesInTestFunction = functionReferences.map { it.fromAddress }.filter<Address>(encapsulatingFunction.body::contains)
+        val listOfReferencesInTestFunction =
+            functionReferences.map { it.fromAddress }.filter<Address>(encapsulatingFunction.body::contains)
         assertEquals(1, listOfReferencesInTestFunction.size)
 
         // get the return type (always a pointer to a class by test design) of the signature at function call site and check for the expected name
@@ -217,7 +222,8 @@ class ObjcAllocationInitializationTest : AbstractGhidraHeadedIntegrationTest() {
         val objcAlloc = getFunctionByName(program, "_objc_alloc")
 
         // get init stub symbol
-        val stubNameSpace = program.symbolTable.getNamespace(SelectorTrampolineAnalyzer.STUB_NAMESPACE_NAME, program.globalNamespace)
+        val stubNameSpace =
+            program.symbolTable.getNamespace(SelectorTrampolineAnalyzer.STUB_NAMESPACE_NAME, program.globalNamespace)
         val init = program.symbolTable.getSymbols("init", stubNameSpace).single()
 
         val testFunctionNamesAndExpectedReturnTypes: Map<String, String> =
@@ -238,7 +244,14 @@ class ObjcAllocationInitializationTest : AbstractGhidraHeadedIntegrationTest() {
                 it.value,
             )
         }
-        testFunctionNamesAndExpectedReturnTypes.forEach { assertUniqueFunctionCallSiteReturnType(program, init.address, it.key, it.value) }
+        testFunctionNamesAndExpectedReturnTypes.forEach {
+            assertUniqueFunctionCallSiteReturnType(
+                program,
+                init.address,
+                it.key,
+                it.value,
+            )
+        }
     }
 
     private fun buildAllocHumanProgram(): ProgramBuilder {
@@ -272,7 +285,12 @@ class ObjcAllocationInitializationTest : AbstractGhidraHeadedIntegrationTest() {
             // This is intentionally created without a parameter, because the analyzer should handle
             // cases where the alloc function is not properly typed yet
         )
-        builder.createEmptyFunction("_testAllocationSiteHuman", "0x100008c34", 0x100008c6c - 0x100008c34, DataType.DEFAULT)
+        builder.createEmptyFunction(
+            "_testAllocationSiteHuman",
+            "0x100008c34",
+            (0x100008c6c - 0x100008c34).toInt(),
+            DataType.DEFAULT,
+        )
         builder.createEmptyFunction("_objc_storeStrong", "0x100009518", 1, DataType.DEFAULT)
         builder.createLabel("0x100011778", "_OBJC_CLASS_\$_Human")
         builder.setBytes("0x100011578", "78 17 01 00 01 00 00 00")

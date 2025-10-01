@@ -37,17 +37,17 @@ fun isFunctionMIGServerRoutine(function: Function): Boolean {
     fun isInstructionAccessingMessageIDField(instruction: Instruction): Boolean {
         if (instruction.pcode.size != 3) return false
         if (instruction.pcode[0].opcode != PcodeOp.INT_ADD) return false
-        if (instruction.pcode[0].inputs.any { it.isConstant && it.offset == 0x14L } != true) return false
+        if (!instruction.pcode[0].inputs.any { it.isConstant && it.offset == 0x14L }) return false
         if (instruction.pcode[1].opcode != PcodeOp.LOAD) return false
         if (instruction.pcode[2].opcode != PcodeOp.INT_ZEXT) return false
         return true
     }
     // For [UndefinedFunctions] the [instructions] might be empty, so to
     //  cover all cases, we manually iterate from the beginning.
-    if (generateSequence(function.program.listing.getInstructionAt(function.entryPoint)) { it.next }
+    if (!generateSequence(function.program.listing.getInstructionAt(function.entryPoint)) { it.next }
             // The instruction to access the message ID field should be one of the first several.
             .take(15)
-            .any(::isInstructionAccessingMessageIDField) != true
+            .any(::isInstructionAccessingMessageIDField)
     ) {
         return false
     }
@@ -56,7 +56,7 @@ fun isFunctionMIGServerRoutine(function: Function): Boolean {
     //  it to be sure. Hopefully the above checks weeded out any functions that would be
     //  slow to decompile. An actual MIG server routine should decompile very quickly.
 
-    var pcodeOps =
+    val pcodeOps =
         DecompInterface()
             .let { decompiler ->
                 decompiler.simplificationStyle = "normalize"
@@ -81,7 +81,6 @@ fun isFunctionMIGServerRoutine(function: Function): Boolean {
 
     val routineDemuxPCodeOps =
         arrayOf(
-            PcodeOp.INT_ADD,
             PcodeOp.INT_ZEXT,
             PcodeOp.INT_MULT,
             PcodeOp.INT_ADD,
@@ -105,9 +104,11 @@ fun isFunctionMIGServerRoutine(function: Function): Boolean {
             return false
         }
         searchIndex++
+        // Sometimes there's an INT_ADD instruction, sometimes there's not.
+        if (pcodeOps[searchIndex].opcode == PcodeOp.INT_ADD) searchIndex++
         // Once the incoming ID has been range-checked, a server routine will use the ID to index
         //  into the routine array and load a pointer to it. We'll check that logic here.
-        routineDemuxPCodeOps.forEach { rangeCheckOpCode ->
+        routineDemuxPCodeOps.forEachIndexed { index, rangeCheckOpCode ->
             if (searchIndex > pcodeOps.lastIndex) return false
             if (pcodeOps[searchIndex].opcode != rangeCheckOpCode) return false
             searchIndex++
