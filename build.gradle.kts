@@ -6,6 +6,7 @@ val kotlinVersion = "1.9.23"
 
 plugins {
     kotlin("jvm") version "1.9.23"
+    kotlin("plugin.serialization") version "1.9.23"
     id("org.jlleitschuh.gradle.ktlint") version "12.1.2"
     id("idea")
 }
@@ -100,6 +101,8 @@ dependencies {
     testImplementation("org.json:json:20240303")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.3")
     testRuntimeOnly("org.junit.vintage:junit-vintage-engine:5.10.3")
+    // This isn't the latest version, but it is the latest version that supports Kotlin <2.0.
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
     runtimeOnly(
         fileTree(
             mapOf(
