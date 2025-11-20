@@ -24,7 +24,7 @@ import lol.fairplay.ghidraapple.core.objc.modelling.ResolvedEntity
 import lol.fairplay.ghidraapple.core.objc.modelling.ResolvedMethod
 import lol.fairplay.ghidraapple.core.objc.modelling.ResolvedProperty
 
-class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTION_ANALYZER) {
+class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYTE_ANALYZER) {
     lateinit var program: Program
     lateinit var log: MessageLog
 
@@ -62,7 +62,7 @@ class OCMethodAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.FUNCTI
         monitor.message = "Parsing class structures..."
 
         val parser = StructureParsing(program)
-        klasses.forEach { klassData ->
+        klasses.filter { it.address in set }.forEach { klassData ->
             monitor.incrementProgress()
 
             val model =
