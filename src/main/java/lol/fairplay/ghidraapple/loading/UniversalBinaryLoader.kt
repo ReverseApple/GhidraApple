@@ -1,14 +1,10 @@
 package lol.fairplay.ghidraapple.loading
 
-import ghidra.app.util.Option
 import ghidra.app.util.bin.ByteProvider
-import ghidra.app.util.importer.MessageLog
-import ghidra.app.util.opinion.LoadSpec
 import ghidra.app.util.opinion.Loaded
+import ghidra.app.util.opinion.Loader
 import ghidra.app.util.opinion.MachoLoader
-import ghidra.framework.model.Project
 import ghidra.program.model.listing.Program
-import ghidra.util.task.TaskMonitor
 
 class UniversalBinaryLoader : MachoLoader() {
     override fun getPreferredFileName(byteProvider: ByteProvider): String {
@@ -25,45 +21,40 @@ class UniversalBinaryLoader : MachoLoader() {
     }
 
     override fun postLoadProgramFixups(
-        loadedPrograms: List<Loaded<Program>>?,
-        project: Project,
-        loadSpec: LoadSpec,
-        options: List<Option>,
-        messageLog: MessageLog,
-        monitor: TaskMonitor,
+        loadedPrograms: MutableList<Loaded<Program>>,
+        settings: Loader.ImporterSettings,
     ) {
-        super.postLoadProgramFixups(loadedPrograms, project, loadSpec, options, messageLog, monitor)
-        if (loadedPrograms != null) {
-            for (loaded in loadedPrograms) {
-                // The actual program is wrapped, so we need to unwrap it.
-                val program = loaded.domainObject
+        super.postLoadProgramFixups(loadedPrograms, settings)
 
-                // This will trigger [getPreferredFileName] above.
-                val preferredName = loaded.name
+        for (loaded in loadedPrograms) {
+            // The actual program is wrapped, so we need to unwrap it.
+            val program = loaded.getDomainObject(this)
 
-                // If the preferred name is the same as the give name, this probably wasn't
-                // part of a universal binary. Thus, we skip any operations.
-                if (program.name == preferredName) return
+            // This will trigger [getPreferredFileName] above.
+            val preferredName = loaded.name
 
-                // Otherwise, we rename with the preferred name.
-                program.withTransaction<Exception>("rename") {
-                    program.name = preferredName
-                }
+            // If the preferred name is the same as the give name, this probably wasn't
+            // part of a universal binary. Thus, we skip any operations.
+            if (program.name == preferredName) return
 
-                // After renaming, the programs will be in folders named after their original
-                // names. To reduce redundancy, we move the programs to the parent folder.
-                val originalFolderPath = loaded.projectFolderPath
-                val newFolderPath =
-                    originalFolderPath
-                        .split("/")
-                        // Filter out, potentially, the last, empty, element (if the path ended in "/").
-                        .filterNot(String::isEmpty)
-                        .dropLast(1) // Drop the last path component, leaving a path to the parent folder.
-                        .joinToString("/")
-                loaded.projectFolderPath = newFolderPath
-                // Now that the program is up one folder, we can delete the original one.
-                project.projectData?.getFolder(originalFolderPath)?.delete()
+            // Otherwise, we rename with the preferred name.
+            program.withTransaction<Exception>("rename") {
+                program.name = preferredName
             }
+
+            // After renaming, the programs will be in folders named after their original
+            // names. To reduce redundancy, we move the programs to the parent folder.
+            val originalFolderPath = loaded.projectFolderPath
+            val newFolderPath =
+                originalFolderPath
+                    .split("/")
+                    // Filter out, potentially, the last, empty, element (if the path ended in "/").
+                    .filterNot(String::isEmpty)
+                    .dropLast(1) // Drop the last path component, leaving a path to the parent folder.
+                    .joinToString("/")
+            loaded.projectFolderPath = newFolderPath
+            // Now that the program is up one folder, we can delete the original one.
+            loaded.project.projectData?.getFolder(originalFolderPath)?.delete()
         }
     }
 }
