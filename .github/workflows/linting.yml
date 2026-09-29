@@ -1,0 +1,46 @@
+name: Linting
+
+on: [push, workflow_dispatch]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clone Repository
+        uses: actions/checkout@v4
+
+      # Tracks the same list the version-bump bot maintains, newest first. ktlint does not care
+      # which Ghidra is installed, but the build script refuses to configure without one, and
+      # pinning to a supported version keeps an upstream release from breaking linting.
+      - name: Read newest supported Ghidra version
+        id: ghidra
+        run: echo "version=$(jq -r '.[0]' .github/ghidra-versions.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Install Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Install Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Ghidra ${{ steps.ghidra.outputs.version }}
+        uses: antoniovazquezblanco/setup-ghidra@v2
+        with:
+          auth_token: ${{ secrets.GITHUB_TOKEN }}
+          version: ${{ steps.ghidra.outputs.version }}
+
+      - name: Linting with ktlint
+        run: ./gradlew ktlintCheck
+
+      - name: Upload ktlint report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ktlint-report
+          path: build/reports/ktlint

@@ -21,7 +21,7 @@ import lol.fairplay.ghidraapple.analysis.utilities.parseObjCListSection
 
 class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYTE_ANALYZER) {
     companion object {
-        public const val NAME = "Objective-C: Structures"
+        const val NAME = "Objective-C: Structures"
         private const val DESCRIPTION = ""
         val PRIORITY = AnalysisPriority.BLOCK_ANALYSIS.after()
     }
@@ -55,7 +55,7 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
                     runCatching {
                         klassT[4].derefUntyped()[3].deref<String>() to klassT
                     }.onFailure {
-                        Msg.error(this, "Failed to parse class data at ${klassT.address}")
+                        Msg.warn(this, "Failed to parse class data at ${klassT.address}: ${it.message}")
                     }.getOrNull()
                 }?.toMap() ?: emptyMap()
             ).toMutableMap()
@@ -130,20 +130,29 @@ class OCStructureAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerType.BYT
 
             // Create the instance variables for the structure.
             for (ivar in model.instanceVariables ?: return@forEach) {
-                var fieldType =
+                val fieldType =
                     runCatching {
                         typeResolver.buildParsed(ivar.type)
                     }.onFailure {
-                        Msg.error(this, "Could not reconstruct type for ivar ${model.name}->${ivar.name}")
+                        Msg.warn(this, "Could not reconstruct type for ivar ${model.name}->${ivar.name}")
                     }.getOrNull() ?: continue
 
-                (dataType as Structure).insertAtOffset(
-                    ivar.offset.toInt(),
-                    fieldType,
-                    ivar.size,
-                    ivar.name,
-                    null,
-                )
+                runCatching {
+                    (dataType as Structure).insertAtOffset(
+                        ivar.offset,
+                        fieldType,
+                        ivar.size,
+                        ivar.name,
+                        null,
+                    )
+                }.onFailure {
+                    Msg.warn(
+                        this,
+                        "Failed to create structure ${model.name}. " +
+                            "Values ivar.name=${ivar.name}|ivar.type=${ivar.type}|" +
+                            "fieldType=$fieldType|dataType=$dataType: ${it.message}",
+                    )
+                }
             }
         }
 

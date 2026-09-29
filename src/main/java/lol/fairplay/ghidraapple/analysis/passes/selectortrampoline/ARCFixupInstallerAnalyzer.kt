@@ -3,7 +3,7 @@ package lol.fairplay.ghidraapple.analysis.passes.selectortrampoline
 import ghidra.app.services.AbstractAnalyzer
 import ghidra.app.services.AnalysisPriority
 import ghidra.app.services.AnalyzerType
-import ghidra.app.util.bin.format.objc2.ObjectiveC2_Constants
+import ghidra.app.util.bin.format.objc.objc2.Objc2Constants
 import ghidra.app.util.importer.MessageLog
 import ghidra.program.database.SpecExtension
 import ghidra.program.model.address.AddressSetView
@@ -26,7 +26,7 @@ class ARCFixupInstallerAnalyzer : AbstractAnalyzer(NAME, DESCRIPTION, AnalyzerTy
         setSupportsOneTimeAnalysis()
     }
 
-    override fun canAnalyze(program: Program?): Boolean = ObjectiveC2_Constants.isObjectiveC2(program)
+    override fun canAnalyze(program: Program?): Boolean = Objc2Constants.isObjectiveC2(program)
 
     private fun createCallFixupXML(
         name: String,

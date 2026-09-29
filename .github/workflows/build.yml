@@ -1,0 +1,77 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.read.outputs.versions }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: read
+        run: echo "versions=$(jq -c . .github/ghidra-versions.json)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false 
+      matrix:
+        ghidra: ${{ fromJSON(needs.setup.outputs.versions) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start virtual display
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb
+          Xvfb :99 -screen 0 1280x1024x24 > /dev/null 2>&1 &
+          echo "DISPLAY=:99" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4 
+
+      - name: Install Ghidra ${{ matrix.ghidra }}
+        uses: antoniovazquezblanco/setup-ghidra@v2
+        with:
+          auth_token: ${{ secrets.GITHUB_TOKEN }}
+          version: ${{ matrix.ghidra }}
+
+      - name: Build extension
+        run: ./gradlew buildExtension
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GhidraApple-ghidra${{ matrix.ghidra }}
+          path: dist/*.zip
+
+      - name: Run unit tests
+        run: ./gradlew test
+
+      - name: Upload test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-ghidra${{ matrix.ghidra }}
+          path: build/reports/tests/test
+
+      - name: Attach to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip

@@ -1,0 +1,67 @@
+name: ghidra-version-bump
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+
+      - name: Find latest Ghidra release
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(gh api repos/NationalSecurityAgency/ghidra/releases/latest --jq .tag_name)
+          version=$(echo "$tag" | sed -E 's/^Ghidra_([0-9]+\.[0-9]+(\.[0-9]+)?)_.*/\1/')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Latest Ghidra release upstream: $version"
+
+      - name: Update versions file
+        id: update
+        run: |
+          latest="${{ steps.latest.outputs.version }}"
+          old_json=$(jq -c . .github/ghidra-versions.json)
+          current=$(jq -r '.[]' .github/ghidra-versions.json)
+
+          combined=$(printf '%s\n%s\n' "$latest" "$current" \
+            | grep -v '^$' | sort -V -r | uniq | head -n 3)
+          new_json=$(printf '%s\n' "$combined" | jq -R . | jq -s -c 'map(select(length>0))')
+
+          echo "$new_json" > .github/ghidra-versions.json
+
+          if [ "$new_json" != "$old_json" ]; then
+            echo "changed=true"  >> "$GITHUB_OUTPUT"
+            echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Nothing to do: $latest is already in the list."
+          fi
+
+      - name: Open pull request
+        if: steps.update.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          branch: ghidra-version-bump/${{ steps.update.outputs.latest }}
+          title: "Bump Ghidra support: add ${{ steps.update.outputs.latest }}"
+          commit-message: "ci: add Ghidra ${{ steps.update.outputs.latest }} to supported versions"
+          body: |
+            Automatic bump — new Ghidra release detected: **${{ steps.update.outputs.latest }}**.
+
+            The list of supported versions has been trimmed to the 3 most recent.
+            The CI will build against each; **review the result before merging**.
